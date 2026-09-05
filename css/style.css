@@ -1,0 +1,79 @@
+/* Sleek Modern Dark Theme Design Tokens for Universal 3D Construction Puzzle Platform */
+:root {
+  --bg-main: #060911;
+  --bg-panel: #0b1120;
+  --bg-card: #0f172a;
+  --bg-card-hover: #1e293b;
+  --border-subtle: #1e293b;
+  --border-medium: #334155;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-sky: #0284c7;
+  --accent-sky-light: #38bdf8;
+  --accent-amber: #d97706;
+  --accent-amber-light: #f59e0b;
+  --accent-emerald: #059669;
+  --accent-emerald-light: #10b981;
+  --accent-rose: #e11d48;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Fonts & Common Elements */
+.code-font {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+/* Glassmorphism & Overlays */
+.glass-panel {
+  background: rgba(11, 17, 32, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.glass-dropdown {
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+}
+
+/* Badges & Tags */
+.badge-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+
+.pulse-hover:hover {
+  animation: pulseGlow 1.5s infinite ease-in-out;
+}

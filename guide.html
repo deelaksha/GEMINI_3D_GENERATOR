@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Construction Guide — PuzzleCore Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans select-none">
+
+  <!-- Universal Shared Workbench Navbar Mount -->
+  <div id="workbench-navbar-mount"></div>
+
+  <!-- Main Layout -->
+  <main class="flex-1 bg-slate-950 overflow-y-auto p-6 flex flex-col items-center">
+    <div class="max-w-4xl w-full space-y-5">
+
+      <!-- Header Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center space-x-2">
+            <h2 class="text-base font-bold text-slate-100 uppercase tracking-wide">Step-by-Step Construction Guide</h2>
+            <span id="guide-difficulty-badge" class="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-mono font-bold">--</span>
+          </div>
+          <p id="guide-desc" class="text-xs text-slate-400 mt-1">Child-friendly physical sequence with zero glue required.</p>
+        </div>
+
+        <button id="btn-open-3d-full" class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold transition flex items-center gap-1.5 shadow">
+          <span>🎮</span><span>Open Interactive 3D Model</span>
+        </button>
+      </div>
+
+      <!-- Step Cards Container -->
+      <div id="guide-steps-list" class="space-y-4">
+        <!-- Dynamic Step Cards -->
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Module Script -->
+  <script type="module">
+    import { AppState } from './js/core/config.js';
+    import { ModelRegistry } from './js/models/registry.js';
+    import { WorkbenchNav } from './js/ui/nav.js';
+
+    function initPage() {
+      WorkbenchNav.render('guide');
+      renderGuide();
+
+      AppState.subscribe(() => {
+        renderGuide();
+      });
+
+      document.getElementById('btn-open-3d-full').addEventListener('click', () => {
+        const { activeModelId, materialThickness } = AppState.getState();
+        window.location.href = `index.html?model=${activeModelId}&thickness=${materialThickness.toFixed(1)}&step=0`;
+      });
+    }
+
+    function renderGuide() {
+      const model = ModelRegistry.getActiveModel();
+      const state = AppState.getState();
+
+      document.getElementById('guide-difficulty-badge').innerText = model.difficulty || 'All Ages';
+      document.getElementById('guide-desc').innerText = `Child-friendly assembly instructions for ${model.name}. Identify your cut pieces and connect them sequentially.`;
+
+      const container = document.getElementById('guide-steps-list');
+      container.innerHTML = '';
+
+      const steps = model.assemblySteps.filter(s => s.num > 0);
+      steps.forEach(step => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3 shadow-lg hover:border-slate-700 transition';
+
+        const partsNeeded = (step.parts || []).map(pid => {
+          const p = model.getPart(pid);
+          const name = p ? p.name : pid;
+          return `
+            <a href="inspector.html?model=${model.id}&part=${pid}" class="inline-flex items-center space-x-1.5 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-amber-300 font-mono text-xs hover:border-amber-500/60 transition">
+              <span class="font-bold">${pid}</span>
+              <span class="text-slate-400 text-[11px] truncate max-w-[150px]">${name}</span>
+            </a>
+          `;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs px-2.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono font-bold border border-amber-800">
+              STAGE ${step.num}
+            </span>
+            <a href="index.html?model=${model.id}&step=${step.num}&thickness=${state.materialThickness.toFixed(1)}" class="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1">
+              <span>View in 3D Step Filter</span>
+              <span>→</span>
+            </a>
+          </div>
+
+          <h3 class="font-bold text-slate-100 text-sm md:text-base">${step.title}</h3>
+          <p class="text-xs md:text-sm text-slate-300 leading-relaxed">${step.desc}</p>
+
+          <div class="pt-2 border-t border-slate-800/80">
+            <div class="text-[10px] text-slate-500 font-mono font-bold uppercase mb-1.5">Physical Parts Required:</div>
+            <div class="flex flex-wrap gap-1.5">
+              ${partsNeeded}
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>

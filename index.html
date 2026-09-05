@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Assembly Workbench — PuzzleCore Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans select-none">
+
+  <!-- Universal Shared Workbench Navbar Mount -->
+  <div id="workbench-navbar-mount"></div>
+
+  <!-- Main Workbench Layout -->
+  <main class="flex-1 flex overflow-hidden relative">
+
+    <!-- Left File Explorer Sidebar -->
+    <aside class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-10 text-xs">
+      <div class="p-2.5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <span class="font-bold text-slate-300 flex items-center gap-1.5">
+          <span>📁</span> Model Virtual Files
+        </span>
+        <span id="sidebar-part-count" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 font-mono font-bold">--</span>
+      </div>
+
+      <!-- Parts list tree -->
+      <div id="sidebar-parts-tree" class="flex-1 overflow-y-auto p-2 space-y-0.5">
+        <!-- Dynamically populated from active model -->
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="p-2.5 border-t border-slate-800 bg-slate-950/70 text-[11px] space-y-1.5">
+        <div class="flex justify-between text-slate-400 font-mono text-[10px]">
+          <span>Selected Part:</span>
+          <span id="status-active-part" class="text-amber-300 font-bold truncate max-w-[130px]">None</span>
+        </div>
+        <button id="btn-open-in-inspector" class="w-full py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-medium transition text-xs flex items-center justify-center gap-1 shadow">
+          <span>🔍</span> Open in Part Inspector
+        </button>
+      </div>
+    </aside>
+
+    <!-- Center 3D Viewport -->
+    <div class="flex-1 relative flex flex-col bg-slate-950 overflow-hidden">
+
+      <!-- Viewport Overlays: Explode Slider, Edges & Camera Bookmarks -->
+      <div class="absolute top-3 left-4 z-10 flex flex-wrap items-center gap-2 bg-slate-900/90 backdrop-blur border border-slate-800 p-1.5 rounded-lg shadow-xl text-xs">
+        <div class="flex items-center space-x-1.5 px-1">
+          <span class="text-slate-400 font-medium">Explode:</span>
+          <input type="range" id="explode-slider" min="0" max="100" value="0" class="w-24 md:w-32 accent-sky-500 cursor-pointer" />
+          <span id="explode-label" class="font-mono text-sky-400 w-8 text-right font-bold">0%</span>
+        </div>
+        <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+        <button id="btn-reset-cam" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition">Reset Cam</button>
+        <button id="btn-toggle-edges" class="px-2 py-1 bg-sky-700 text-white rounded text-[11px] transition">Edges</button>
+
+        <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+        <!-- Dynamic Camera Sightline Bookmarks -->
+        <div id="camera-bookmarks-container" class="flex items-center space-x-1">
+          <!-- Populated from model's bookmarks -->
+        </div>
+      </div>
+
+      <!-- Three.js Canvas Container -->
+      <div id="canvas-container" class="canvas-container flex-1"></div>
+
+      <!-- Bottom Assembly Scrubber Bar -->
+      <div class="bg-slate-900/95 border-t border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2 z-10 backdrop-blur">
+        <div class="flex items-center space-x-2 text-xs">
+          <button id="btn-step-prev" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div class="flex flex-col">
+            <span class="text-[10px] text-slate-400">Step <span id="step-active-num" class="font-mono text-amber-400 font-bold">0</span> of <span id="step-total-num">6</span></span>
+            <span id="step-active-title" class="font-semibold text-slate-200 text-xs">Full Assembly</span>
+          </div>
+          <button id="btn-step-next" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+
+        <div id="step-buttons-container" class="flex flex-wrap items-center gap-1 text-[11px]">
+          <!-- Step buttons dynamically populated -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Part Metadata & Geometry Sidebar -->
+    <aside class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 z-10 text-xs">
+      <div class="p-3 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <span class="font-bold text-slate-200 text-xs uppercase">Part Properties</span>
+        <span id="prop-part-id" class="font-mono text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800 font-bold">--</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 space-y-3">
+        <!-- 2D Profile mini-preview -->
+        <div class="bg-slate-950 rounded-lg p-2 border border-slate-800 flex flex-col items-center justify-center min-h-[125px]">
+          <svg id="prop-mini-svg" class="w-40 h-24" viewBox="-60 -40 120 80">
+            <!-- Dynamic Mini SVG -->
+          </svg>
+          <span id="prop-file-name" class="text-[10px] text-amber-400 font-mono mt-1 truncate max-w-[220px]">--</span>
+        </div>
+
+        <!-- Spec Data -->
+        <div class="space-y-2">
+          <div>
+            <div class="text-[10px] text-slate-500 font-medium">NAME</div>
+            <div id="prop-part-name" class="font-semibold text-slate-100 text-sm">--</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-950 p-2 rounded border border-slate-800">
+              <div class="text-[10px] text-slate-500">CATEGORY</div>
+              <div id="prop-part-cat" class="font-medium text-slate-300">--</div>
+            </div>
+            <div class="bg-slate-950 p-2 rounded border border-slate-800">
+              <div class="text-[10px] text-slate-500">ASSEMBLY STAGE</div>
+              <div id="prop-part-step" class="font-mono font-bold text-amber-400">Step --</div>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-2.5 rounded border border-slate-800 space-y-1 font-mono text-[10px]">
+            <div class="flex justify-between text-slate-400">
+              <span>Dimensions:</span>
+              <span id="prop-dims" class="text-slate-200">-- × -- mm</span>
+            </div>
+            <div class="flex justify-between text-slate-400">
+              <span>Material Gauge:</span>
+              <span id="prop-thickness" class="text-slate-200">-- mm</span>
+            </div>
+            <div class="flex justify-between text-slate-400">
+              <span>Manufacturing Sheet:</span>
+              <span id="prop-sheet" class="text-sky-400">Sheet --</span>
+            </div>
+          </div>
+
+          <!-- Mating Partners -->
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase font-mono mb-1">Mating Part Connections</div>
+            <div id="prop-connections-list" class="space-y-1 max-h-36 overflow-y-auto pr-1">
+              <!-- Dynamic mating elements -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-2 border-t border-slate-800 bg-slate-950/60 space-y-1">
+        <button id="btn-center-part" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-medium transition text-xs">
+          Center in Viewport
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Module Script -->
+  <script type="module">
+    import { AppState } from './js/core/config.js';
+    import { ModelRegistry } from './js/models/registry.js';
+    import { WorkbenchNav } from './js/ui/nav.js';
+    import { Engine3D } from './js/assembly/engine3d.js';
+    import { ExplodeEngine } from './js/assembly/explode.js';
+    import { AssemblySequencer } from './js/assembly/sequencer.js';
+    import { GeometryEngine } from './js/core/geometry.js';
+    import { Toast } from './js/ui/toast.js';
+
+    let engine;
+
+    function initPage() {
+      WorkbenchNav.render('assembly');
+
+      const container = document.getElementById('canvas-container');
+      engine = new Engine3D(container, (selectedId) => {
+        AppState.setState({ selectedPartId: selectedId });
+      });
+
+      renderActiveModel();
+      bindWorkbenchControls();
+
+      AppState.subscribe((state) => {
+        updateUI();
+      });
+    }
+
+    function renderActiveModel() {
+      const model = ModelRegistry.getActiveModel();
+      const state = AppState.getState();
+
+      document.getElementById('sidebar-part-count').innerText = `${model.getPartCount()} Parts`;
+
+      // Populate file tree
+      const tree = document.getElementById('sidebar-parts-tree');
+      tree.innerHTML = '';
+      model.parts.forEach(part => {
+        const item = document.createElement('div');
+        item.id = `tree-item-${part.id}`;
+        item.className = 'p-1.5 rounded hover:bg-slate-800/60 text-slate-300 font-mono text-[11px] flex items-center justify-between cursor-pointer transition';
+        item.onclick = () => AppState.setState({ selectedPartId: part.id });
+        item.innerHTML = `
+          <div class="flex items-center space-x-1.5 truncate max-w-[190px]">
+            <span class="text-amber-400">📄</span>
+            <span class="truncate">${part.fileName}</span>
+          </div>
+          <span class="text-[9px] text-slate-500">${part.fileSizeKB || '1.4 KB'}</span>
+        `;
+        tree.appendChild(item);
+      });
+
+      // Camera Bookmarks
+      const bmContainer = document.getElementById('camera-bookmarks-container');
+      bmContainer.innerHTML = '';
+      (model.cameraBookmarks || []).forEach(bm => {
+        const btn = document.createElement('button');
+        btn.className = 'px-1.5 py-0.5 bg-amber-950/50 hover:bg-amber-800/60 text-amber-200 border border-amber-800/60 rounded text-[10px] font-medium transition';
+        btn.innerText = bm.name;
+        btn.onclick = () => {
+          engine.setCameraLook(new THREE.Vector3(...bm.target), bm.dist);
+          if (bm.select) AppState.setState({ selectedPartId: bm.select });
+          Toast.show(`Camera: ${bm.name}`, '📷');
+        };
+        bmContainer.appendChild(btn);
+      });
+
+      // Assembly Steps Buttons
+      const stepBtnsContainer = document.getElementById('step-buttons-container');
+      stepBtnsContainer.innerHTML = '';
+      const steps = model.assemblySteps || [];
+      document.getElementById('step-total-num').innerText = Math.max(0, steps.length - 1);
+
+      steps.forEach((s, idx) => {
+        const btn = document.createElement('button');
+        btn.id = `step-btn-${idx}`;
+        btn.className = idx === 0 
+          ? 'step-badge px-2.5 py-1 rounded bg-sky-600 text-white font-medium text-[11px]' 
+          : 'step-badge px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[11px]';
+        btn.innerText = idx === 0 ? `All (${model.getPartCount()})` : `${idx}. ${s.title.split('&')[0].trim()}`;
+        btn.onclick = () => AppState.setState({ activeStep: idx });
+        stepBtnsContainer.appendChild(btn);
+      });
+
+      // Default selection
+      if (!state.selectedPartId && model.parts.length > 0) {
+        AppState.setState({ selectedPartId: model.parts[0].id }, false);
+      }
+
+      engine.loadModel(model, state.materialThickness);
+      updateUI();
+    }
+
+    function updateUI() {
+      const state = AppState.getState();
+      const model = ModelRegistry.getActiveModel();
+      const activePart = model.getPart(state.selectedPartId);
+
+      // Update tree active highlight
+      document.querySelectorAll('#sidebar-parts-tree > div').forEach(el => {
+        el.className = 'p-1.5 rounded hover:bg-slate-800/60 text-slate-300 font-mono text-[11px] flex items-center justify-between cursor-pointer transition';
+      });
+      if (activePart) {
+        const activeTreeEl = document.getElementById(`tree-item-${activePart.id}`);
+        if (activeTreeEl) {
+          activeTreeEl.className = 'p-1.5 rounded bg-sky-950/80 border border-sky-500/60 text-sky-200 font-mono text-[11px] flex items-center justify-between cursor-pointer';
+        }
+      }
+
+      // Update right property panel
+      if (activePart) {
+        document.getElementById('status-active-part').innerText = activePart.fileName;
+        document.getElementById('prop-part-id').innerText = activePart.id;
+        document.getElementById('prop-file-name').innerText = activePart.fileName;
+        document.getElementById('prop-part-name').innerText = activePart.name;
+        document.getElementById('prop-part-cat').innerText = activePart.category;
+        document.getElementById('prop-part-step').innerText = `Step ${activePart.step}`;
+        document.getElementById('prop-dims').innerText = `${activePart.width} × ${activePart.length} mm`;
+        document.getElementById('prop-thickness').innerText = `${state.materialThickness.toFixed(1)} mm`;
+        document.getElementById('prop-sheet').innerText = `Sheet 0${activePart.sheet || 1}`;
+
+        // Mini SVG
+        drawMiniPartSVG(activePart, state.materialThickness);
+
+        // Mating connections
+        const connList = document.getElementById('prop-connections-list');
+        connList.innerHTML = '';
+        (activePart.connections || []).forEach(mateId => {
+          const mate = model.getPart(mateId);
+          if (mate) {
+            const item = document.createElement('div');
+            item.className = 'flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer hover:border-sky-500/50';
+            item.onclick = () => AppState.setState({ selectedPartId: mate.id });
+            item.innerHTML = `
+              <span class="font-mono text-amber-400 font-bold">${mate.id}</span>
+              <span class="text-slate-300 truncate max-w-[140px]">${mate.name}</span>
+              <span class="text-[9px] text-emerald-400 font-mono">Fit</span>
+            `;
+            connList.appendChild(item);
+          }
+        });
+      }
+
+      // Update Scrubber Step UI
+      const steps = model.assemblySteps || [];
+      const currentStep = steps[state.activeStep] || { title: 'Assembly' };
+      document.getElementById('step-active-num').innerText = state.activeStep;
+      document.getElementById('step-active-title').innerText = currentStep.title;
+
+      document.querySelectorAll('.step-badge').forEach((btn, idx) => {
+        btn.className = idx === state.activeStep
+          ? 'step-badge px-2.5 py-1 rounded bg-sky-600 text-white font-medium text-[11px]'
+          : 'step-badge px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[11px]';
+      });
+
+      // Update 3D Highlights and Explode
+      engine.updateHighlight(state.selectedPartId);
+      ExplodeEngine.applyExplode(engine.meshMap, model.parts, state.explodeFactor);
+      AssemblySequencer.applyStepFilter(engine.meshMap, model.parts, state.activeStep);
+    }
+
+    function drawMiniPartSVG(part, thickness) {
+      const svg = document.getElementById('prop-mini-svg');
+      const { kerf, clearance } = AppState.getMaterialProfile();
+      const geo = part.generate2D(thickness, kerf, clearance);
+      const bounds = GeometryEngine.computeBoundingBox(geo.outline);
+      const pad = 12;
+      svg.setAttribute('viewBox', `${bounds.minX - pad} ${bounds.minY - pad} ${bounds.width + pad * 2} ${bounds.height + pad * 2}`);
+
+      let pathD = '';
+      geo.outline.forEach((pt, idx) => {
+        pathD += (idx === 0 ? 'M' : 'L') + `${pt[0]},${pt[1]} `;
+      });
+      pathD += 'Z';
+
+      let cutsSvg = '';
+      (geo.cutouts || []).forEach(c => {
+        const hw = c.w / 2;
+        const hh = c.h / 2;
+        cutsSvg += `<rect x="${c.x - hw}" y="${c.y - hh}" width="${c.w}" height="${c.h}" fill="#060911" stroke="#ef4444" stroke-width="0.8"/>`;
+      });
+
+      svg.innerHTML = `
+        <path d="${pathD}" fill="#d4a373" stroke="#f59e0b" stroke-width="1.2"/>
+        ${cutsSvg}
+      `;
+    }
+
+    function bindWorkbenchControls() {
+      // Explode Slider
+      const slider = document.getElementById('explode-slider');
+      slider.addEventListener('input', (e) => {
+        const factor = parseFloat(e.target.value) / 100.0;
+        document.getElementById('explode-label').innerText = `${Math.round(factor * 100)}%`;
+        AppState.setState({ explodeFactor: factor }, false);
+      });
+
+      // Reset Cam
+      document.getElementById('btn-reset-cam').addEventListener('click', () => {
+        engine.setCameraLook(new THREE.Vector3(0, 50, 0), 380, 0.55, -0.75);
+        Toast.show('Camera Reset', '🎯');
+      });
+
+      // Toggle Edges
+      const btnEdges = document.getElementById('btn-toggle-edges');
+      btnEdges.addEventListener('click', () => {
+        const next = !AppState.getState().showWireframe;
+        AppState.setState({ showWireframe: next });
+        engine.toggleWireframe(next);
+        btnEdges.className = next
+          ? 'px-2 py-1 bg-sky-700 text-white rounded text-[11px] transition'
+          : 'px-2 py-1 bg-slate-800 text-slate-400 rounded text-[11px] transition';
+      });
+
+      // Step Prev / Next
+      document.getElementById('btn-step-prev').addEventListener('click', () => {
+        const model = ModelRegistry.getActiveModel();
+        AssemblySequencer.prevStep((model.assemblySteps || []).length);
+      });
+      document.getElementById('btn-step-next').addEventListener('click', () => {
+        const model = ModelRegistry.getActiveModel();
+        AssemblySequencer.nextStep((model.assemblySteps || []).length);
+      });
+
+      // Center active part in 3D
+      document.getElementById('btn-center-part').addEventListener('click', () => {
+        const state = AppState.getState();
+        const model = ModelRegistry.getActiveModel();
+        const part = model.getPart(state.selectedPartId);
+        if (part) {
+          engine.setCameraLook(new THREE.Vector3(...part.assembledPos), 160);
+          Toast.show(`Centered on ${part.id}`, '🔍');
+        }
+      });
+
+      // Open in Inspector
+      document.getElementById('btn-open-in-inspector').addEventListener('click', () => {
+        const state = AppState.getState();
+        window.location.href = `inspector.html?model=${state.activeModelId}&part=${state.selectedPartId}&thickness=${state.materialThickness.toFixed(1)}`;
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>

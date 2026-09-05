@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Physical Fit Audit & Graph — PuzzleCore Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans select-none">
+
+  <!-- Universal Shared Workbench Navbar Mount -->
+  <div id="workbench-navbar-mount"></div>
+
+  <!-- Main Layout -->
+  <main class="flex-1 bg-slate-950 overflow-y-auto p-6 flex flex-col items-center">
+    <div class="max-w-5xl w-full space-y-5">
+
+      <!-- Header & Status Score Banner -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center space-x-2">
+            <h2 class="text-base font-bold text-slate-100 uppercase tracking-wide">Physical Feasibility & Fit Auditor</h2>
+            <span id="audit-status-badge" class="px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold text-xs">100% PASS</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Section 18 & 35 Master Validation: Tab-to-slot fit, kerf compensation, collision bounds, and hand reachability.</p>
+        </div>
+
+        <button id="btn-re-audit" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded text-xs font-semibold transition flex items-center gap-1.5">
+          <span>🔄</span><span>Re-Audit Assembly</span>
+        </button>
+      </div>
+
+      <!-- Audit Metrics Summary Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
+          <div class="text-[10px] text-slate-500 font-mono font-bold uppercase">Total Physical Parts</div>
+          <div id="metric-parts" class="text-lg font-bold text-slate-100 font-mono">--</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
+          <div class="text-[10px] text-slate-500 font-mono font-bold uppercase">Mating Mortises</div>
+          <div id="metric-mortises" class="text-lg font-bold text-sky-400 font-mono">--</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
+          <div class="text-[10px] text-slate-500 font-mono font-bold uppercase">Mechanical Connections</div>
+          <div id="metric-connections" class="text-lg font-bold text-amber-400 font-mono">--</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
+          <div class="text-[10px] text-slate-500 font-mono font-bold uppercase">Fatal Errors</div>
+          <div id="metric-errors" class="text-lg font-bold text-emerald-400 font-mono">0</div>
+        </div>
+      </div>
+
+      <!-- Assembly Graph (DAG) Visualizer & Rule Checks -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+        <!-- Rule Check Checklist -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <h3 class="font-bold text-slate-200 text-xs uppercase font-mono">Engineering Verification Checklist</h3>
+          <div class="space-y-2 text-xs">
+            <div class="p-2.5 rounded bg-slate-950/70 border border-slate-800 flex items-start space-x-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <div>
+                <div class="font-medium text-slate-200">Zero-Glue Mechanical Rigidity</div>
+                <div class="text-[10px] text-slate-400">Interlocking finger mortises and counter-bracing.</div>
+              </div>
+            </div>
+            <div class="p-2.5 rounded bg-slate-950/70 border border-slate-800 flex items-start space-x-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <div>
+                <div class="font-medium text-slate-200">Slot-to-Gauge Compatibility</div>
+                <div class="text-[10px] text-slate-400">All mortises expand with material thickness $+ 0.10$mm.</div>
+              </div>
+            </div>
+            <div class="p-2.5 rounded bg-slate-950/70 border border-slate-800 flex items-start space-x-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <div>
+                <div class="font-medium text-slate-200">Assembly Insertion Reachability</div>
+                <div class="text-[10px] text-slate-400">Lower level floor details mount before perimeter roofs lock.</div>
+              </div>
+            </div>
+            <div class="p-2.5 rounded bg-slate-950/70 border border-slate-800 flex items-start space-x-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <div>
+                <div class="font-medium text-slate-200">Laser Kerf Compensation ($0.15\text{mm}$)</div>
+                <div class="text-[10px] text-slate-400">Vector cut contours include half-kerf offset for firm friction-fit.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assembly Hierarchy Graph (DAG) -->
+        <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-slate-200 text-xs uppercase font-mono">Assembly Dependency Graph (DAG)</h3>
+            <span class="text-[10px] text-slate-400 font-mono">Structural Roots → Child Leaves</span>
+          </div>
+
+          <div id="assembly-dag-container" class="bg-slate-950 p-4 rounded-lg border border-slate-800/80 max-h-72 overflow-y-auto space-y-2 text-xs font-mono">
+            <!-- Populated with hierarchical branches -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Audit Issue Log Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+        <h3 class="font-bold text-slate-200 text-xs uppercase font-mono">Detailed Feasibility Issue Log</h3>
+        <div id="issue-log-container" class="space-y-1 max-h-40 overflow-y-auto">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Module Script -->
+  <script type="module">
+    import { AppState } from './js/core/config.js';
+    import { ModelRegistry } from './js/models/registry.js';
+    import { WorkbenchNav } from './js/ui/nav.js';
+    import { PhysicalValidator } from './js/validation/validator.js';
+    import { Toast } from './js/ui/toast.js';
+
+    function initPage() {
+      WorkbenchNav.render('validation');
+      runAudit();
+
+      AppState.subscribe(() => {
+        runAudit();
+      });
+
+      document.getElementById('btn-re-audit').addEventListener('click', () => {
+        runAudit();
+        Toast.show('Physical fit audit refreshed!', '🛡️');
+      });
+    }
+
+    function runAudit() {
+      const model = ModelRegistry.getActiveModel();
+      const { materialThickness } = AppState.getState();
+      const results = PhysicalValidator.auditModel(model, materialThickness);
+
+      document.getElementById('metric-parts').innerText = results.totalParts;
+      document.getElementById('metric-mortises').innerText = results.totalMortises;
+      document.getElementById('metric-connections').innerText = results.totalConnections;
+      document.getElementById('metric-errors').innerText = results.errorCount;
+
+      const statusBadge = document.getElementById('audit-status-badge');
+      if (results.isPassing) {
+        statusBadge.className = 'px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold text-xs';
+        statusBadge.innerText = '100% PASS (Feasible)';
+      } else {
+        statusBadge.className = 'px-2.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-mono font-bold text-xs';
+        statusBadge.innerText = `${results.errorCount} VIOLATIONS`;
+      }
+
+      // Render DAG
+      const dag = document.getElementById('assembly-dag-container');
+      dag.innerHTML = '';
+      const baseParts = model.parts.filter(p => p.step === 1);
+      baseParts.forEach(base => {
+        const rootDiv = document.createElement('div');
+        rootDiv.className = 'space-y-1';
+        
+        const children = model.parts.filter(p => (p.connections || []).includes(base.id) && p.id !== base.id);
+        const childTags = children.map(c => `
+          <a href="inspector.html?model=${model.id}&part=${c.id}" class="inline-block px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-sky-400 hover:border-sky-500 text-[10px] mr-1 mb-1">
+            ${c.id} (${c.name})
+          </a>
+        `).join('');
+
+        rootDiv.innerHTML = `
+          <div class="flex items-center space-x-1.5 text-amber-300 font-bold text-[11px]">
+            <span>⚓ Root Anchor:</span>
+            <span class="text-slate-100">${base.id} [${base.name}]</span>
+          </div>
+          <div class="pl-4 border-l-2 border-slate-800 ml-2 pt-1">
+            <span class="text-slate-500 text-[10px] block mb-1">Dependent Parts (Mating Socket):</span>
+            <div class="flex flex-wrap">${childTags || '<span class="text-slate-600 italic">No direct children</span>'}</div>
+          </div>
+        `;
+        dag.appendChild(rootDiv);
+      });
+
+      // Render Issue Log
+      const logCont = document.getElementById('issue-log-container');
+      logCont.innerHTML = '';
+      if (results.issues.length === 0) {
+        logCont.innerHTML = `
+          <div class="p-2.5 rounded bg-slate-950 text-emerald-400 text-xs font-mono flex items-center gap-2">
+            <span>✓</span><span>All ${results.totalParts} physical parts pass dimensional tolerance and physical fit tests with zero warnings.</span>
+          </div>
+        `;
+      } else {
+        results.issues.forEach(iss => {
+          const item = document.createElement('div');
+          const isErr = iss.level === 'ERROR';
+          item.className = `p-2 rounded font-mono text-[11px] flex items-center justify-between ${isErr ? 'bg-rose-950/40 text-rose-300 border border-rose-900/50' : 'bg-amber-950/30 text-amber-300 border border-amber-900/40'}`;
+          item.innerHTML = `
+            <span>[${iss.level}] Part ${iss.partId}: ${iss.msg}</span>
+            <a href="inspector.html?model=${model.id}&part=${iss.partId}" class="text-[10px] underline ml-2">Inspect</a>
+          `;
+          logCont.appendChild(item);
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>

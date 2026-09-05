@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Part File Inspector — PuzzleCore Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans select-none">
+
+  <!-- Universal Shared Workbench Navbar Mount -->
+  <div id="workbench-navbar-mount"></div>
+
+  <!-- Main Inspector Layout -->
+  <main class="flex-1 flex overflow-hidden relative">
+
+    <!-- Left File Explorer Sidebar -->
+    <aside class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-10 text-xs">
+      <div class="p-2.5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <span class="font-bold text-slate-300 flex items-center gap-1.5">
+          <span>📁</span> Model Virtual Files
+        </span>
+        <span id="inspector-part-count" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 font-mono font-bold">--</span>
+      </div>
+
+      <!-- Parts file list -->
+      <div id="inspector-file-tree" class="flex-1 overflow-y-auto p-2 space-y-0.5">
+        <!-- Dynamically populated -->
+      </div>
+    </aside>
+
+    <!-- Center Part File Showcase -->
+    <div class="flex-1 bg-slate-950 overflow-y-auto p-6">
+      <div class="max-w-4xl mx-auto space-y-5">
+
+        <!-- File Header Banner -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xl">
+          <div class="flex items-center space-x-3">
+            <div class="w-11 h-11 rounded-lg bg-sky-950 border border-sky-800 flex items-center justify-center text-sky-400 font-mono text-lg font-bold">
+              SVG
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 id="banner-file-name" class="font-mono font-bold text-slate-100 text-base">--</h2>
+                <span id="banner-file-size" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">--</span>
+              </div>
+              <p id="banner-file-desc" class="text-xs text-slate-400">Dedicated physical manufacturing cut file.</p>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button id="btn-copy-code" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs transition flex items-center gap-1.5 font-mono">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>Copy Source</span>
+            </button>
+            <button id="btn-download-part" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded text-xs transition flex items-center gap-1 shadow-md shadow-amber-900/30">
+              <span>⬇️</span><span>Download SVG</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- File Content Showcase: Visual Preview & Raw Source Tabs -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+          <div class="flex border-b border-slate-800 bg-slate-950/60 px-3 pt-2 text-xs font-mono">
+            <button id="tab-btn-preview" class="px-4 py-1.5 border-b-2 border-sky-400 text-sky-400 font-semibold">Visual Cutting Contour</button>
+            <button id="tab-btn-code" class="px-4 py-1.5 text-slate-400 hover:text-slate-200">Raw Source Code</button>
+          </div>
+
+          <!-- Visual Preview Panel -->
+          <div id="view-preview-panel" class="p-8 flex flex-col items-center justify-center min-h-[380px] bg-slate-950/80">
+            <div id="svg-display-wrapper" class="max-w-lg w-full flex items-center justify-center p-6 bg-slate-900/90 rounded-xl border border-slate-800 shadow-inner">
+              <!-- Rendered SVG injected here -->
+            </div>
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs font-mono text-slate-400">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-red-500 inline-block"></span> Red: Laser Cut Contour (0.1mm)</span>
+              <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-400 inline-block"></span> Blue: Vector Engraving (0.2mm)</span>
+            </div>
+          </div>
+
+          <!-- Raw Code Panel -->
+          <div id="view-code-panel" class="p-4 hidden bg-slate-950">
+            <pre id="raw-code-display" class="code-font text-xs text-emerald-300 bg-slate-900/90 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-[480px] leading-relaxed"></pre>
+          </div>
+        </div>
+
+        <!-- Part Specifications & Mating Connectors Card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+            <h3 class="font-bold text-slate-200 uppercase font-mono text-[11px]">Engineering Metrics</h3>
+            <div class="space-y-1.5 font-mono text-[11px]">
+              <div class="flex justify-between text-slate-400">
+                <span>Material Thickness:</span>
+                <span id="spec-thickness" class="text-amber-300">-- mm</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Finished Dimensions:</span>
+                <span id="spec-dims" class="text-slate-200">-- × -- mm</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Laser Kerf ($k$):</span>
+                <span id="spec-kerf" class="text-slate-200">0.15 mm</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Slot Clearance:</span>
+                <span id="spec-clearance" class="text-emerald-400">0.10 mm</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+            <h3 class="font-bold text-slate-200 uppercase font-mono text-[11px]">Mating Parts In Assembly</h3>
+            <div id="spec-mating-list" class="space-y-1 max-h-28 overflow-y-auto pr-1">
+              <!-- Mating part shortcuts -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Module Script -->
+  <script type="module">
+    import { AppState } from './js/core/config.js';
+    import { ModelRegistry } from './js/models/registry.js';
+    import { WorkbenchNav } from './js/ui/nav.js';
+    import { GeometryEngine } from './js/core/geometry.js';
+    import { Toast } from './js/ui/toast.js';
+
+    let currentSvgData = null;
+
+    function initPage() {
+      WorkbenchNav.render('inspector');
+      renderInspector();
+
+      AppState.subscribe(() => {
+        renderInspector();
+      });
+
+      bindInspectorEvents();
+    }
+
+    function renderInspector() {
+      const model = ModelRegistry.getActiveModel();
+      const state = AppState.getState();
+      const part = model.getPart(state.selectedPartId) || model.parts[0];
+
+      if (!part) return;
+      if (state.selectedPartId !== part.id) {
+        AppState.setState({ selectedPartId: part.id }, false);
+      }
+
+      document.getElementById('inspector-part-count').innerText = `${model.getPartCount()} Files`;
+
+      // Populate file tree
+      const tree = document.getElementById('inspector-file-tree');
+      tree.innerHTML = '';
+      model.parts.forEach(p => {
+        const item = document.createElement('div');
+        const isActive = p.id === part.id;
+        item.className = isActive
+          ? 'p-1.5 rounded bg-sky-950/80 border border-sky-500/60 text-sky-200 font-mono text-[11px] flex items-center justify-between cursor-pointer'
+          : 'p-1.5 rounded hover:bg-slate-800/60 text-slate-300 font-mono text-[11px] flex items-center justify-between cursor-pointer';
+        item.onclick = () => AppState.setState({ selectedPartId: p.id });
+        item.innerHTML = `
+          <div class="flex items-center space-x-1.5 truncate max-w-[190px]">
+            <span class="text-amber-400">📄</span>
+            <span class="truncate">${p.fileName}</span>
+          </div>
+          <span class="text-[9px] text-slate-500">${p.fileSizeKB || '1.2 KB'}</span>
+        `;
+        tree.appendChild(item);
+      });
+
+      // Update Banner
+      document.getElementById('banner-file-name').innerText = part.fileName;
+      document.getElementById('banner-file-size').innerText = part.fileSizeKB || '1.4 KB';
+      document.getElementById('banner-file-desc').innerText = `${part.name} (${part.category}) — Layer Step ${part.step}.`;
+
+      // Generate SVG
+      const { kerf, clearance } = AppState.getMaterialProfile();
+      currentSvgData = GeometryEngine.generateStandalonePartSVG(part, state.materialThickness, kerf, clearance);
+
+      // Render Visual SVG
+      const wrapper = document.getElementById('svg-display-wrapper');
+      wrapper.innerHTML = currentSvgData.source;
+
+      // Render Raw Code Block
+      document.getElementById('raw-code-display').textContent = currentSvgData.source;
+
+      // Engineering Specs
+      document.getElementById('spec-thickness').innerText = `${state.materialThickness.toFixed(1)} mm`;
+      document.getElementById('spec-dims').innerText = `${part.width} × ${part.length} mm`;
+      document.getElementById('spec-kerf').innerText = `${kerf.toFixed(2)} mm`;
+      document.getElementById('spec-clearance').innerText = `${clearance.toFixed(2)} mm`;
+
+      // Mating sockets list
+      const matingList = document.getElementById('spec-mating-list');
+      matingList.innerHTML = '';
+      (part.connections || []).forEach(mateId => {
+        const mate = model.getPart(mateId);
+        if (mate) {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between p-1 rounded bg-slate-950 border border-slate-800 cursor-pointer hover:border-sky-500/50';
+          row.onclick = () => AppState.setState({ selectedPartId: mate.id });
+          row.innerHTML = `
+            <span class="font-mono text-amber-400 font-bold">${mate.id}</span>
+            <span class="text-slate-300 truncate max-w-[170px]">${mate.name}</span>
+            <span class="text-[9px] text-emerald-400 font-mono">Slot</span>
+          `;
+          matingList.appendChild(row);
+        }
+      });
+    }
+
+    function bindInspectorEvents() {
+      // Switch Preview vs Code Tabs
+      const tabPreview = document.getElementById('tab-btn-preview');
+      const tabCode = document.getElementById('tab-btn-code');
+      const panelPreview = document.getElementById('view-preview-panel');
+      const panelCode = document.getElementById('view-code-panel');
+
+      tabPreview.addEventListener('click', () => {
+        panelPreview.classList.remove('hidden');
+        panelCode.classList.add('hidden');
+        tabPreview.className = 'px-4 py-1.5 border-b-2 border-sky-400 text-sky-400 font-semibold';
+        tabCode.className = 'px-4 py-1.5 text-slate-400 hover:text-slate-200';
+      });
+
+      tabCode.addEventListener('click', () => {
+        panelPreview.classList.add('hidden');
+        panelCode.classList.remove('hidden');
+        tabPreview.className = 'px-4 py-1.5 text-slate-400 hover:text-slate-200';
+        tabCode.className = 'px-4 py-1.5 border-b-2 border-sky-400 text-sky-400 font-semibold';
+      });
+
+      // Copy Code
+      document.getElementById('btn-copy-code').addEventListener('click', () => {
+        if (!currentSvgData) return;
+        navigator.clipboard.writeText(currentSvgData.source).then(() => {
+          Toast.show('SVG source code copied to clipboard!', '📋');
+        });
+      });
+
+      // Download Part
+      document.getElementById('btn-download-part').addEventListener('click', () => {
+        if (!currentSvgData) return;
+        const state = AppState.getState();
+        const model = ModelRegistry.getActiveModel();
+        const part = model.getPart(state.selectedPartId) || model.parts[0];
+
+        const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(currentSvgData.source);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = part.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        Toast.show(`Downloaded ${part.fileName}!`, '📥');
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>
