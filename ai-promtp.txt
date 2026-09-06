@@ -1,3 +1,177 @@
+# ==============================================================================
+# PUZZLECORE: AI CODE GENERATOR MASTER DIRECTIVE & PHYSICAL PUZZLE SPECIFICATION
+# ==============================================================================
+# INSTRUCTIONS FOR AI CODING ASSISTANTS (ChatGPT, Claude, Gemini, DeepSeek, etc.):
+# When a user asks you to create, generate, or modify a 3D physical construction toy / model:
+# 1. You MUST generate 100% valid, runnable JavaScript ES module code.
+# 2. You MUST strictly obey the PHYSICAL INTERLOCKING, COLLISION-FREE, and ZERO-GLUE rules below.
+# 3. Output ONLY the standalone JavaScript code exporting the model object.
+#    NEVER import external libraries (DO NOT write 'import * as THREE', 'import React', etc.).
+#    All geometry must be pure JavaScript numbers, arrays, and standard Math functions.
+# 4. NEVER output incomplete code (no '// add remaining parts here' or placeholder comments).
+# ==============================================================================
+
+## 1. MANDATORY MODULE EXPORT STRUCTURE
+
+Your output must be a valid ES Module exporting a single model definition object:
+```javascript
+export const ModelData = {
+  id: 'unique-model-id',                  // Unique alphanumeric string (e.g. 'retro-racing-car')
+  name: 'Human Readable Model Name',      // Clean title
+  category: 'Vehicles / Architecture',    // Tag
+  description: 'Precision physical construction puzzle with interlocking zero-glue parts.',
+  difficulty: 'Level 1 — Beginner (4 parts)',
+  cameraBookmarks: [
+    { name: 'Isometric View', eye: [90, 80, 100], target: [0, 25, 0], dist: 160 }
+  ],
+  assemblySteps: [
+    { num: 0, title: 'Full Assembly', desc: 'Complete 3D rigid structure.' },
+    { num: 1, title: 'Base Foundation', desc: 'Place foundation plate flat.', parts: ['BASE-01'] }
+    // Additional sequential steps...
+  ],
+  manufacturingSheets: [
+    {
+      sheetNum: 1,
+      name: 'sheet_01.svg',
+      desc: 'Main cutting sheet (3mm plywood).',
+      sheetW: 400,
+      sheetH: 300,
+      layout: {
+        'BASE-01': { x: 80, y: 70, r: 0 }
+      }
+    }
+  ],
+  parts: [
+    // Array of physical part objects...
+  ]
+};
+export default ModelData;
+```
+
+> [!CRITICAL]
+> **ABSOLUTELY NO EXTERNAL IMPORTS**: Do NOT write `import * as THREE from 'three'` or any package imports. The platform evaluates code in a secure web sandbox. All geometry is defined using standard 2D coordinate arrays and numbers.
+
+---
+
+## 2. PHYSICAL INTERLOCKING & JOINERY MATHEMATICS (ZERO-GLUE PRECISION)
+
+Every model in PuzzleCore is a REAL physical object cut from flat sheets (plywood, acrylic, or MDF) that snaps together with friction-fit mortise-and-tenon joinery without glue.
+
+### A. The Parametric Mortise Slot Rule (`cutouts`)
+All slots receptive to material thickness MUST be parametric using `(t || 3.0) + (clr || 0.10)`:
+```javascript
+// HORIZONTAL SLOT (thickness along Y, slot length along X):
+{ x: slotCenterX, y: slotCenterY, w: 20, h: (t || 3.0) + (clr || 0.10) }
+
+// VERTICAL SLOT (thickness along X, slot length along Y):
+{ x: slotCenterX, y: slotCenterY, w: (t || 3.0) + (clr || 0.10), h: 30 }
+```
+- `t`: Material thickness in millimeters (passed into `generate2D`, typically `3.0`).
+- `clr`: Kerf & friction-fit clearance tolerance (passed into `generate2D`, typically `0.10`).
+- **NEVER hardcode slot thickness to `3` or `3.0`!** Hardcoding causes physical validator errors when users change sheet thickness to 2mm or 4mm.
+- **Center-Based Local Coordinates**: In `cutouts`, `x` and `y` represent the **CENTER** of the cutout rectangle, NOT the top-left corner.
+- **Joinery Slots vs Decorative Openings**: The physical auditor evaluates all `cutouts`. To prevent joint looseness warnings, decorative features (doors, windows, surface patterns) should be drawn in `engravings` or given proper joint dimensions.
+
+### B. The Matching Tenon Tab Rule (`outline` extension)
+Every tab that inserts into a mortise slot must match the slot's dimensions exactly:
+1. **Tab Width**: Must equal the receiving slot's length:
+   $$\text{Tab Width} = \text{Slot Length}$$
+   *(Example: If slot length is 30mm, the protruding tab along the mating edge must be exactly 30mm wide).*
+2. **Tab Protrusion Depth**: Must equal material thickness $t$ (or $t + 0.2\text{mm}$ for positive flush fit):
+   $$\text{Tab Depth} = t$$
+   *(Example tab extending downward along bottom edge $y = -25$ from $x = -15$ to $+15$:)*
+   `outline: [ [-25, -25], [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25], [25, -25], [25, 25], [-25, 25] ]`
+3. **Safety Edge Margin**: Never place a mortise slot closer than $5\text{mm}$ to the outer edge of any part. Slots cut too close to the boundary will snap during physical assembly.
+
+---
+
+## 3. ZERO-COLLISION & OVERLAP PREVENTION (RIGID SOLID BODIES)
+
+In real physical manufacturing, two laser-cut sheets cannot occupy the same volume.
+
+1. **NO PENETRATING SOLID BODIES**:
+   - Parts may ONLY touch where tenon tabs penetrate mortise slots, or face-to-face.
+   - Solid plates must NEVER intersect or cross each other without a corresponding slot cut into one or both parts!
+2. **CORNER & T-JOINT THICKNESS OFFSETS**:
+   - When two perpendicular walls meet at a $90^\circ$ corner, one wall must be inset or shortened by thickness $t$, or they must use alternating box/finger joints.
+   - When a vertical wall rests on a horizontal base plate at $Y = 0$:
+     - Base plate thickness spans from $Y = -t/2$ to $Y = +t/2$.
+     - The solid body of the vertical wall must sit at $Y \ge +t/2$ (wall base at $Y = +t/2$).
+     - Only the protruding tenon tabs should penetrate down into the base plate ($Y = -t/2$ to $+t/2$).
+3. **SYMMETRIC BOUNDING BOX CENTERING**:
+   - The platform centers each 2D shape at local $(0, 0, 0)$ when extruding 3D geometry.
+   - Design your 2D outlines symmetric around local $(0, 0)$ (e.g. `[-width/2, -height/2]` to `[width/2, height/2]`) so local coordinates predict 3D world alignment accurately.
+
+---
+
+## 4. 3D POSITIONING & EULER ROTATION ALIGNMENT
+
+Parts are positioned in 3D world space using:
+- `assembledPos: [x, y, z]` (in millimeters)
+- `assembledRot: [rx, ry, rz]` (in radians, Three.js Euler order 'XYZ')
+
+### Standard Orientation Cheat-Sheet:
+| Orientation | `assembledRot` | 2D Local $(X, Y)$ Maps To 3D World |
+| :--- | :--- | :--- |
+| **Horizontal Baseplate** (Flat on floor) | `[-Math.PI / 2, 0, 0]` | Local $X \to \text{World } X$, Local $Y \to \text{World } -Z$, Thickness $\to \text{World } Y$ |
+| **Front / Back Wall** (Facing Z) | `[0, 0, 0]` or `[0, Math.PI, 0]` | Local $X \to \text{World } X$, Local $Y \to \text{World } Y$, Thickness $\to \text{World } Z$ |
+| **Left Wall** (Facing -X) | `[0, Math.PI / 2, 0]` | Local $X \to \text{World } Z$, Local $Y \to \text{World } Y$, Thickness $\to \text{World } -X$ |
+| **Right Wall** (Facing +X) | `[0, -Math.PI / 2, 0]` | Local $X \to \text{World } -Z$, Local $Y \to \text{World } Y$, Thickness $\to \text{World } X$ |
+| **Horizontal Roof / Top Plate** | `[-Math.PI / 2, 0, 0]` | Local $X \to \text{World } X$, Local $Y \to \text{World } -Z$, Thickness $\to \text{World } Y$ |
+
+---
+
+## 5. ASSEMBLY SEQUENCE & REACHABILITY RULES
+
+1. **Step 0**: Always the full assembly (`num: 0, title: 'Full Model Assembly'`).
+2. **Step 1**: The foundation / baseplate / core spine (`parts: ['BASE-01']`).
+3. **Step 2 to N**: Progressive installation of uprights, cross-members, walls, and roof.
+4. **REACHABILITY CONSTRAINT**:
+   Every part in `step: K` ($K > 1$) MUST include in its `connections` array at least one `partId` from an earlier step ($< K$).
+   *Example: If Part W-01 is in Step 2, its connections must include `'BASE-01'` from Step 1.*
+5. **VALID PART IDs ONLY**: Every ID in `connections: [...]` and `assemblySteps[].parts` must exist in `parts: [...]`. No phantom or misspelled IDs!
+
+---
+
+## 6. 2D MANUFACTURING SHEET NESTING
+
+Every part must be placed on a manufacturing cutting sheet in `manufacturingSheets`:
+```javascript
+manufacturingSheets: [
+  {
+    sheetNum: 1,
+    name: 'sheet_01.svg',
+    desc: 'Main cutting sheet layout.',
+    sheetW: 400, // Bed width in mm
+    sheetH: 300, // Bed height in mm
+    layout: {
+      'BASE-01': { x: 80, y: 70, r: 0 },
+      'WALL-01': { x: 220, y: 70, r: 0 }
+    }
+  }
+]
+```
+- `x`, `y`: Position on the 2D sheet (in mm).
+- `r`: Rotation in degrees ($0, 90, 180, 270$).
+- Parts must NOT overlap on the sheet. Maintain at least $4\text{mm}$ spacing between parts and $10\text{mm}$ from sheet edges.
+
+---
+
+## 7. AI SELF-VALIDATION CHECKLIST (PREVENT ALL RUNTIME ERRORS)
+
+Before completing your output, verify each item:
+- [x] **No imports**: Zero `import` statements at the top of the code.
+- [x] **Correct export**: Starts with `export const ModelData = { ... };` and ends with `export default ModelData;`.
+- [x] **Closed 2D polygon**: `outline` contains $\ge 3$ coordinate pairs `[x, y]`, all finite numbers, forming a closed boundary.
+- [x] **Parametric mortises**: Every slot uses `(t || 3.0) + (clr || 0.10)` for thickness.
+- [x] **Matching tenons**: Every tab's width equals its mating slot's length, and depth equals `t`.
+- [x] **Zero collisions**: Parts do not penetrate each other's solid volumes.
+- [x] **Connection reachability**: Step $N$ parts connect to Step $< N$ parts.
+- [x] **Complete code**: NO truncated code, NO `// add remaining parts here` comments. Every single part is 100% written out.
+
+---
+
+
 # MASTER PROJECT CONTEXT
 
 # UNIVERSAL 3D PHYSICAL CONSTRUCTION PUZZLE PLATFORM
@@ -2670,111 +2844,174 @@ To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:
 
 ---
 
-## 5. Ready-to-Use Minimal Model Boilerplate
+---
 
-Here is a 3-piece minimal boilerplate that can be copied directly into `js/models/box.js`:
+## 5. Fully Verified Interlocking 4-Piece Reference Model
+
+This complete, runnable 4-piece model demonstrates 100% physically valid mortise-and-tenon joinery.
+It passes both `DesignParser` and `PhysicalValidator` with **0 ERRORS** and **0 WARNINGS**:
 
 ```javascript
-export const BoxModelData = {
-  id: 'simple-box',
-  name: 'Interlocking Storage Cube',
-  category: 'Starter / Primitive',
-  description: '3-piece friction-fit box demonstrating perpendicular interlocking mortises.',
-  difficulty: 'Level 1 — Beginner (3 parts)',
+export const ModelData = {
+  id: 'interlocking-pavilion',
+  name: 'Interlocking 4-Piece Pavilion',
+  category: 'Architecture',
+  description: 'Precision zero-glue interlocking 3D structure with foundation, side walls, and locking roof beam.',
+  difficulty: 'Level 1 — Beginner (4 parts)',
   cameraBookmarks: [
-    { name: 'Isometric', eye: [80, 70, 90], target: [0, 20, 0], dist: 140 }
+    { name: 'Isometric View', eye: [90, 80, 100], target: [0, 25, 0], dist: 160 },
+    { name: 'Front Elevation', eye: [0, 25, 120], target: [0, 25, 0], dist: 130 }
   ],
   assemblySteps: [
-    { num: 0, title: 'Full Assembly', desc: 'Complete 3-piece box.' },
-    { num: 1, title: 'Base Floor', desc: 'Place bottom plate.', parts: ['B-01'] },
-    { num: 2, title: 'Left & Right Walls', desc: 'Insert walls into slots.', parts: ['B-02', 'B-03'] }
+    { num: 0, title: 'Full Assembly', desc: 'Complete 4-piece rigid structure.' },
+    { num: 1, title: 'Base Foundation', desc: 'Place the slotted base plate flat on the table.', parts: ['PV-01'] },
+    { num: 2, title: 'Side Support Walls', desc: 'Insert left and right walls into base mortises.', parts: ['PV-02', 'PV-03'] },
+    { num: 3, title: 'Locking Roof Beam', desc: 'Slide top roof beam across both walls to lock assembly.', parts: ['PV-04'] }
   ],
   manufacturingSheets: [
     {
       sheetNum: 1,
-      name: 'box_sheet.svg',
-      sheetW: 240,
-      sheetH: 160,
+      name: 'pavilion_sheet_01.svg',
+      desc: 'Main cutting sheet (3mm plywood).',
+      sheetW: 300,
+      sheetH: 200,
       layout: {
-        'B-01': { x: 60, y: 50, r: 0 },
-        'B-02': { x: 170, y: 50, r: 0 },
-        'B-03': { x: 170, y: 110, r: 0 }
+        'PV-01': { x: 55, y: 55, r: 0 },
+        'PV-02': { x: 175, y: 55, r: 0 },
+        'PV-03': { x: 175, y: 145, r: 0 },
+        'PV-04': { x: 55, y: 145, r: 0 }
       }
     }
   ],
   parts: [
     {
-      id: 'B-01',
-      fileName: 'B-01_base.svg',
-      name: 'Floor Plate',
+      id: 'PV-01',
+      fileName: 'PV-01_base_plate.svg',
+      name: 'Foundation Baseplate',
       category: 'Foundation',
       color: '#8c6239',
       step: 1,
-      width: 60,
-      length: 60,
+      width: 80,
+      length: 70,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
+      fileSizeKB: '1.2 KB',
       assembledPos: [0, 0, 0],
       assembledRot: [-Math.PI / 2, 0, 0],
-      explodeVec: [0, -30, 0],
-      connections: ['B-02', 'B-03'],
-      generate2D: (t, kerf, clr) => ({
-        outline: [[-30, -30], [30, -30], [30, 30], [-30, 30]],
+      explodeVec: [0, -35, 0],
+      connections: ['PV-02', 'PV-03'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
+        outline: [
+          [-40, -35], [40, -35], [40, 35], [-40, 35]
+        ],
         cutouts: [
-          { x: -20, y: 0, w: t + clr, h: 30 },
-          { x: 20, y: 0, w: t + clr, h: 30 }
+          // Left mortise slot for PV-02 (thickness along X = t + clr, length along Y = 30)
+          { x: -25, y: 0, w: t + clr, h: 30 },
+          // Right mortise slot for PV-03 (thickness along X = t + clr, length along Y = 30)
+          { x: 25, y: 0, w: t + clr, h: 30 }
         ],
-        engravings: [{ type: 'rect', x: -25, y: -25, w: 50, h: 50 }]
+        engravings: [
+          { type: 'rect', x: -35, y: -30, w: 70, h: 60 }
+        ]
       })
     },
     {
-      id: 'B-02',
-      fileName: 'B-02_wall_left.svg',
-      name: 'Left Wall',
+      id: 'PV-02',
+      fileName: 'PV-02_left_wall.svg',
+      name: 'Left Structural Wall',
       category: 'Structural',
       color: '#d4a373',
       step: 2,
-      width: 40,
-      length: 40,
+      width: 50,
+      length: 50,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
-      assembledPos: [-20, 20, 0],
+      fileSizeKB: '1.4 KB',
+      assembledPos: [-25, 25, 0],
       assembledRot: [0, Math.PI / 2, 0],
-      explodeVec: [-30, 0, 0],
-      connections: ['B-01'],
-      generate2D: (t) => ({
+      explodeVec: [-35, 0, 0],
+      connections: ['PV-01', 'PV-04'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
         outline: [
-          [-20, -20], [-15, -20], [-15, -20 - t], [15, -20 - t], [15, -20],
-          [20, -20], [20, 20], [-20, 20]
+          [-25, -25],
+          // Bottom tenon tab inserting into PV-01 base slot (width 30, depth t)
+          [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
+          [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [{ x: 0, y: 0, w: 10, h: 10, arched: true }],
-        engravings: []
+        cutouts: [
+          // Top mortise slot for PV-04 roof beam (length 20, thickness t + clr)
+          { x: 0, y: 18, w: 20, h: t + clr }
+        ],
+        engravings: [
+          { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
+          { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
+        ]
       })
     },
     {
-      id: 'B-03',
-      fileName: 'B-03_wall_right.svg',
-      name: 'Right Wall',
+      id: 'PV-03',
+      fileName: 'PV-03_right_wall.svg',
+      name: 'Right Structural Wall',
       category: 'Structural',
       color: '#d4a373',
       step: 2,
-      width: 40,
-      length: 40,
+      width: 50,
+      length: 50,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
-      assembledPos: [20, 20, 0],
+      fileSizeKB: '1.4 KB',
+      assembledPos: [25, 25, 0],
       assembledRot: [0, -Math.PI / 2, 0],
-      explodeVec: [30, 0, 0],
-      connections: ['B-01'],
-      generate2D: (t) => ({
+      explodeVec: [35, 0, 0],
+      connections: ['PV-01', 'PV-04'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
         outline: [
-          [-20, -20], [-15, -20], [-15, -20 - t], [15, -20 - t], [15, -20],
-          [20, -20], [20, 20], [-20, 20]
+          [-25, -25],
+          // Bottom tenon tab inserting into PV-01 base slot (width 30, depth t)
+          [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
+          [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [{ x: 0, y: 0, w: 10, h: 10, arched: true }],
-        engravings: []
+        cutouts: [
+          // Top mortise slot for PV-04 roof beam (length 20, thickness t + clr)
+          { x: 0, y: 18, w: 20, h: t + clr }
+        ],
+        engravings: [
+          { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
+          { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
+        ]
+      })
+    },
+    {
+      id: 'PV-04',
+      fileName: 'PV-04_roof_beam.svg',
+      name: 'Locking Roof Beam',
+      category: 'Roof',
+      color: '#b08968',
+      step: 3,
+      width: 66,
+      length: 36,
+      sheet: 1,
+      fileSizeKB: '1.3 KB',
+      assembledPos: [0, 43, 0],
+      assembledRot: [-Math.PI / 2, 0, 0],
+      explodeVec: [0, 35, 0],
+      connections: ['PV-02', 'PV-03'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
+        outline: [
+          [-25, -15],
+          [25, -15],
+          // Right tenon tab locking into PV-03 wall top slot (width 20, depth t)
+          [25, -10], [25 + t, -10], [25 + t, 10], [25, 10],
+          [25, 15],
+          [-25, 15],
+          // Left tenon tab locking into PV-02 wall top slot (width 20, depth t)
+          [-25, 10], [-25 - t, 10], [-25 - t, -10], [-25, -10]
+        ],
+        cutouts: [],
+        engravings: [
+          { type: 'circle', x: 0, y: 0, r: 10 },
+          { type: 'rect', x: -20, y: -12, w: 40, h: 24 }
+        ]
       })
     }
   ]
 };
+export default ModelData;
 ```

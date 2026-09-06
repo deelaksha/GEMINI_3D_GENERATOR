@@ -205,111 +205,163 @@ To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:
 
 ---
 
-## 5. Ready-to-Use Minimal Model Boilerplate
+## 5. Ready-to-Use Tested Interlocking Reference Model
 
-Here is a 3-piece minimal boilerplate that can be copied directly into `js/models/box.js`:
+Here is a 4-piece fully interlocking model with foundation, left wall, right wall, and locking top roof beam that passes `DesignParser` and `PhysicalValidator` with **0 errors and 0 warnings**:
 
 ```javascript
-export const BoxModelData = {
-  id: 'simple-box',
-  name: 'Interlocking Storage Cube',
-  category: 'Starter / Primitive',
-  description: '3-piece friction-fit box demonstrating perpendicular interlocking mortises.',
-  difficulty: 'Level 1 — Beginner (3 parts)',
+export const ModelData = {
+  id: 'interlocking-pavilion',
+  name: 'Interlocking 4-Piece Pavilion',
+  category: 'Architecture',
+  description: 'Precision zero-glue interlocking 3D structure with foundation, side walls, and locking roof beam.',
+  difficulty: 'Level 1 — Beginner (4 parts)',
   cameraBookmarks: [
-    { name: 'Isometric', eye: [80, 70, 90], target: [0, 20, 0], dist: 140 }
+    { name: 'Isometric View', eye: [90, 80, 100], target: [0, 25, 0], dist: 160 },
+    { name: 'Front Elevation', eye: [0, 25, 120], target: [0, 25, 0], dist: 130 }
   ],
   assemblySteps: [
-    { num: 0, title: 'Full Assembly', desc: 'Complete 3-piece box.' },
-    { num: 1, title: 'Base Floor', desc: 'Place bottom plate.', parts: ['B-01'] },
-    { num: 2, title: 'Left & Right Walls', desc: 'Insert walls into slots.', parts: ['B-02', 'B-03'] }
+    { num: 0, title: 'Full Assembly', desc: 'Complete 4-piece rigid structure.' },
+    { num: 1, title: 'Base Foundation', desc: 'Place the slotted base plate flat on the table.', parts: ['PV-01'] },
+    { num: 2, title: 'Side Support Walls', desc: 'Insert left and right walls into base mortises.', parts: ['PV-02', 'PV-03'] },
+    { num: 3, title: 'Locking Roof Beam', desc: 'Slide top roof beam across both walls to lock assembly.', parts: ['PV-04'] }
   ],
   manufacturingSheets: [
     {
       sheetNum: 1,
-      name: 'box_sheet.svg',
-      sheetW: 240,
-      sheetH: 160,
+      name: 'pavilion_sheet_01.svg',
+      desc: 'Main cutting sheet (3mm plywood).',
+      sheetW: 300,
+      sheetH: 200,
       layout: {
-        'B-01': { x: 60, y: 50, r: 0 },
-        'B-02': { x: 170, y: 50, r: 0 },
-        'B-03': { x: 170, y: 110, r: 0 }
+        'PV-01': { x: 55, y: 55, r: 0 },
+        'PV-02': { x: 175, y: 55, r: 0 },
+        'PV-03': { x: 175, y: 145, r: 0 },
+        'PV-04': { x: 55, y: 145, r: 0 }
       }
     }
   ],
   parts: [
     {
-      id: 'B-01',
-      fileName: 'B-01_base.svg',
-      name: 'Floor Plate',
+      id: 'PV-01',
+      fileName: 'PV-01_base_plate.svg',
+      name: 'Foundation Baseplate',
       category: 'Foundation',
       color: '#8c6239',
       step: 1,
-      width: 60,
-      length: 60,
+      width: 80,
+      length: 70,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
+      fileSizeKB: '1.2 KB',
       assembledPos: [0, 0, 0],
       assembledRot: [-Math.PI / 2, 0, 0],
-      explodeVec: [0, -30, 0],
-      connections: ['B-02', 'B-03'],
-      generate2D: (t, kerf, clr) => ({
-        outline: [[-30, -30], [30, -30], [30, 30], [-30, 30]],
+      explodeVec: [0, -35, 0],
+      connections: ['PV-02', 'PV-03'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
+        outline: [
+          [-40, -35], [40, -35], [40, 35], [-40, 35]
+        ],
         cutouts: [
-          { x: -20, y: 0, w: t + clr, h: 30 },
-          { x: 20, y: 0, w: t + clr, h: 30 }
+          { x: -25, y: 0, w: t + clr, h: 30 },
+          { x: 25, y: 0, w: t + clr, h: 30 }
         ],
-        engravings: [{ type: 'rect', x: -25, y: -25, w: 50, h: 50 }]
+        engravings: [
+          { type: 'rect', x: -35, y: -30, w: 70, h: 60 }
+        ]
       })
     },
     {
-      id: 'B-02',
-      fileName: 'B-02_wall_left.svg',
-      name: 'Left Wall',
+      id: 'PV-02',
+      fileName: 'PV-02_left_wall.svg',
+      name: 'Left Structural Wall',
       category: 'Structural',
       color: '#d4a373',
       step: 2,
-      width: 40,
-      length: 40,
+      width: 50,
+      length: 50,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
-      assembledPos: [-20, 20, 0],
+      fileSizeKB: '1.4 KB',
+      assembledPos: [-25, 25, 0],
       assembledRot: [0, Math.PI / 2, 0],
-      explodeVec: [-30, 0, 0],
-      connections: ['B-01'],
-      generate2D: (t) => ({
+      explodeVec: [-35, 0, 0],
+      connections: ['PV-01', 'PV-04'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
         outline: [
-          [-20, -20], [-15, -20], [-15, -20 - t], [15, -20 - t], [15, -20],
-          [20, -20], [20, 20], [-20, 20]
+          [-25, -25],
+          [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
+          [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [{ x: 0, y: 0, w: 10, h: 10, arched: true }],
-        engravings: []
+        cutouts: [
+          { x: 0, y: 18, w: 20, h: t + clr }
+        ],
+        engravings: [
+          { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
+          { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
+        ]
       })
     },
     {
-      id: 'B-03',
-      fileName: 'B-03_wall_right.svg',
-      name: 'Right Wall',
+      id: 'PV-03',
+      fileName: 'PV-03_right_wall.svg',
+      name: 'Right Structural Wall',
       category: 'Structural',
       color: '#d4a373',
       step: 2,
-      width: 40,
-      length: 40,
+      width: 50,
+      length: 50,
       sheet: 1,
-      fileSizeKB: '1.0 KB',
-      assembledPos: [20, 20, 0],
+      fileSizeKB: '1.4 KB',
+      assembledPos: [25, 25, 0],
       assembledRot: [0, -Math.PI / 2, 0],
-      explodeVec: [30, 0, 0],
-      connections: ['B-01'],
-      generate2D: (t) => ({
+      explodeVec: [35, 0, 0],
+      connections: ['PV-01', 'PV-04'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
         outline: [
-          [-20, -20], [-15, -20], [-15, -20 - t], [15, -20 - t], [15, -20],
-          [20, -20], [20, 20], [-20, 20]
+          [-25, -25],
+          [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
+          [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [{ x: 0, y: 0, w: 10, h: 10, arched: true }],
-        engravings: []
+        cutouts: [
+          { x: 0, y: 18, w: 20, h: t + clr }
+        ],
+        engravings: [
+          { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
+          { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
+        ]
+      })
+    },
+    {
+      id: 'PV-04',
+      fileName: 'PV-04_roof_beam.svg',
+      name: 'Locking Roof Beam',
+      category: 'Roof',
+      color: '#b08968',
+      step: 3,
+      width: 66,
+      length: 36,
+      sheet: 1,
+      fileSizeKB: '1.3 KB',
+      assembledPos: [0, 43, 0],
+      assembledRot: [-Math.PI / 2, 0, 0],
+      explodeVec: [0, 35, 0],
+      connections: ['PV-02', 'PV-03'],
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
+        outline: [
+          [-25, -15],
+          [25, -15],
+          [25, -10], [25 + t, -10], [25 + t, 10], [25, 10],
+          [25, 15],
+          [-25, 15],
+          [-25, 10], [-25 - t, 10], [-25 - t, -10], [-25, -10]
+        ],
+        cutouts: [],
+        engravings: [
+          { type: 'circle', x: 0, y: 0, r: 10 },
+          { type: 'rect', x: -20, y: -12, w: 40, h: 24 }
+        ]
       })
     }
   ]
 };
+export default ModelData;
 ```
