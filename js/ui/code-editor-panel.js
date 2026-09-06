@@ -9,6 +9,7 @@ import { ModelRegistry } from '../models/registry.js';
 import { AppState } from '../core/config.js';
 import { Toast } from './toast.js';
 import { TEMPLATES } from '../models/templates.js';
+import { ThumbnailGenerator } from '../services/thumbnail-generator.js';
 
 export class CodeEditorPanel {
   constructor(engine, onModelUpdated) {
@@ -406,6 +407,8 @@ export class CodeEditorPanel {
 
     // 2. Fetch known static model source files
     const fileMap = {
+      'classic-sports-coupe': 'js/models/my-model.js',
+      'car-j4ir': 'js/models/my-model.js',
       'football-stadium': 'js/models/my-model.js',
       'cathedral': 'js/models/cathedral.js',
       'simple-house': 'js/models/simple-house.js'
@@ -574,12 +577,25 @@ export default ModelData;
 
     // Immediately cache the design to localStorage so page refresh preserves it
     try {
+      let modelData = null;
+      let thumbnail = null;
+      try {
+        const parsed = await DesignParser.parseAndValidate(code);
+        if (parsed.success && parsed.modelData) {
+          modelData = parsed.modelData;
+          const thumbRes = await ThumbnailGenerator.generateThumbnail(modelData);
+          if (thumbRes?.thumbnail) thumbnail = thumbRes.thumbnail;
+        }
+      } catch (parseErr) {}
+
       await DesignService.saveDesign({
         id: slug,
         name: name,
         category: 'Custom',
         description: 'Zero-glue 3D physical puzzle model.',
-        jsCode: code
+        jsCode: code,
+        modelData: modelData,
+        thumbnail: thumbnail
       });
     } catch (saveErr) {
       console.warn('[CodeEditor] Auto-save on new model failed:', saveErr);
@@ -714,13 +730,28 @@ export default ModelData;
     if (modal) modal.classList.add('hidden');
   }
 
-  captureThumbnail() {
+  async captureThumbnail(modelData = null) {
     try {
-      if (this.engine?.renderer?.domElement) {
-        return this.engine.renderer.domElement.toDataURL('image/jpeg', 0.6);
+      if (this.engine?.renderer && this.engine?.scene && this.engine?.camera) {
+        // Ensure the scene is synchronously rendered to the WebGL canvas before reading
+        this.engine.renderer.render(this.engine.scene, this.engine.camera);
+        const dataUrl = this.engine.renderer.domElement.toDataURL('image/jpeg', 0.85);
+        const isBlack = await ThumbnailGenerator.isBlackOrEmpty(dataUrl);
+        if (!isBlack) {
+          return dataUrl;
+        }
       }
     } catch (e) {
-      console.warn('[CodeEditor] Could not capture canvas thumbnail:', e);
+      console.warn('[CodeEditor] Canvas capture failed, trying ThumbnailGenerator:', e);
+    }
+
+    if (modelData) {
+      try {
+        const genRes = await ThumbnailGenerator.generateThumbnail(modelData);
+        if (genRes?.thumbnail) return genRes.thumbnail;
+      } catch (err) {
+        console.warn('[CodeEditor] ThumbnailGenerator fallback error:', err);
+      }
     }
     return null;
   }
@@ -742,7 +773,7 @@ export default ModelData;
     }
 
     const designId = (this.isSaveAsMode || !this.currentDesignId) ? DesignService.generateSlug(name) : this.currentDesignId;
-    const thumbnail = this.captureThumbnail();
+    const thumbnail = await this.captureThumbnail(previewModel);
 
     try {
       const saved = await DesignService.saveDesign({
@@ -771,7 +802,7 @@ export default ModelData;
     const previewModel = await this.triggerLivePreview();
     if (!previewModel) return;
 
-    const thumbnail = this.captureThumbnail();
+    const thumbnail = await this.captureThumbnail(previewModel);
     try {
       const saved = await DesignService.saveDesign({
         id: this.currentDesignId,

@@ -5,6 +5,7 @@
 import { AppState, MATERIAL_PROFILES } from '../core/config.js';
 import { ModelRegistry } from '../models/registry.js';
 import { Toast } from './toast.js';
+import { aiPromptModal } from './ai-prompt-modal.js';
 
 export const WorkbenchNav = {
   render(activePageId) {
@@ -91,6 +92,11 @@ export const WorkbenchNav = {
             <span>My Designs</span>
           </button>
 
+          <button id="btn-open-ai-prompt" class="bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-semibold px-2.5 py-1.5 rounded transition flex items-center gap-1.5 shadow shadow-purple-600/30" title="View & Copy AI Prompt (ai-prompt.txt)">
+            <span>🤖</span>
+            <span>AI Prompt</span>
+          </button>
+
           <button id="btn-open-code-studio" class="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow shadow-amber-500/20">
             <span>⚡</span>
             <span>Design Studio</span>
@@ -162,6 +168,13 @@ export const WorkbenchNav = {
         } else {
           window.location.href = `index.html?open=browser&model=${AppState.getState().activeModelId}`;
         }
+      });
+    }
+
+    const btnAiPrompt = document.getElementById('btn-open-ai-prompt');
+    if (btnAiPrompt) {
+      btnAiPrompt.addEventListener('click', () => {
+        aiPromptModal.open();
       });
     }
 

@@ -58,8 +58,11 @@ class ModelRegistryService {
 
   getModel(modelId) {
     if (this.models.has(modelId)) return this.models.get(modelId);
+    if (modelId === 'car-j4ir' && this.models.has('classic-sports-coupe')) {
+      return this.models.get('classic-sports-coupe');
+    }
     if (detectedCustomModel && this.models.has(detectedCustomModel.id)) return this.models.get(detectedCustomModel.id);
-    return this.models.get('cathedral') || this.getAllModels()[0];
+    return this.models.get('classic-sports-coupe') || this.models.get('cathedral') || this.getAllModels()[0];
   }
 
   getActiveModel() {
@@ -107,11 +110,37 @@ class ModelRegistryService {
       for (const item of cached) {
         if (item.modelData) {
           this.registerModel(new ConstructionObject(item.modelData));
+        } else if (item.jsCode) {
+          DesignParser.parseAndValidate(item.jsCode).then(res => {
+            if (res.success && res.modelData) {
+              res.modelData.id = item.id || res.modelData.id;
+              if (item.name) res.modelData.name = item.name;
+              this.registerModel(new ConstructionObject(res.modelData));
+            }
+          }).catch(() => {});
         }
       }
     } catch (err) {
       console.warn('[ModelRegistry] Could not hydrate from storage cache:', err);
     }
+  }
+
+  /**
+   * Ensures a model is loaded into the registry, fetching from storage/parser if necessary
+   */
+  async ensureModelLoaded(modelId) {
+    if (!modelId) return this.getActiveModel();
+    if (this.models.has(modelId)) return this.models.get(modelId);
+    try {
+      const design = await DesignService.getDesign(modelId);
+      if (design) {
+        const loaded = await this.registerDynamicDesign(design);
+        if (loaded) return loaded;
+      }
+    } catch (e) {
+      console.warn('[ModelRegistry] Could not load design:', modelId, e);
+    }
+    return this.getModel(modelId);
   }
 
   importCustomJSON(jsonString) {

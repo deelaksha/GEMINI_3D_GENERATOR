@@ -21,11 +21,33 @@ export const SheetNester = {
     const sheetH = sheetDef.sheetH || 300;
     const layout = sheetDef.layout || {};
 
-    const sheetParts = model.getPartsForSheet(sheetNum);
+    let sheetParts = model.getPartsForSheet(sheetNum);
+    if ((!sheetParts || sheetParts.length === 0) && sheetNum === 1) {
+      sheetParts = model.parts || [];
+    }
     let partsSvg = '';
 
+    let autoX = 45;
+    let autoY = 55;
+    let rowH = 0;
+
     sheetParts.forEach(part => {
-      const placement = layout[part.id] || { x: 50, y: 50, r: 0 };
+      let placement = layout[part.id];
+      if (!placement) {
+        const pw = Math.max(part.width || 40, 30);
+        const pl = Math.max(part.length || 40, 30);
+        if (autoX + pw > sheetW - 30) {
+          autoX = 45;
+          autoY += rowH + 18;
+          rowH = 0;
+        }
+        if (autoY + pl > sheetH - 30) {
+          autoY = 55;
+        }
+        placement = { x: Math.round(autoX + pw / 2), y: Math.round(autoY + pl / 2), r: 0 };
+        autoX += pw + 18;
+        if (pl > rowH) rowH = pl;
+      }
       let geo = null;
       if (typeof part.generate2D === 'function') {
         try { geo = part.generate2D(thickness, kerf, clearance); } catch (e) {}

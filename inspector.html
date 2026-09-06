@@ -124,18 +124,24 @@
   <script type="module">
     import { AppState } from './js/core/config.js';
     import { ModelRegistry } from './js/models/registry.js';
-    import { WorkbenchNav } from './js/ui/nav.js';
+    import { WorkbenchNav } from './js/ui/nav.js?v=2.1';
     import { GeometryEngine } from './js/core/geometry.js';
     import { Toast } from './js/ui/toast.js';
     import { firebaseApp, trackEvent } from './js/core/firebase.js';
 
     let currentSvgData = null;
 
-    function initPage() {
+    async function initPage() {
+      const { activeModelId } = AppState.getState();
+      await ModelRegistry.ensureModelLoaded(activeModelId);
       WorkbenchNav.render('inspector');
       renderInspector();
 
       AppState.subscribe(() => {
+        renderInspector();
+      });
+
+      ModelRegistry.subscribe(() => {
         renderInspector();
       });
 

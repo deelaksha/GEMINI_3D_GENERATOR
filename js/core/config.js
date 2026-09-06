@@ -14,9 +14,11 @@ class AppStateManager {
     this.listeners = new Set();
     
     // Parse URL params or fallback
-    const urlParams = new URLSearchParams(window.location.search);
-    const savedModel = localStorage.getItem('PUZZLE_ACTIVE_MODEL') || 'football-stadium';
-    const savedThickness = localStorage.getItem('PUZZLE_THICKNESS') || '3.0';
+    const hasWindow = typeof window !== 'undefined';
+    const hasStorage = typeof localStorage !== 'undefined';
+    const urlParams = new URLSearchParams(hasWindow ? window.location.search : '');
+    const savedModel = (hasStorage ? localStorage.getItem('PUZZLE_ACTIVE_MODEL') : null) || 'classic-sports-coupe';
+    const savedThickness = (hasStorage ? localStorage.getItem('PUZZLE_THICKNESS') : null) || '3.0';
 
     this.state = {
       activeModelId: urlParams.get('model') || savedModel,
@@ -56,6 +58,7 @@ class AppStateManager {
   }
 
   updateUrlQuery() {
+    if (typeof window === 'undefined' || !window.location) return;
     const url = new URL(window.location.href);
     url.searchParams.set('model', this.state.activeModelId);
     if (this.state.selectedPartId) {

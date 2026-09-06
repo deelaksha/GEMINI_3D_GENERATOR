@@ -46,6 +46,8 @@ js_files = [
     "js/models/templates.js",
     "js/ui/code-editor-panel.js",
     "js/ui/design-browser.js",
+    "js/services/thumbnail-generator.js",
+    "js/ui/ai-prompt-modal.js",
     "js/ui/nav.js"
 ]
 

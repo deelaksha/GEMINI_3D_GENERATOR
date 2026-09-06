@@ -42,7 +42,7 @@ export class Engine3D {
     this.camera = new THREE.PerspectiveCamera(40, width / height, 1, 3000);
     this.updateCameraTransform();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;

@@ -163,7 +163,7 @@
   <script type="module">
     import { AppState } from './js/core/config.js';
     import { ModelRegistry } from './js/models/registry.js';
-    import { WorkbenchNav } from './js/ui/nav.js';
+    import { WorkbenchNav } from './js/ui/nav.js?v=2.1';
     import { Engine3D } from './js/assembly/engine3d.js';
     import { ExplodeEngine } from './js/assembly/explode.js';
     import { AssemblySequencer } from './js/assembly/sequencer.js';
@@ -176,6 +176,8 @@
     import { TEMPLATES } from './js/models/templates.js';
     import { CathedralModelData } from './js/models/cathedral.js';
     import { SimpleHouseModelData } from './js/models/simple-house.js';
+    import { ClassicCarModelData } from './js/models/my-model.js';
+    import { ThumbnailGenerator } from './js/services/thumbnail-generator.js';
 
     let engine;
     let codeEditor;
@@ -307,7 +309,8 @@
           name: SimpleHouseModelData.name,
           category: SimpleHouseModelData.category,
           description: SimpleHouseModelData.description,
-          jsCode: houseCode
+          jsCode: houseCode,
+          modelData: SimpleHouseModelData
         });
       }
       if (cathedralCode) {
@@ -316,17 +319,32 @@
           name: CathedralModelData.name,
           category: CathedralModelData.category,
           description: CathedralModelData.description,
-          jsCode: cathedralCode
+          jsCode: cathedralCode,
+          modelData: CathedralModelData
         });
       }
       if (arenaCode) {
         seeds.push({
-          id: 'football-stadium',
-          name: 'Grand Olympic Football Arena',
-          category: 'Sports & Architecture',
-          description: '112-part monumental sports stadium with tiered grandstands.',
-          jsCode: arenaCode
+          id: 'classic-sports-coupe',
+          name: ClassicCarModelData?.name || 'Vintage GT Sports Coupe',
+          category: ClassicCarModelData?.category || 'Vehicles / Classic Cars',
+          description: ClassicCarModelData?.description || 'Modular vehicle featuring true circular polygon wheels and zero-collision parametric joinery.',
+          jsCode: arenaCode,
+          modelData: ClassicCarModelData
         });
+      }
+
+      // Generate thumbnails for seed models
+      for (const s of seeds) {
+        try {
+          const gen = await ThumbnailGenerator.generateThumbnail(s.modelData || s.jsCode);
+          if (gen?.thumbnail) {
+            s.thumbnail = gen.thumbnail;
+            s.partCount = gen.partCount;
+          }
+        } catch (e) {
+          console.warn('Could not generate seed thumbnail for:', s.id, e);
+        }
       }
 
       await DesignService.seedInitialDesigns(seeds);

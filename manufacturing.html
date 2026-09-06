@@ -59,18 +59,24 @@
   <script type="module">
     import { AppState } from './js/core/config.js';
     import { ModelRegistry } from './js/models/registry.js';
-    import { WorkbenchNav } from './js/ui/nav.js';
+    import { WorkbenchNav } from './js/ui/nav.js?v=2.1';
     import { SheetNester } from './js/manufacturing/nester.js';
     import { Toast } from './js/ui/toast.js';
     import { firebaseApp, trackEvent } from './js/core/firebase.js';
 
     let activeSheetNum = 1;
 
-    function initPage() {
+    async function initPage() {
+      const { activeModelId } = AppState.getState();
+      await ModelRegistry.ensureModelLoaded(activeModelId);
       WorkbenchNav.render('manufacturing');
       renderSheetPage();
 
       AppState.subscribe(() => {
+        renderSheetPage();
+      });
+
+      ModelRegistry.subscribe(() => {
         renderSheetPage();
       });
 
