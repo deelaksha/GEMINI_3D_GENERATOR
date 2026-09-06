@@ -89,9 +89,36 @@ def serve_css(filename):
     return response
 
 
+@app.route('/ai-prompt.txt')
+@app.route('/ai-promtp.txt')
+@app.route('/ai_prompt.txt')
+def serve_prompt_file():
+    """Serve the AI prompt contest text file."""
+    for fname in ['ai-prompt.txt', 'ai-promtp.txt', 'ai_prompt.txt']:
+        p = BASE_DIR / fname
+        if p.is_file():
+            return send_from_directory(BASE_DIR, fname, mimetype='text/plain; charset=utf-8')
+    return '', 200
+
+
 # ============================================================================
 # REST API ENDPOINTS
 # ============================================================================
+
+@app.route('/api/prompt')
+def api_prompt():
+    """Returns the AI contest prompt contents."""
+    for fname in ['ai-prompt.txt', 'ai-promtp.txt', 'ai_prompt.txt']:
+        p = BASE_DIR / fname
+        if p.is_file():
+            try:
+                with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                if content.strip():
+                    return jsonify({'success': True, 'content': content, 'filename': fname})
+            except Exception as e:
+                pass
+    return jsonify({'success': True, 'content': '', 'filename': 'ai-prompt.txt'})
 
 @app.route('/api/status')
 def api_status():

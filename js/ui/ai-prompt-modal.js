@@ -89,6 +89,7 @@ export class AIPromptModal {
 
     document.body.appendChild(modal);
     this.bindEvents();
+    this.loadPromptFile();
   }
 
   bindEvents() {
@@ -112,18 +113,39 @@ export class AIPromptModal {
   }
 
   async loadPromptFile() {
-    try {
-      const resp = await fetch(`ai-prompt.txt?_t=${Date.now()}`);
-      if (resp.ok) {
-        const text = await resp.text();
-        this.promptText = text.trim();
-      } else {
-        this.promptText = '';
+    let content = '';
+    const candidates = [
+      '/ai-prompt.txt',
+      '/ai-promtp.txt',
+      'ai-prompt.txt',
+      'ai-promtp.txt',
+      '/api/prompt'
+    ];
+
+    for (const url of candidates) {
+      try {
+        const resp = await fetch(`${url}?_t=${Date.now()}`);
+        if (resp.ok) {
+          if (url.includes('/api/prompt')) {
+            const data = await resp.json();
+            if (data?.content && data.content.trim()) {
+              content = data.content.trim();
+              break;
+            }
+          } else {
+            const text = await resp.text();
+            if (text && !text.includes('<!DOCTYPE html>') && !text.includes('404 — Page Not Found')) {
+              content = text.trim();
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        // try next candidate
       }
-    } catch (e) {
-      console.warn('[AIPromptModal] Could not fetch ai-prompt.txt:', e);
-      this.promptText = '';
     }
+
+    this.promptText = content;
 
     const textarea = document.getElementById('ai-prompt-textarea');
     const emptyNotice = document.getElementById('ai-prompt-empty-notice');
