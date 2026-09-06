@@ -149,27 +149,17 @@ export class CodeEditorPanel {
         <div class="flex justify-between items-center border-b border-slate-800 pb-3">
           <h3 class="font-bold text-sm uppercase tracking-wide flex items-center gap-2">
             <span class="text-amber-400 text-lg">✨</span>
-            <span>Create New 3D Model</span>
+            <span>Create New Blank Design</span>
           </h3>
           <button id="new-modal-close" class="text-slate-400 hover:text-slate-100 text-lg leading-none">&times;</button>
         </div>
 
         <div class="space-y-3.5 text-xs">
           <div>
-            <label class="block text-slate-300 mb-1.5 font-semibold">Model Name <span class="text-rose-400">*</span></label>
-            <input type="text" id="new-model-name-input" placeholder="e.g. Modern Villa 1, Football Court 2, Tiger 1..." 
+            <label class="block text-slate-300 mb-1.5 font-semibold">Design Name</label>
+            <input type="text" id="new-model-name-input" placeholder="e.g. My New Design" 
                    class="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-slate-100 focus:outline-none font-medium text-sm transition" />
-            <p class="text-[11px] text-slate-500 mt-1">Enter a name for your custom model to generate new code and try it in 3D.</p>
-          </div>
-
-          <div>
-            <label class="block text-slate-300 mb-1 font-semibold">Starter Template</label>
-            <select id="new-model-template-select" class="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-slate-200 focus:outline-none cursor-pointer">
-              <option value="minimal-box">Minimal Box (4 Interlocking Parts) — Recommended</option>
-              <option value="blank">Clean Minimal Template (Ready to Paste Code)</option>
-              <option value="simple-house">Country Gable House (12 Parts)</option>
-              <option value="cathedral">Gothic Cathedral (32 Parts)</option>
-            </select>
+            <p class="text-[11px] text-slate-500 mt-1">Creates a clean blank editor canvas ready for your custom or AI-generated model code.</p>
           </div>
         </div>
 
@@ -177,7 +167,7 @@ export class CodeEditorPanel {
           <button id="new-modal-cancel" class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium">Cancel</button>
           <button id="new-modal-confirm" class="px-4 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white font-bold transition flex items-center gap-1.5 shadow-lg shadow-sky-500/25">
             <span>⚡</span>
-            <span>Create & Try Model</span>
+            <span>Create Blank Design</span>
           </button>
         </div>
       </div>
@@ -206,12 +196,6 @@ export class CodeEditorPanel {
             <label class="block text-slate-400 mb-1 font-medium">Design Name <span class="text-rose-400">*</span></label>
             <input type="text" id="save-input-name" placeholder="e.g. Modern Country Villa 1" 
                    class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500 font-medium" />
-          </div>
-
-          <div>
-            <label class="block text-slate-400 mb-1 font-medium">Category</label>
-            <input type="text" id="save-input-cat" placeholder="e.g. Architecture, Vehicle, Furniture" 
-                   class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500" />
           </div>
 
           <div>
@@ -362,13 +346,16 @@ export class CodeEditorPanel {
       this.currentDesignName = designMeta.name;
     }
 
-    if (code !== null && code !== undefined && code.trim() !== '') {
+    if (code !== null && code !== undefined) {
       this.setCode(code);
       this.updateDesignBadge();
       if (this.editor) {
-        setTimeout(() => this.editor.refresh(), 200);
+        setTimeout(() => {
+          this.editor.refresh();
+          this.editor.focus();
+        }, 200);
       }
-    } else if (!this.getCode() || !this.getCode().trim()) {
+    } else if (!designMeta?.isBlank && (!this.getCode() || !this.getCode().trim())) {
       // Empty editor: dynamically resolve source code for active model
       const currentModel = ModelRegistry.getActiveModel();
       const targetId = (designMeta && designMeta.id) || (currentModel ? currentModel.id : null);
@@ -379,14 +366,9 @@ export class CodeEditorPanel {
             if (!this.currentDesignId) this.currentDesignId = targetId;
             if (!this.currentDesignName && currentModel) this.currentDesignName = currentModel.name;
             this.updateDesignBadge();
-          } else {
-            this.loadTemplate('minimal-box');
           }
           if (this.editor) setTimeout(() => this.editor.refresh(), 200);
         });
-      } else {
-        this.loadTemplate('minimal-box');
-        if (this.editor) setTimeout(() => this.editor.refresh(), 200);
       }
     } else {
       this.updateDesignBadge();
@@ -496,113 +478,26 @@ export class CodeEditorPanel {
 
   async confirmNewModel() {
     const input = document.getElementById('new-model-name-input');
-    const name = (input?.value || '').trim() || 'My New Model';
-    const templateKey = document.getElementById('new-model-template-select')?.value || 'minimal-box';
+    const name = (input?.value || '').trim() || `Design ${Math.floor(Math.random() * 900 + 100)}`;
     const slug = DesignService.generateSlug(name);
 
-    let code = '';
-    if (templateKey === 'blank') {
-      code = `/**
+    // Completely blank editor canvas — no starter templates, no dummy parts, no categorization
+    const code = `/**
  * ${name}
- * Custom 3D Construction Model
+ * Paste your 3D Construction Puzzle Model code below:
  */
-export const ModelData = {
-  id: '${slug}',
-  name: '${name.replace(/'/g, "\\'")}',
-  category: 'Custom',
-  description: 'Zero-glue 3D physical puzzle model.',
-  difficulty: 'Level 1 — Starter',
-  overallDimensions: { width: 60, length: 60, height: 35 },
-  cameraBookmarks: [
-    { name: 'Isometric View', eye: [80, 70, 90], target: [0, 15, 0], dist: 130 }
-  ],
-  assemblySteps: [
-    { num: 0, title: 'Full Assembly', desc: 'Finished model.' },
-    { num: 1, title: 'Base Plate', desc: 'Lay down slotted base plate.', parts: ['P-01'] }
-  ],
-  parts: [
-    {
-      id: 'P-01',
-      fileName: 'part_p01_base.svg',
-      name: 'Foundation Plate',
-      category: 'Foundation',
-      step: 1,
-      sheet: 1,
-      color: '#0284c7',
-      thickness: 3.0,
-      width: 50,
-      length: 50,
-      assembledPos: [0, 1.5, 0],
-      assembledRot: [-Math.PI / 2, 0, 0],
-      generate2D: (t, kerf, clr) => ({
-        outline: [[-25, -25], [25, -25], [25, 25], [-25, 25]],
-        cutouts: []
-      }),
-      geometry: {
-        outline: [[-25, -25], [25, -25], [25, 25], [-25, 25]],
-        cutouts: []
-      },
-      connections: []
-    }
-  ]
-};
 
-export default ModelData;
 `;
-    } else if (templateKey === 'simple-house' || templateKey === 'cathedral') {
-      try {
-        const resp = await fetch(`js/models/${templateKey}.js`);
-        if (resp.ok) {
-          code = await resp.text();
-          // Customize id and name in fetched code
-          code = code.replace(/id:\s*['"][^'"]+['"]/, `id: '${slug}'`)
-                     .replace(/name:\s*['"][^'"]+['"]/, `name: '${name.replace(/'/g, "\\'")}'`);
-        } else {
-          code = TEMPLATES['minimal-box'].code;
-        }
-      } catch (e) {
-        code = TEMPLATES['minimal-box'].code;
-      }
-    } else {
-      // Default: Minimal box customized with user's model name & slug
-      const base = TEMPLATES['minimal-box'].code;
-      code = base
-        .replace(/id:\s*['"]minimal-box['"]/, `id: '${slug}'`)
-        .replace(/name:\s*['"]Minimal Interlocking Box['"]/, `name: '${name.replace(/'/g, "\\'")}'`)
-        .replace(/Minimal Interlocking Box \(4 Parts\)/, `${name} (4 Parts)`);
-    }
 
     this.closeNewModelModal();
-    this.open(code, { id: slug, name });
+    this.open(code, { id: slug, name, isBlank: true });
 
-    // Immediately cache the design to localStorage so page refresh preserves it
-    try {
-      let modelData = null;
-      let thumbnail = null;
-      try {
-        const parsed = await DesignParser.parseAndValidate(code);
-        if (parsed.success && parsed.modelData) {
-          modelData = parsed.modelData;
-          const thumbRes = await ThumbnailGenerator.generateThumbnail(modelData);
-          if (thumbRes?.thumbnail) thumbnail = thumbRes.thumbnail;
-        }
-      } catch (parseErr) {}
+    // Set clean status
+    const status = document.getElementById('editor-status-text');
+    if (status) status.innerText = 'Blank canvas ready — paste model code';
+    this.hideError();
 
-      await DesignService.saveDesign({
-        id: slug,
-        name: name,
-        category: 'Custom',
-        description: 'Zero-glue 3D physical puzzle model.',
-        jsCode: code,
-        modelData: modelData,
-        thumbnail: thumbnail
-      });
-    } catch (saveErr) {
-      console.warn('[CodeEditor] Auto-save on new model failed:', saveErr);
-    }
-
-    Toast.show(`✨ Created new model "${name}"! Rendering preview...`, '⚡');
-    await this.triggerLivePreview();
+    Toast.show(`✨ Blank canvas opened for "${name}"! Ready to paste code.`, '📝');
   }
 
   async loadTemplate(key) {
