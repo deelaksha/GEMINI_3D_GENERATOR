@@ -74,7 +74,18 @@ export const GeometryEngine = {
    * Generates standalone valid SVG XML for an individual part.
    */
   generateStandalonePartSVG(part, thickness, kerf = 0.15, clearance = 0.10) {
-    const geo = part.generate2D(thickness, kerf, clearance);
+    let geo = null;
+    if (typeof part.generate2D === 'function') {
+      try { geo = part.generate2D(thickness, kerf, clearance); } catch (e) {}
+    }
+    if (!geo && part.geometry && Array.isArray(part.geometry.outline)) {
+      geo = part.geometry;
+    }
+    if (!geo || !Array.isArray(geo.outline) || geo.outline.length === 0) {
+      const hw = (part.width || 40) / 2;
+      const hl = (part.length || 40) / 2;
+      geo = { outline: [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]], cutouts: [] };
+    }
     const bounds = this.computeBoundingBox(geo.outline);
     const pad = 12;
     const w = bounds.width + pad * 2;

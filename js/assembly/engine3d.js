@@ -102,7 +102,18 @@ export class Engine3D {
   }
 
   buildPartGroup(part, thickness) {
-    const geoData = part.generate2D(thickness, 0.15, 0.10);
+    let geoData = null;
+    if (typeof part.generate2D === 'function') {
+      try { geoData = part.generate2D(thickness, 0.15, 0.10); } catch (e) {}
+    }
+    if (!geoData && part.geometry && Array.isArray(part.geometry.outline)) {
+      geoData = part.geometry;
+    }
+    if (!geoData || !Array.isArray(geoData.outline) || geoData.outline.length === 0) {
+      const hw = (part.width || 40) / 2;
+      const hl = (part.length || 40) / 2;
+      geoData = { outline: [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]], cutouts: [] };
+    }
     const geometry = GeometryEngine.createThreeExtrude(geoData, thickness);
     if (!geometry) return null;
 

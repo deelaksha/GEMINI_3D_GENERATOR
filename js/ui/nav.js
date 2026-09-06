@@ -52,6 +52,10 @@ export const WorkbenchNav = {
               <select id="global-model-selector" class="bg-slate-800/80 text-amber-300 font-semibold px-2 py-0.5 rounded border border-slate-700 text-xs focus:outline-none cursor-pointer">
                 ${modelOptions}
               </select>
+              <button id="btn-navbar-new" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-0.5 rounded text-xs transition flex items-center gap-1 shadow shadow-sky-600/30" title="Create New 3D Model">
+                <span class="text-sm font-black leading-none">+</span>
+                <span>New</span>
+              </button>
             </div>
           </div>
         </div>
@@ -75,8 +79,23 @@ export const WorkbenchNav = {
           }).join('')}
         </nav>
 
-        <!-- Right Side Parameter Config & Manifest Export -->
+        <!-- Right Side Parameter Config & Studio Buttons -->
         <div class="flex items-center space-x-2 text-xs">
+          <button id="btn-navbar-new-alt" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1.5 rounded transition flex items-center gap-1 shadow shadow-sky-600/30" title="Create New 3D Model">
+            <span class="text-sm font-black leading-none">+</span>
+            <span>New</span>
+          </button>
+
+          <button id="btn-open-cloud-designs" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-2.5 py-1.5 rounded transition flex items-center gap-1.5 shadow">
+            <span class="text-sky-400">☁️</span>
+            <span>My Designs</span>
+          </button>
+
+          <button id="btn-open-code-studio" class="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow shadow-amber-500/20">
+            <span>⚡</span>
+            <span>Design Studio</span>
+          </button>
+
           <div class="flex items-center space-x-1.5 bg-slate-800/80 px-2.5 py-1 rounded border border-slate-700">
             <span class="text-slate-400 font-mono">Gauge:</span>
             <select id="global-thickness-selector" class="bg-transparent text-amber-300 font-mono font-bold focus:outline-none cursor-pointer">
@@ -85,7 +104,7 @@ export const WorkbenchNav = {
           </div>
 
           <button id="btn-export-manifest" class="bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-medium px-2.5 py-1.5 rounded transition flex items-center gap-1">
-            <span>📦</span><span>Export Manifest</span>
+            <span>📦</span><span class="hidden xl:inline">Export Manifest</span>
           </button>
         </div>
       </header>
@@ -105,6 +124,44 @@ export const WorkbenchNav = {
         url.searchParams.set('model', newModelId);
         if (firstPart) url.searchParams.set('part', firstPart);
         window.location.href = url.toString();
+      });
+    }
+
+    const isIndexPage = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/') || window.location.pathname === '';
+
+    const triggerNewModel = () => {
+      if (isIndexPage) {
+        window.dispatchEvent(new CustomEvent('puzzlecore:new-model'));
+      } else {
+        window.location.href = `index.html?action=new`;
+      }
+    };
+
+    const btnNew = document.getElementById('btn-navbar-new');
+    if (btnNew) btnNew.addEventListener('click', triggerNewModel);
+
+    const btnNewAlt = document.getElementById('btn-navbar-new-alt');
+    if (btnNewAlt) btnNewAlt.addEventListener('click', triggerNewModel);
+
+    const btnStudio = document.getElementById('btn-open-code-studio');
+    if (btnStudio) {
+      btnStudio.addEventListener('click', () => {
+        if (isIndexPage) {
+          window.dispatchEvent(new CustomEvent('puzzlecore:open-studio'));
+        } else {
+          window.location.href = `index.html?open=studio&model=${AppState.getState().activeModelId}`;
+        }
+      });
+    }
+
+    const btnCloud = document.getElementById('btn-open-cloud-designs');
+    if (btnCloud) {
+      btnCloud.addEventListener('click', () => {
+        if (isIndexPage) {
+          window.dispatchEvent(new CustomEvent('puzzlecore:open-browser'));
+        } else {
+          window.location.href = `index.html?open=browser&model=${AppState.getState().activeModelId}`;
+        }
       });
     }
 

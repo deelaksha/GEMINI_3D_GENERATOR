@@ -1,12 +1,15 @@
 /**
  * Universal Model Registry
  * Allows dynamic registration and retrieval of any construction model.
+ * Integrates with static seed models and dynamic Firebase/Local designs.
  */
 import { ConstructionObject } from './model-schema.js';
 import * as CustomModelModule from './my-model.js';
 import { CathedralModelData } from './cathedral.js';
 import { SimpleHouseModelData } from './simple-house.js';
 import { AppState } from '../core/config.js';
+import { DesignService } from '../services/firebase-designs.js';
+import { DesignParser } from '../services/design-parser.js';
 
 // Dynamically extract the custom model object regardless of variable name
 const detectedCustomModel = CustomModelModule.MyModelData 
@@ -16,21 +19,47 @@ const detectedCustomModel = CustomModelModule.MyModelData
 class ModelRegistryService {
   constructor() {
     this.models = new Map();
+    this.listeners = new Set();
+
+    // Register built-in default models
     if (detectedCustomModel) {
       this.registerModel(new ConstructionObject(detectedCustomModel));
     }
     this.registerModel(new ConstructionObject(CathedralModelData));
     this.registerModel(new ConstructionObject(SimpleHouseModelData));
+
+    // Register any stored cloud/local designs
+    this.hydrateFromStorage();
+  }
+
+  /**
+   * Subscribe to registry changes (e.g. when new models are saved or updated)
+   */
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  notify() {
+    for (const listener of this.listeners) {
+      try {
+        listener(this.getAllModels());
+      } catch (err) {
+        console.error('[ModelRegistry] Listener error:', err);
+      }
+    }
   }
 
   registerModel(modelInstance) {
+    if (!modelInstance || !modelInstance.id) return;
     this.models.set(modelInstance.id, modelInstance);
+    this.notify();
   }
 
   getModel(modelId) {
     if (this.models.has(modelId)) return this.models.get(modelId);
     if (detectedCustomModel && this.models.has(detectedCustomModel.id)) return this.models.get(detectedCustomModel.id);
-    return this.models.get('cathedral');
+    return this.models.get('cathedral') || this.getAllModels()[0];
   }
 
   getActiveModel() {
@@ -40,6 +69,49 @@ class ModelRegistryService {
 
   getAllModels() {
     return Array.from(this.models.values());
+  }
+
+  /**
+   * Registers a dynamic design from parsed data or raw JS code
+   */
+  async registerDynamicDesign(design) {
+    try {
+      let modelData = design.modelData;
+      if (!modelData && design.jsCode) {
+        const parsed = await DesignParser.parseAndValidate(design.jsCode);
+        if (parsed.success) {
+          modelData = parsed.modelData;
+        }
+      }
+
+      if (modelData) {
+        // Ensure ID matches
+        modelData.id = design.id || modelData.id;
+        if (design.name) modelData.name = design.name;
+        const constrObj = new ConstructionObject(modelData);
+        this.registerModel(constrObj);
+        return constrObj;
+      }
+    } catch (err) {
+      console.warn('[ModelRegistry] Failed to register dynamic design:', design.id, err);
+    }
+    return null;
+  }
+
+  /**
+   * Hydrates the registry with cached designs from local storage
+   */
+  hydrateFromStorage() {
+    try {
+      const cached = DesignService.getLocalCache();
+      for (const item of cached) {
+        if (item.modelData) {
+          this.registerModel(new ConstructionObject(item.modelData));
+        }
+      }
+    } catch (err) {
+      console.warn('[ModelRegistry] Could not hydrate from storage cache:', err);
+    }
   }
 
   importCustomJSON(jsonString) {

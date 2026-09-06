@@ -44,6 +44,7 @@
     import { AppState } from './js/core/config.js';
     import { ModelRegistry } from './js/models/registry.js';
     import { WorkbenchNav } from './js/ui/nav.js';
+    import { firebaseApp, trackEvent } from './js/core/firebase.js';
 
     function initPage() {
       WorkbenchNav.render('guide');

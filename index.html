@@ -6,6 +6,11 @@
   <title>3D Assembly Workbench — PuzzleCore Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- CodeMirror 5 CDN for Interactive JS Editing -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans select-none">
@@ -164,10 +169,19 @@
     import { AssemblySequencer } from './js/assembly/sequencer.js';
     import { GeometryEngine } from './js/core/geometry.js';
     import { Toast } from './js/ui/toast.js';
+    import { firebaseApp, trackEvent } from './js/core/firebase.js';
+    import { CodeEditorPanel } from './js/ui/code-editor-panel.js';
+    import { DesignBrowser } from './js/ui/design-browser.js';
+    import { DesignService } from './js/services/firebase-designs.js';
+    import { TEMPLATES } from './js/models/templates.js';
+    import { CathedralModelData } from './js/models/cathedral.js';
+    import { SimpleHouseModelData } from './js/models/simple-house.js';
 
     let engine;
+    let codeEditor;
+    let designBrowser;
 
-    function initPage() {
+    async function initPage() {
       WorkbenchNav.render('assembly');
 
       const container = document.getElementById('canvas-container');
@@ -175,12 +189,147 @@
         AppState.setState({ selectedPartId: selectedId });
       });
 
+      // Initialize Dynamic Code Studio & Cloud Design Browser
+      initDesignStudio();
+
       renderActiveModel();
       bindWorkbenchControls();
 
       AppState.subscribe((state) => {
         updateUI();
       });
+
+      // Seed initial cloud/local designs if empty
+      seedInitialDesigns();
+
+      // Check URL query parameters for auto-open actions
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('action') === 'new') {
+        setTimeout(() => window.dispatchEvent(new CustomEvent('puzzlecore:new-model')), 250);
+      } else if (urlParams.get('open') === 'studio') {
+        setTimeout(() => window.dispatchEvent(new CustomEvent('puzzlecore:open-studio')), 250);
+      } else if (urlParams.get('open') === 'browser') {
+        setTimeout(() => window.dispatchEvent(new CustomEvent('puzzlecore:open-browser')), 250);
+      }
+    }
+
+    function initDesignStudio() {
+      // Setup in-browser live code editor
+      codeEditor = new CodeEditorPanel(engine, (modelData) => {
+        renderActiveModel();
+        WorkbenchNav.render('assembly');
+      });
+
+      // Setup cloud & local design browser
+      designBrowser = new DesignBrowser({
+        onSelectDesign: async (d) => {
+          await ModelRegistry.registerDynamicDesign(d);
+          AppState.setState({ 
+            activeModelId: d.id, 
+            selectedPartId: null, 
+            activeStep: 0 
+          });
+          renderActiveModel();
+          WorkbenchNav.render('assembly');
+          Toast.show(`Opened design: ${d.name}`, '📂');
+        },
+        onEditDesign: (d) => {
+          codeEditor.open(d.jsCode, { id: d.id, name: d.name });
+        },
+        onCreateNew: () => {
+          codeEditor.promptNewModel();
+        }
+      });
+
+      // Global event bus listeners triggered from navbar or shortcuts
+      window.addEventListener('puzzlecore:new-model', () => {
+        codeEditor.promptNewModel();
+      });
+
+      window.addEventListener('puzzlecore:open-studio', () => {
+        // If current model has raw code or we can load current
+        const currentModel = ModelRegistry.getActiveModel();
+        if (currentModel) {
+          DesignService.getDesign(currentModel.id).then(async (d) => {
+            if (d && d.jsCode && d.jsCode.trim()) {
+              codeEditor.open(d.jsCode, { id: d.id, name: d.name });
+            } else {
+              const src = await codeEditor.fetchModelSource(currentModel.id);
+              if (src) {
+                codeEditor.open(src, { id: currentModel.id, name: currentModel.name });
+              } else {
+                codeEditor.open(TEMPLATES['minimal-box'].code, { id: currentModel.id, name: currentModel.name });
+              }
+            }
+          });
+        } else {
+          codeEditor.open();
+        }
+      });
+
+      window.addEventListener('puzzlecore:open-browser', () => {
+        designBrowser.open();
+      });
+    }
+
+    async function seedInitialDesigns() {
+      const minimal = TEMPLATES['minimal-box'];
+      let houseCode = '';
+      let cathedralCode = '';
+      let arenaCode = '';
+
+      try {
+        const [rHouse, rCath, rArena] = await Promise.all([
+          fetch('js/models/simple-house.js').then(r => r.ok ? r.text() : ''),
+          fetch('js/models/cathedral.js').then(r => r.ok ? r.text() : ''),
+          fetch('js/models/my-model.js').then(r => r.ok ? r.text() : '')
+        ]);
+        houseCode = rHouse;
+        cathedralCode = rCath;
+        arenaCode = rArena;
+      } catch (e) {
+        console.warn('Could not fetch source code for initial designs:', e);
+      }
+
+      const seeds = [
+        {
+          id: 'minimal-box',
+          name: minimal.name,
+          category: minimal.category,
+          description: minimal.description,
+          jsCode: minimal.code
+        }
+      ];
+
+      if (houseCode) {
+        seeds.push({
+          id: 'simple-house',
+          name: SimpleHouseModelData.name,
+          category: SimpleHouseModelData.category,
+          description: SimpleHouseModelData.description,
+          jsCode: houseCode
+        });
+      }
+      if (cathedralCode) {
+        seeds.push({
+          id: 'cathedral',
+          name: CathedralModelData.name,
+          category: CathedralModelData.category,
+          description: CathedralModelData.description,
+          jsCode: cathedralCode
+        });
+      }
+      if (arenaCode) {
+        seeds.push({
+          id: 'football-stadium',
+          name: 'Grand Olympic Football Arena',
+          category: 'Sports & Architecture',
+          description: '112-part monumental sports stadium with tiered grandstands.',
+          jsCode: arenaCode
+        });
+      }
+
+      await DesignService.seedInitialDesigns(seeds);
     }
 
     function renderActiveModel() {
@@ -318,8 +467,20 @@
 
     function drawMiniPartSVG(part, thickness) {
       const svg = document.getElementById('prop-mini-svg');
+      if (!svg || !part) return;
       const { kerf, clearance } = AppState.getMaterialProfile();
-      const geo = part.generate2D(thickness, kerf, clearance);
+      let geo = null;
+      if (typeof part.generate2D === 'function') {
+        try { geo = part.generate2D(thickness, kerf, clearance); } catch (e) {}
+      }
+      if (!geo && part.geometry && Array.isArray(part.geometry.outline)) {
+        geo = part.geometry;
+      }
+      if (!geo || !Array.isArray(geo.outline) || geo.outline.length === 0) {
+        const hw = (part.width || 40) / 2;
+        const hl = (part.length || 40) / 2;
+        geo = { outline: [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]], cutouts: [] };
+      }
       const bounds = GeometryEngine.computeBoundingBox(geo.outline);
       const pad = 12;
       svg.setAttribute('viewBox', `${bounds.minX - pad} ${bounds.minY - pad} ${bounds.width + pad * 2} ${bounds.height + pad * 2}`);

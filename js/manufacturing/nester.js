@@ -26,7 +26,16 @@ export const SheetNester = {
 
     sheetParts.forEach(part => {
       const placement = layout[part.id] || { x: 50, y: 50, r: 0 };
-      const geo = part.generate2D(thickness, kerf, clearance);
+      let geo = null;
+      if (typeof part.generate2D === 'function') {
+        try { geo = part.generate2D(thickness, kerf, clearance); } catch (e) {}
+      }
+      if (!geo && part.geometry && Array.isArray(part.geometry.outline)) {
+        geo = part.geometry;
+      }
+      if (!geo || !Array.isArray(geo.outline) || geo.outline.length === 0) {
+        geo = { outline: [[-20, -20], [20, -20], [20, 20], [-20, 20]], cutouts: [] };
+      }
 
       let d = '';
       geo.outline.forEach((pt, idx) => {

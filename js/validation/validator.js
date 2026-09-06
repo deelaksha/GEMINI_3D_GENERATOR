@@ -16,7 +16,14 @@ export const PhysicalValidator = {
     let totalConnections = 0;
 
     parts.forEach(part => {
-      const geo = part.generate2D(materialThickness, kerf, clearance);
+      let geo = null;
+      if (typeof part.generate2D === 'function') {
+        try { geo = part.generate2D(materialThickness, kerf, clearance); } catch (e) {}
+      }
+      if (!geo && part.geometry && Array.isArray(part.geometry.outline)) {
+        geo = part.geometry;
+      }
+      if (!geo) geo = { outline: [], cutouts: [] };
       const cutouts = geo.cutouts || [];
       totalMortises += cutouts.length;
       totalConnections += (part.connections || []).length;
