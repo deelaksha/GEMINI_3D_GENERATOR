@@ -91,18 +91,21 @@ class ThumbnailGeneratorService {
     if (!source) return null;
 
     if (typeof source === 'object') {
-      if (Array.isArray(source.parts) && source.parts.length > 0) {
+      if (Array.isArray(source.parts)) {
         return source;
       }
       if (source.modelData && Array.isArray(source.modelData.parts)) {
         return source.modelData;
+      }
+      if (source.isBlank) {
+        return { id: source.id, name: source.name, parts: [] };
       }
 
       // Check ModelRegistry
       if (source.id && typeof ModelRegistry !== 'undefined') {
         try {
           const reg = ModelRegistry.getModel(source.id);
-          if (reg && Array.isArray(reg.parts) && reg.parts.length > 0) {
+          if (reg && Array.isArray(reg.parts)) {
             return reg;
           }
         } catch (e) {}
@@ -210,8 +213,17 @@ class ThumbnailGeneratorService {
    */
   async generateThumbnail(modelSource, options = {}) {
     const modelData = await this.resolveModelData(modelSource);
-    if (!modelData || !Array.isArray(modelData.parts) || modelData.parts.length === 0) {
+    if (!modelData || !Array.isArray(modelData.parts)) {
       return null;
+    }
+    if (modelData.parts.length === 0) {
+      return {
+        thumbnail: null,
+        partCount: 0,
+        dimensions: '',
+        difficulty: modelData.difficulty || 'Beginner',
+        modelData
+      };
     }
 
     const renderer = this.getRenderer();

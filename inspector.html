@@ -153,12 +153,26 @@
       const state = AppState.getState();
       const part = model.getPart(state.selectedPartId) || model.parts[0];
 
-      if (!part) return;
-      if (state.selectedPartId !== part.id) {
-        AppState.setState({ selectedPartId: part.id }, false);
+      if (!part) {
+        document.getElementById('inspector-part-count').innerText = `${model ? model.getPartCount() : 0} Files`;
+        const tree = document.getElementById('inspector-file-tree');
+        if (tree) tree.innerHTML = '<div class="p-4 text-slate-500 text-xs text-center italic">No parts in this model</div>';
+        document.getElementById('banner-file-name').innerText = 'No Part Selected';
+        document.getElementById('banner-file-size').innerText = '0 KB';
+        document.getElementById('banner-file-desc').innerText = 'This model has no parts yet.';
+        const wrapper = document.getElementById('svg-display-wrapper');
+        if (wrapper) wrapper.innerHTML = '<div class="flex flex-col items-center justify-center h-64 text-slate-500 text-xs space-y-2"><span>📄</span><span>No part selected or model is empty</span></div>';
+        const rawCode = document.getElementById('raw-code-display');
+        if (rawCode) rawCode.textContent = '// No SVG data available';
+        document.getElementById('spec-thickness').innerText = `${state.materialThickness.toFixed(1)} mm`;
+        document.getElementById('spec-dims').innerText = '—';
+        document.getElementById('spec-kerf').innerText = '—';
+        document.getElementById('spec-clearance').innerText = '—';
+        const matingList = document.getElementById('spec-mating-list');
+        if (matingList) matingList.innerHTML = '<div class="text-slate-500 text-xs italic">No connections</div>';
+        currentSvgData = null;
+        return;
       }
-
-      document.getElementById('inspector-part-count').innerText = `${model.getPartCount()} Files`;
 
       // Populate file tree
       const tree = document.getElementById('inspector-file-tree');

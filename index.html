@@ -184,6 +184,9 @@
     let designBrowser;
 
     async function initPage() {
+      const { activeModelId } = AppState.getState();
+      await ModelRegistry.ensureModelLoaded(activeModelId);
+
       WorkbenchNav.render('assembly');
 
       const container = document.getElementById('canvas-container');
@@ -197,8 +200,20 @@
       renderActiveModel();
       bindWorkbenchControls();
 
+      let lastModelId = AppState.getState().activeModelId;
       AppState.subscribe((state) => {
-        updateUI();
+        if (state.activeModelId !== lastModelId) {
+          lastModelId = state.activeModelId;
+          renderActiveModel();
+          WorkbenchNav.render('assembly');
+        } else {
+          updateUI();
+        }
+      });
+
+      ModelRegistry.subscribe(() => {
+        renderActiveModel();
+        WorkbenchNav.render('assembly');
       });
 
       // Seed initial cloud/local designs if empty
@@ -259,6 +274,8 @@
               const src = await codeEditor.fetchModelSource(currentModel.id);
               if (src) {
                 codeEditor.open(src, { id: currentModel.id, name: currentModel.name });
+              } else if (currentModel.parts.length === 0) {
+                codeEditor.open(`/**\n * ${currentModel.name}\n * Paste your 3D Construction Puzzle Model code below:\n */\n\n`, { id: currentModel.id, name: currentModel.name, isBlank: true });
               } else {
                 codeEditor.open(TEMPLATES['minimal-box'].code, { id: currentModel.id, name: currentModel.name });
               }
@@ -354,30 +371,42 @@
       const model = ModelRegistry.getActiveModel();
       const state = AppState.getState();
 
-      document.getElementById('sidebar-part-count').innerText = `${model.getPartCount()} Parts`;
+      const partCount = model ? model.getPartCount() : 0;
+      document.getElementById('sidebar-part-count').innerText = `${partCount} Parts`;
 
       // Populate file tree
       const tree = document.getElementById('sidebar-parts-tree');
       tree.innerHTML = '';
-      model.parts.forEach(part => {
-        const item = document.createElement('div');
-        item.id = `tree-item-${part.id}`;
-        item.className = 'p-1.5 rounded hover:bg-slate-800/60 text-slate-300 font-mono text-[11px] flex items-center justify-between cursor-pointer transition';
-        item.onclick = () => AppState.setState({ selectedPartId: part.id });
-        item.innerHTML = `
-          <div class="flex items-center space-x-1.5 truncate max-w-[190px]">
-            <span class="text-amber-400">📄</span>
-            <span class="truncate">${part.fileName}</span>
-          </div>
-          <span class="text-[9px] text-slate-500">${part.fileSizeKB || '1.4 KB'}</span>
+      if (!model || model.parts.length === 0) {
+        const emptyNotice = document.createElement('div');
+        emptyNotice.className = 'p-4 text-slate-500 text-xs text-center italic space-y-1';
+        emptyNotice.innerHTML = `
+          <div class="text-xl">📄</div>
+          <div class="font-medium text-slate-400">0 Parts in Model</div>
+          <div class="text-[10px] text-slate-500">Open Design Studio to paste or write model code</div>
         `;
-        tree.appendChild(item);
-      });
+        tree.appendChild(emptyNotice);
+      } else {
+        model.parts.forEach(part => {
+          const item = document.createElement('div');
+          item.id = `tree-item-${part.id}`;
+          item.className = 'p-1.5 rounded hover:bg-slate-800/60 text-slate-300 font-mono text-[11px] flex items-center justify-between cursor-pointer transition';
+          item.onclick = () => AppState.setState({ selectedPartId: part.id });
+          item.innerHTML = `
+            <div class="flex items-center space-x-1.5 truncate max-w-[190px]">
+              <span class="text-amber-400">📄</span>
+              <span class="truncate">${part.fileName}</span>
+            </div>
+            <span class="text-[9px] text-slate-500">${part.fileSizeKB || '1.4 KB'}</span>
+          `;
+          tree.appendChild(item);
+        });
+      }
 
       // Camera Bookmarks
       const bmContainer = document.getElementById('camera-bookmarks-container');
       bmContainer.innerHTML = '';
-      (model.cameraBookmarks || []).forEach(bm => {
+      (model?.cameraBookmarks || []).forEach(bm => {
         const btn = document.createElement('button');
         btn.className = 'px-1.5 py-0.5 bg-amber-950/50 hover:bg-amber-800/60 text-amber-200 border border-amber-800/60 rounded text-[10px] font-medium transition';
         btn.innerText = bm.name;
@@ -392,22 +421,28 @@
       // Assembly Steps Buttons
       const stepBtnsContainer = document.getElementById('step-buttons-container');
       stepBtnsContainer.innerHTML = '';
-      const steps = model.assemblySteps || [];
+      const steps = model?.assemblySteps || [];
       document.getElementById('step-total-num').innerText = Math.max(0, steps.length - 1);
 
-      steps.forEach((s, idx) => {
-        const btn = document.createElement('button');
-        btn.id = `step-btn-${idx}`;
-        btn.className = idx === 0 
-          ? 'step-badge px-2.5 py-1 rounded bg-sky-600 text-white font-medium text-[11px]' 
-          : 'step-badge px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[11px]';
-        btn.innerText = idx === 0 ? `All (${model.getPartCount()})` : `${idx}. ${s.title.split('&')[0].trim()}`;
-        btn.onclick = () => AppState.setState({ activeStep: idx });
-        stepBtnsContainer.appendChild(btn);
-      });
+      if (steps.length > 0) {
+        steps.forEach((s, idx) => {
+          const btn = document.createElement('button');
+          btn.id = `step-btn-${idx}`;
+          btn.className = idx === 0 
+            ? 'step-badge px-2.5 py-1 rounded bg-sky-600 text-white font-medium text-[11px]' 
+            : 'step-badge px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 text-[11px]';
+          btn.innerText = idx === 0 ? `All (${model.getPartCount()})` : `${idx}. ${s.title.split('&')[0].trim()}`;
+          btn.onclick = () => AppState.setState({ activeStep: idx });
+          stepBtnsContainer.appendChild(btn);
+        });
+      }
 
-      // Default selection
-      if (!state.selectedPartId && model.parts.length > 0) {
+      // Default selection validation
+      if (!model || model.parts.length === 0) {
+        if (state.selectedPartId !== null) {
+          AppState.setState({ selectedPartId: null }, false);
+        }
+      } else if (!state.selectedPartId || !model.getPart(state.selectedPartId)) {
         AppState.setState({ selectedPartId: model.parts[0].id }, false);
       }
 
@@ -418,7 +453,7 @@
     function updateUI() {
       const state = AppState.getState();
       const model = ModelRegistry.getActiveModel();
-      const activePart = model.getPart(state.selectedPartId);
+      const activePart = model ? model.getPart(state.selectedPartId) : null;
 
       // Update tree active highlight
       document.querySelectorAll('#sidebar-parts-tree > div').forEach(el => {
@@ -463,12 +498,29 @@
             connList.appendChild(item);
           }
         });
+      } else {
+        // Reset property panel to empty state when no part selected or model is empty
+        document.getElementById('status-active-part').innerText = 'None';
+        document.getElementById('prop-part-id').innerText = '—';
+        document.getElementById('prop-file-name').innerText = 'No part selected';
+        document.getElementById('prop-part-name').innerText = '—';
+        document.getElementById('prop-part-cat').innerText = '—';
+        document.getElementById('prop-part-step').innerText = '—';
+        document.getElementById('prop-dims').innerText = '—';
+        document.getElementById('prop-thickness').innerText = `${state.materialThickness.toFixed(1)} mm`;
+        document.getElementById('prop-sheet').innerText = '—';
+        const miniSvg = document.getElementById('prop-mini-svg');
+        if (miniSvg) miniSvg.innerHTML = '';
+        const connList = document.getElementById('prop-connections-list');
+        if (connList) {
+          connList.innerHTML = '<div class="text-[11px] text-slate-500 italic p-2">No part selected</div>';
+        }
       }
 
       // Update Scrubber Step UI
-      const steps = model.assemblySteps || [];
-      const currentStep = steps[state.activeStep] || { title: 'Assembly' };
-      document.getElementById('step-active-num').innerText = state.activeStep;
+      const steps = model?.assemblySteps || [];
+      const currentStep = steps[state.activeStep] || { title: steps.length === 0 ? 'Empty Model' : 'Assembly' };
+      document.getElementById('step-active-num').innerText = steps.length === 0 ? 0 : state.activeStep;
       document.getElementById('step-active-title').innerText = currentStep.title;
 
       document.querySelectorAll('.step-badge').forEach((btn, idx) => {
@@ -479,8 +531,10 @@
 
       // Update 3D Highlights and Explode
       engine.updateHighlight(state.selectedPartId);
-      ExplodeEngine.applyExplode(engine.meshMap, model.parts, state.explodeFactor);
-      AssemblySequencer.applyStepFilter(engine.meshMap, model.parts, state.activeStep);
+      if (model && model.parts.length > 0) {
+        ExplodeEngine.applyExplode(engine.meshMap, model.parts, state.explodeFactor);
+        AssemblySequencer.applyStepFilter(engine.meshMap, model.parts, state.activeStep);
+      }
     }
 
     function drawMiniPartSVG(part, thickness) {

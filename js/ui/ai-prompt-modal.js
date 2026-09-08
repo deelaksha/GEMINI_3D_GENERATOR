@@ -1,25 +1,29 @@
 /**
  * AI Prompt & Contest Context Modal Component
- * Loads and renders the copyable content of ai-prompt.txt in the top right corner.
+ * Loads, dynamically adapts, and renders the copyable content of ai-prompt.txt.
+ * Supports real-time adaptation for 1.0mm, 2.0mm, 3.0mm, and 4.0mm material gauges.
  */
 
 import { Toast } from './toast.js';
+import { AppState, MATERIAL_PROFILES } from '../core/config.js';
 
 export class AIPromptModal {
   constructor() {
     this.modalId = 'ai-prompt-modal';
-    this.promptText = '';
+    this.rawPromptText = '';
+    this.currentPromptText = '';
     this.mount();
   }
 
   mount() {
+    if (typeof document === 'undefined') return;
     if (document.getElementById(this.modalId)) return;
 
     const modal = document.createElement('div');
     modal.id = this.modalId;
     modal.className = 'fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4';
     modal.innerHTML = `
-      <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <!-- Header -->
         <div class="px-6 py-4 border-b border-slate-800 bg-slate-950/70 flex items-center justify-between shrink-0">
           <div class="flex items-center space-x-3">
@@ -46,11 +50,29 @@ export class AIPromptModal {
           </div>
         </div>
 
+        <!-- Thickness Gauge Selector Bar -->
+        <div class="px-6 py-2.5 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-semibold text-slate-300 flex items-center gap-1">
+              <span>📏</span> Target Gauge:
+            </span>
+            <div id="ai-prompt-thickness-buttons" class="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-700">
+              <!-- Buttons rendered dynamically -->
+            </div>
+          </div>
+          <div id="ai-prompt-gauge-badge" class="text-[11px] font-mono text-amber-300/90 bg-amber-950/40 border border-amber-800/40 px-2.5 py-1 rounded-md">
+            Active: 3.0 mm (MDF / Laser Plywood)
+          </div>
+        </div>
+
         <!-- Prompt Content Area -->
         <div class="flex-1 overflow-y-auto p-6 flex flex-col space-y-3 bg-slate-950/40">
           <div class="flex items-center justify-between text-xs text-slate-400">
             <span id="ai-prompt-stats" class="font-mono text-[11px]">0 characters • 0 words</span>
-            <span class="text-[11px] text-slate-500 font-mono">Ready to copy</span>
+            <span id="ai-prompt-sync-indicator" class="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Synchronized with active gauge
+            </span>
           </div>
 
           <!-- Blank State Notice (shown if file is empty) -->
@@ -63,7 +85,7 @@ export class AIPromptModal {
           </div>
 
           <!-- Text Container / Textarea -->
-          <div class="flex-1 min-h-[260px] relative rounded-xl border border-slate-700 bg-slate-950 overflow-hidden flex flex-col focus-within:border-purple-500 transition-colors">
+          <div class="flex-1 min-h-[260px] relative rounded-xl border border-slate-700 bg-slate-950 overflow-hidden flex flex-col focus-within:border-purple-500 transition-colors shadow-inner">
             <textarea id="ai-prompt-textarea" 
                       placeholder="Paste or write your AI prompt here, or save it in ai-prompt.txt..."
                       class="w-full flex-1 p-4 bg-transparent text-slate-100 font-mono text-xs leading-relaxed resize-none focus:outline-none placeholder-slate-600 select-text overflow-y-auto"></textarea>
@@ -74,7 +96,7 @@ export class AIPromptModal {
         <div class="px-6 py-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0">
           <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
             <span>💡</span>
-            <span>Clicking "Copy Prompt" copies the entire text to your clipboard.</span>
+            <span>Switching gauges updates the prompt directive and joinery formulas instantly.</span>
           </div>
 
           <div class="flex items-center space-x-2">
@@ -88,8 +110,55 @@ export class AIPromptModal {
     `;
 
     document.body.appendChild(modal);
+    this.renderThicknessButtons();
     this.bindEvents();
     this.loadPromptFile();
+  }
+
+  renderThicknessButtons() {
+    const container = document.getElementById('ai-prompt-thickness-buttons');
+    if (!container) return;
+
+    const currentThickness = AppState.getState().materialThickness;
+    const thicknesses = [1.0, 2.0, 3.0, 4.0];
+
+    container.innerHTML = thicknesses.map(t => {
+      const key = t.toFixed(1);
+      const isActive = Math.abs(currentThickness - t) < 0.05;
+      const activeClasses = 'bg-amber-500 text-slate-950 font-bold shadow shadow-amber-500/30';
+      const inactiveClasses = 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 font-medium';
+      
+      return `
+        <button type="button" 
+                data-thickness="${key}"
+                class="ai-prompt-gauge-btn px-2.5 py-1 rounded text-xs font-mono transition-all duration-150 ${isActive ? activeClasses : inactiveClasses}">
+          ${key} mm
+        </button>
+      `;
+    }).join('');
+
+    // Rebind button click events
+    container.querySelectorAll('.ai-prompt-gauge-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const t = parseFloat(e.currentTarget.getAttribute('data-thickness'));
+        AppState.setState({ materialThickness: t });
+        Toast.show(`AI Prompt updated for ${t.toFixed(1)} mm material! 📏`, '⚡');
+      });
+    });
+
+    this.updateGaugeBadge(currentThickness);
+  }
+
+  updateGaugeBadge(thickness) {
+    const badge = document.getElementById('ai-prompt-gauge-badge');
+    if (!badge) return;
+    const prof = MATERIAL_PROFILES[thickness.toFixed(1)] || MATERIAL_PROFILES['3.0'];
+    badge.innerHTML = `
+      <span class="font-semibold text-amber-300">Gauge: ${thickness.toFixed(1)} mm</span> 
+      <span class="text-slate-400">(${prof.name.split('(')[1]?.replace(')', '') || 'Custom'})</span>
+      <span class="text-sky-400">Kerf: ${prof.kerf.toFixed(2)}mm</span> • 
+      <span class="text-emerald-400">Fit: +${prof.clearance.toFixed(2)}mm</span>
+    `;
   }
 
   bindEvents() {
@@ -110,6 +179,82 @@ export class AIPromptModal {
     });
 
     document.getElementById('ai-prompt-btn-copy')?.addEventListener('click', () => this.copyToClipboard());
+
+    // Subscribe to AppState changes (e.g. from navbar thickness selector or modal buttons)
+    AppState.subscribe((state) => {
+      this.onThicknessChanged(state.materialThickness);
+    });
+  }
+
+  onThicknessChanged(thickness) {
+    this.renderThicknessButtons();
+    this.updateGaugeBadge(thickness);
+
+    if (this.rawPromptText) {
+      const updatedPrompt = this.transformPromptForThickness(this.rawPromptText, thickness);
+      this.currentPromptText = updatedPrompt;
+
+      const textarea = document.getElementById('ai-prompt-textarea');
+      if (textarea) {
+        textarea.value = updatedPrompt;
+      }
+      this.updateStats();
+    }
+  }
+
+  transformPromptForThickness(rawText, thickness) {
+    if (!rawText) return '';
+
+    const prof = MATERIAL_PROFILES[thickness.toFixed(1)] || MATERIAL_PROFILES['3.0'];
+    const tVal = prof.thickness.toFixed(1);
+    const kerfVal = prof.kerf.toFixed(2);
+    const clrVal = prof.clearance.toFixed(2);
+    const slotFitVal = (prof.thickness + prof.clearance).toFixed(2);
+
+    const banner = 
+`# ==============================================================================
+# 🎯 ACTIVE TARGET SPECIFICATION (SELECTED MATERIAL GAUGE: ${tVal} mm)
+# ==============================================================================
+# • TARGET SHEET THICKNESS : ${tVal} mm
+# • MATERIAL PROFILE       : ${prof.name}
+# • LASER KERF COMPENSATION: ${kerfVal} mm
+# • SLOT CLEARANCE TOLERANCE: ${clrVal} mm
+# • PARAMETRIC MORTISE FIT : (t || ${tVal}) + (clr || ${clrVal}) => ${slotFitVal} mm slot opening
+# • MATCHING TENON TAB     : Width = Slot Length | Depth = ${tVal} mm (or t + 0.2 mm)
+#
+# 👉 DIRECTIVE FOR AI GENERATION:
+# Please optimize this model's default geometry specifically for ${tVal} mm sheet thickness!
+# Ensure all generate2D functions default to generate2D(t = ${tVal}, kerf = ${kerfVal}, clr = ${clrVal}).
+# All slots must accommodate ${tVal} mm material while remaining fully parametric.
+# ==============================================================================
+`;
+
+    // Strip any previously injected target specification banner
+    let updated = rawText.replace(/# ={70,}\r?\n# 🎯 ACTIVE TARGET SPECIFICATION[\s\S]*?# ={70,}\r?\n/g, '');
+
+    // Inject banner cleanly right before Section 1
+    const anchor = '## 1. MANDATORY MODULE EXPORT STRUCTURE';
+    const splitIdx = updated.indexOf(anchor);
+    if (splitIdx !== -1) {
+      updated = updated.slice(0, splitIdx) + banner + '\n' + updated.slice(splitIdx);
+    } else {
+      updated = banner + '\n' + updated;
+    }
+
+    // Adapt default function signatures and parametric slot fallbacks
+    updated = updated.replace(/generate2D:\s*\(\s*t\s*=\s*[\d.]+\s*,\s*kerf\s*=\s*[\d.]+\s*,\s*clr\s*=\s*[\d.]+\s*\)/g,
+      `generate2D: (t = ${tVal}, kerf = ${kerfVal}, clr = ${clrVal})`);
+
+    updated = updated.replace(/generate2D:\s*\(\s*thickness\s*=\s*[\d.]+\s*,\s*kerf\s*=\s*[\d.]+\s*,\s*clearance\s*=\s*[\d.]+\s*\)/g,
+      `generate2D: (thickness = ${tVal}, kerf = ${kerfVal}, clearance = ${clrVal})`);
+
+    updated = updated.replace(/\(t\s*\|\|\s*[\d.]+\)\s*\+\s*\(clr\s*\|\|\s*[\d.]+\)/g,
+      `(t || ${tVal}) + (clr || ${clrVal})`);
+
+    updated = updated.replace(/desc:\s*'Main cutting sheet \([\d.]+mm[^)]*\)\.'/g,
+      `desc: 'Main cutting sheet (${tVal}mm ${prof.name.split('(')[1]?.replace(')', '') || 'sheet'}).'`);
+
+    return updated;
   }
 
   async loadPromptFile() {
@@ -145,23 +290,26 @@ export class AIPromptModal {
       }
     }
 
-    this.promptText = content;
+    this.rawPromptText = content;
+    const currentThickness = AppState.getState().materialThickness;
+    this.currentPromptText = this.transformPromptForThickness(this.rawPromptText, currentThickness);
 
     const textarea = document.getElementById('ai-prompt-textarea');
     const emptyNotice = document.getElementById('ai-prompt-empty-notice');
 
     if (textarea) {
-      textarea.value = this.promptText;
+      textarea.value = this.currentPromptText;
     }
 
     if (emptyNotice) {
-      if (!this.promptText) {
+      if (!this.rawPromptText) {
         emptyNotice.classList.remove('hidden');
       } else {
         emptyNotice.classList.add('hidden');
       }
     }
 
+    this.renderThicknessButtons();
     this.updateStats();
   }
 
@@ -178,7 +326,7 @@ export class AIPromptModal {
 
   async copyToClipboard() {
     const textarea = document.getElementById('ai-prompt-textarea');
-    const textToCopy = textarea ? textarea.value : this.promptText;
+    const textToCopy = textarea ? textarea.value : this.currentPromptText;
 
     if (!textToCopy || !textToCopy.trim()) {
       Toast.show('No prompt content to copy yet. Paste or write your prompt in ai-prompt.txt!', '⚠️');
@@ -210,7 +358,12 @@ export class AIPromptModal {
     if (modal) {
       modal.classList.remove('hidden');
     }
-    await this.loadPromptFile();
+    const currentThickness = AppState.getState().materialThickness;
+    if (!this.rawPromptText) {
+      await this.loadPromptFile();
+    } else {
+      this.onThicknessChanged(currentThickness);
+    }
   }
 
   close() {

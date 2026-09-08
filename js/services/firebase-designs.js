@@ -22,9 +22,11 @@ const ACTIVE_DESIGN_KEY = 'puzzlecore_active_design_id';
 
 class FirebaseDesignService {
   constructor() {
-    this.isOnline = navigator.onLine;
-    window.addEventListener('online', () => { this.isOnline = true; });
-    window.addEventListener('offline', () => { this.isOnline = false; });
+    this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('online', () => { this.isOnline = true; });
+      window.addEventListener('offline', () => { this.isOnline = false; });
+    }
   }
 
   /**

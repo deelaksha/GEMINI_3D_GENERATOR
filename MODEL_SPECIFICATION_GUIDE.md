@@ -145,19 +145,20 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   // --- PARAMETRIC 2D CUT CONTOUR GENERATOR ---
   /**
    * Generates the 2D cutting and engraving profile.
-   * @param {number} t - Material thickness (2.0, 3.0, or 4.0 mm)
+   * @param {number} t - Material thickness (1.0, 2.0, 3.0, or 4.0 mm)
    * @param {number} kerf - Laser kerf compensation (typically 0.15 mm)
    * @param {number} clr - Slot clearance tolerance (typically 0.10 mm)
    */
   generate2D: (t, kerf, clr) => ({
     // 1. OUTER CUT OUTLINE (Red Laser Line): Closed 2D polygon [X, Y]
-    // The part's local origin [0, 0] should be near the centroid.
+    // The part's local origin [0, 0] is authoritative and mapped 1:1 to local 3D (no centroid recentering).
+    // All tab protrusions and receiver slots are positioned relative to this local origin.
     outline: [
       [-60, -40], [60, -40], [60, 40], [-60, 40]
     ],
 
     // 2. INTERNAL MORTISES / SLOTS (Red Laser Cutouts):
-    // For slots receptive to thickness 't', slot width MUST equal (t + clr) or (t + 0.10).
+    // For slots receptive to thickness 't', slot thickness MUST equal (t + clr) or use ConnectorRegistry.deriveReceiverSlot(joint, t, clr).
     cutouts: [
       // Rectangular slot:
       { x: 0, y: -30, w: 30, h: t + clr },
@@ -182,11 +183,11 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
 
 ## 4. Universal Physical Connector Rules (Zero-Glue)
 
-To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:///d:/downloads/2-3D%20Basic/validation.html)), follow these rules:
+To pass the built-in **Physical Feasibility Auditor** ([validation.html](file:///d:/downloads/2-3D%20Basic/validation.html)), follow these rules:
 
 1. **Mortise Slot Width**:
    $$\text{Slot Width} = t + \text{clr} \quad (\text{typically } t + 0.10\,\text{mm})$$
-   *Never hardcode slot thickness to a constant number like `3.0`.* Always use `t + clr` or `t + 0.10` so when the user selects $2\text{mm}$, $3\text{mm}$, or $4\text{mm}$, the slot resizes automatically.
+   *Never hardcode slot thickness to a constant number like `3.0`.* Always use `t + clr` or `t + 0.10` so when the user selects $1\text{mm}$, $2\text{mm}$, $3\text{mm}$, or $4\text{mm}$, the slot resizes automatically.
 
 2. **Tab Dimensions**:
    A tab protruding from an edge should extend by:

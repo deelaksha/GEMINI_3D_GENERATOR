@@ -4,6 +4,7 @@
  */
 
 export const MATERIAL_PROFILES = {
+  '1.0': { name: '1.0 mm (Thin Chipboard / Veneer)', thickness: 1.0, kerf: 0.10, clearance: 0.06, color: '#fbbf24' },
   '2.0': { name: '2.0 mm (Heavy Cardstock)', thickness: 2.0, kerf: 0.12, clearance: 0.08, color: '#f59e0b' },
   '3.0': { name: '3.0 mm (MDF / Laser Plywood)', thickness: 3.0, kerf: 0.15, clearance: 0.10, color: '#d97706' },
   '4.0': { name: '4.0 mm (Corrugated Board)', thickness: 4.0, kerf: 0.18, clearance: 0.15, color: '#b45309' }
@@ -58,16 +59,18 @@ class AppStateManager {
   }
 
   updateUrlQuery() {
-    if (typeof window === 'undefined' || !window.location) return;
-    const url = new URL(window.location.href);
-    url.searchParams.set('model', this.state.activeModelId);
-    if (this.state.selectedPartId) {
-      url.searchParams.set('part', this.state.selectedPartId);
-    } else {
-      url.searchParams.delete('part');
-    }
-    url.searchParams.set('thickness', this.state.materialThickness.toFixed(1));
-    window.history.replaceState({}, '', url.toString());
+    if (typeof window === 'undefined' || !window.location || !window.location.href || !window.history?.replaceState) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('model', this.state.activeModelId);
+      if (this.state.selectedPartId) {
+        url.searchParams.set('part', this.state.selectedPartId);
+      } else {
+        url.searchParams.delete('part');
+      }
+      url.searchParams.set('thickness', this.state.materialThickness.toFixed(1));
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {}
   }
 
   subscribe(listener) {

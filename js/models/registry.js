@@ -56,18 +56,70 @@ class ModelRegistryService {
     this.notify();
   }
 
+  createBlankModel(id, name) {
+    if (!id) {
+      id = DesignService.generateSlug(name || 'Custom Model');
+    }
+    const cleanModel = new ConstructionObject({
+      id: id,
+      name: name || 'Custom Model',
+      category: 'Custom Designs',
+      description: 'Blank construction puzzle design canvas.',
+      difficulty: 'Level 1 - Beginner',
+      defaultScale: 1.0,
+      parts: [],
+      assemblies: [],
+      assemblySteps: [],
+      manufacturingSheets: [],
+      cameraBookmarks: []
+    });
+    this.registerModel(cleanModel);
+    return cleanModel;
+  }
+
+  getDefaultModel() {
+    return this.models.get('classic-sports-coupe') 
+      || (detectedCustomModel && this.models.get(detectedCustomModel.id))
+      || this.models.get('cathedral') 
+      || this.getAllModels()[0] 
+      || null;
+  }
+
   getModel(modelId) {
+    if (!modelId) {
+      return this.getDefaultModel();
+    }
     if (this.models.has(modelId)) return this.models.get(modelId);
     if (modelId === 'car-j4ir' && this.models.has('classic-sports-coupe')) {
       return this.models.get('classic-sports-coupe');
     }
-    if (detectedCustomModel && this.models.has(detectedCustomModel.id)) return this.models.get(detectedCustomModel.id);
-    return this.models.get('classic-sports-coupe') || this.models.get('cathedral') || this.getAllModels()[0];
+    // Check local storage cache before giving up
+    try {
+      const cached = DesignService.getLocalCache().find(d => d.id === modelId);
+      if (cached) {
+        if (cached.modelData) {
+          const obj = new ConstructionObject(cached.modelData);
+          this.registerModel(obj);
+          return obj;
+        }
+      }
+    } catch (e) {}
+
+    return null;
   }
 
   getActiveModel() {
     const { activeModelId } = AppState.getState();
-    return this.getModel(activeModelId);
+    let model = this.getModel(activeModelId);
+    if (!model) {
+      if (activeModelId) {
+        // Create an isolated blank model for this specific active ID so it never borrows another model's data
+        model = this.createBlankModel(activeModelId, 'Custom Model');
+      } else {
+        model = this.getDefaultModel();
+      }
+    }
+    return model;
   }
 
   getAllModels() {
@@ -93,6 +145,10 @@ class ModelRegistryService {
         if (design.name) modelData.name = design.name;
         const constrObj = new ConstructionObject(modelData);
         this.registerModel(constrObj);
+        return constrObj;
+      } else if (design.id) {
+        // Clean blank/custom design registered without parts yet
+        const constrObj = this.createBlankModel(design.id, design.name);
         return constrObj;
       }
     } catch (err) {

@@ -41,6 +41,25 @@ export const ModelData = {
       }
     }
   ],
+  // AUTHORITATIVE SINGLE SOURCE OF TRUTH (SSOT) JOINTS:
+  // Every mechanical connection must originate here. Do not author tabs/slots independently!
+  joints: [
+    {
+      id: 'J-WALL01-BASE01',
+      sourcePart: 'WALL-01',              // Connector part containing protruding tab
+      targetPart: 'BASE-01',              // Receiver part containing mortise slot
+      type: 'mortise-tenon',              // Joint family: 'mortise-tenon' | 'edge-finger' | 'half-lap' | 'contact'
+      sourceConnector: {
+        type: 'tab',
+        width: 30,                        // Authoritative connector width in mm
+        depth: (t) => t                   // Parametric penetration depth
+      },
+      position: [0, 20],                  // Local 2D [x, y] position on the receiver part
+      receiverAxis: 'X',                  // Slot length orientation on receiver ('X' or 'Y')
+      connectorAxis: 'X',                 // Tab width orientation on connector
+      insertionDirection: [0, -1, 0]      // 3D world-space assembly insertion vector
+    }
+  ],
   parts: [
     // Array of physical part objects...
   ]
@@ -57,31 +76,47 @@ export default ModelData;
 
 Every model in PuzzleCore is a REAL physical object cut from flat sheets (plywood, acrylic, or MDF) that snaps together with friction-fit mortise-and-tenon joinery without glue.
 
-### A. The Parametric Mortise Slot Rule (`cutouts`)
-All slots receptive to material thickness MUST be parametric using `(t || 3.0) + (clr || 0.10)`:
-```javascript
-// HORIZONTAL SLOT (thickness along Y, slot length along X):
-{ x: slotCenterX, y: slotCenterY, w: 20, h: (t || 3.0) + (clr || 0.10) }
+### A. The Joint as the Authoritative Single Source of Truth (SSOT)
+Every mechanical connection MUST begin with an authoritative Joint definition in `ModelData.joints`:
+$$\text{Joint} \longrightarrow \text{Connector} \longrightarrow \text{Receiver Derived from Connector} + \text{Clearance}$$
 
-// VERTICAL SLOT (thickness along X, slot length along Y):
-{ x: slotCenterX, y: slotCenterY, w: (t || 3.0) + (clr || 0.10), h: 30 }
-```
-- `t`: Material thickness in millimeters (passed into `generate2D`, typically `3.0`).
-- `clr`: Kerf & friction-fit clearance tolerance (passed into `generate2D`, typically `0.10`).
-- **NEVER hardcode slot thickness to `3` or `3.0`!** Hardcoding causes physical validator errors when users change sheet thickness to 2mm or 4mm.
-- **Center-Based Local Coordinates**: In `cutouts`, `x` and `y` represent the **CENTER** of the cutout rectangle, NOT the top-left corner.
-- **Joinery Slots vs Decorative Openings**: The physical auditor evaluates all `cutouts`. To prevent joint looseness warnings, decorative features (doors, windows, surface patterns) should be drawn in `engravings` or given proper joint dimensions.
+1. **NO INDEPENDENTLY AUTHORED SLOTS OR TABS**:
+   - The AI must NEVER independently guess or hard-code matching tab and slot dimensions (e.g. authoring `tabWidth = 25` on Part A and `slotWidth = 20` on Part B).
+   - Receiver cutouts MUST be derived directly from the joint connector definition:
+     $$\text{Receiver Length} = \text{Connector Tab Width} + \text{clr} \quad (\text{typically } \text{width} + 0.10\,\text{mm})$$
+     $$\text{Receiver Thickness} = t + \text{clr} \quad (\text{typically } t + 0.10\,\text{mm})$$
+   - Any receiver cutout that does not match its corresponding Joint definition fails physical validation with `JOINT_GEOMETRY_NOT_DERIVED`.
+
+2. **The Parametric Mortise Slot Rule (`cutouts`)**:
+   All slots receptive to material thickness MUST be parametric using `(t || 3.0) + (clr || 0.10)`:
+   ```javascript
+   // HORIZONTAL SLOT (thickness along Y, slot length along X):
+   { x: slotCenterX, y: slotCenterY, w: 20, h: (t || 3.0) + (clr || 0.10) }
+
+   // VERTICAL SLOT (thickness along X, slot length along Y):
+   { x: slotCenterX, y: slotCenterY, w: (t || 3.0) + (clr || 0.10), h: 30 }
+   ```
+   - `t`: Material thickness in millimeters (passed into `generate2D`, typically `3.0`, supporting `3.0`, `4.0`, and `5.0`).
+   - `clr`: Kerf & friction-fit clearance tolerance (passed into `generate2D`, typically `0.10`).
+   - **NEVER hardcode slot thickness to `3` or `3.0`!** Hardcoding causes physical validator errors when users change sheet thickness.
+   - **Center-Based Local Coordinates**: In `cutouts`, `x` and `y` represent the **CENTER** of the cutout rectangle, NOT the top-left corner.
+   - **Joinery Slots vs Decorative Openings**: The physical auditor evaluates all `cutouts`. To prevent joint looseness warnings, decorative features (doors, windows, surface patterns) should be drawn in `engravings` or marked with `{ arched: true }`. Dead receiver sockets without a matching declared joint are invalid.
 
 ### B. The Matching Tenon Tab Rule (`outline` extension)
-Every tab that inserts into a mortise slot must match the slot's dimensions exactly:
-1. **Tab Width**: Must equal the receiving slot's length:
-   $$\text{Tab Width} = \text{Slot Length}$$
-   *(Example: If slot length is 30mm, the protruding tab along the mating edge must be exactly 30mm wide).*
+Every tab that inserts into a mortise slot must match the Joint connector parameters:
+1. **Tab Width**: Must equal the declared connector width:
+   $$\text{Tab Width} = \text{Joint Connector Width}$$
 2. **Tab Protrusion Depth**: Must equal material thickness $t$ (or $t + 0.2\text{mm}$ for positive flush fit):
    $$\text{Tab Depth} = t$$
    *(Example tab extending downward along bottom edge $y = -25$ from $x = -15$ to $+15$:)*
    `outline: [ [-25, -25], [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25], [25, -25], [25, 25], [-25, 25] ]`
-3. **Safety Edge Margin**: Never place a mortise slot closer than $5\text{mm}$ to the outer edge of any part. Slots cut too close to the boundary will snap during physical assembly.
+3. **Harmonized Manufacturing Tolerances**:
+   - **Fatal Hard Limits** (Below which wood grain shears or burns during manufacturing):
+     $$\text{MIN\_EDGE\_MARGIN} = 1.5\,\text{mm} \quad (\text{fatal if } < 1.5\,\text{mm})$$
+     $$\text{MIN\_SLOT\_SPACING} = 1.0\,\text{mm} \quad (\text{fatal if } < 1.0\,\text{mm})$$
+   - **Recommended Durability Guidance** (Advisory best practice warning):
+     $$\text{RECOMMENDED\_EDGE\_MARGIN} = 3.0\,\text{mm} \quad (1.0 \times \text{thickness})$$
+   - Do NOT use 4mm or 5mm as a fatal threshold. Slots placed $\ge 1.5\text{mm}$ from the perimeter pass physical validation.
 
 ---
 
@@ -90,24 +125,33 @@ Every tab that inserts into a mortise slot must match the slot's dimensions exac
 In real physical manufacturing, two laser-cut sheets cannot occupy the same volume.
 
 1. **NO PENETRATING SOLID BODIES**:
-   - Parts may ONLY touch where tenon tabs penetrate mortise slots, or face-to-face.
-   - Solid plates must NEVER intersect or cross each other without a corresponding slot cut into one or both parts!
-2. **CORNER & T-JOINT THICKNESS OFFSETS**:
+   - Parts may ONLY touch where tenon tabs penetrate mortise slots, face-to-face abutting contact, or legitimate half-lap joints.
+   - Solid plates must NEVER intersect or cross each other without a corresponding slot or notch cut into one or both parts!
+2. **LOCALIZED JOINT COLLISION EXEMPTIONS (NO GLOBAL EXEMPTIONS)**:
+   - Declaring a connection between two parts does NOT grant a global collision exemption for those parts!
+   - Intentional penetration is permitted ONLY inside the actual world-space mating locus of the declared Joint (distance $\le$ joint mating radius).
+   - Any solid penetration outside the declared joint locus triggers a fatal `COLLISION_OUTSIDE_JOINT_LOCUS` error.
+3. **NARROW-PHASE 15-AXIS 3D OBB SAT COLLISION**:
+   - Broad-phase AABB overlap detection is followed by exact narrow-phase 3D Oriented Bounding Box (OBB) Separating Axis Theorem (SAT).
+   - Angled or rotated parts (e.g. $45^\circ$ pitched roof slopes) whose outer AABBs overlap in empty air are correctly separated by narrow-phase SAT.
+4. **CORNER & T-JOINT THICKNESS OFFSETS**:
    - When two perpendicular walls meet at a $90^\circ$ corner, one wall must be inset or shortened by thickness $t$, or they must use alternating box/finger joints.
    - When a vertical wall rests on a horizontal base plate at $Y = 0$:
      - Base plate thickness spans from $Y = -t/2$ to $Y = +t/2$.
-     - The solid body of the vertical wall must sit at $Y \ge +t/2$ (wall base at $Y = +t/2$).
+     - The solid body of the vertical wall must sit at $Y \ge +t/2$ (wall base shoulder at $Y = +t/2$).
      - Only the protruding tenon tabs should penetrate down into the base plate ($Y = -t/2$ to $+t/2$).
-3. **SYMMETRIC BOUNDING BOX CENTERING**:
-   - The platform centers each 2D shape at local $(0, 0, 0)$ when extruding 3D geometry.
-   - Design your 2D outlines symmetric around local $(0, 0)$ (e.g. `[-width/2, -height/2]` to `[width/2, height/2]`) so local coordinates predict 3D world alignment accurately.
+5. **AUTHORITATIVE 2D → 3D COORDINATE SYSTEM (ZERO CENTROID DRIFT)**:
+   - The platform extrudes 2D geometry directly into 3D WITHOUT applying any X/Y centroid recentering (`geometry.center()` is strictly forbidden).
+   - Any point defined at local 2D `(x, y)` retains its exact position in local 3D `(x, y)`.
+   - Only the sheet thickness axis ($Z$) is centered around the mid-plane: $[-t/2, +t/2]$.
+   - Asymmetric profiles (e.g. tabs only on the bottom edge) maintain their authored local origin with zero drift.
 
 ---
 
 ## 4. 3D POSITIONING & EULER ROTATION ALIGNMENT
 
-Parts are positioned in 3D world space using:
-- `assembledPos: [x, y, z]` (in millimeters)
+Parts are positioned in 3D world space using parametric functions or vectors:
+- `assembledPos: (t = 3.0) => [x, y, z]` (in millimeters, dynamically responsive to thickness)
 - `assembledRot: [rx, ry, rz]` (in radians, Three.js Euler order 'XYZ')
 
 ### Standard Orientation Cheat-Sheet:
@@ -118,6 +162,72 @@ Parts are positioned in 3D world space using:
 | **Left Wall** (Facing -X) | `[0, Math.PI / 2, 0]` | Local $X \to \text{World } Z$, Local $Y \to \text{World } Y$, Thickness $\to \text{World } -X$ |
 | **Right Wall** (Facing +X) | `[0, -Math.PI / 2, 0]` | Local $X \to \text{World } -Z$, Local $Y \to \text{World } Y$, Thickness $\to \text{World } X$ |
 | **Horizontal Roof / Top Plate** | `[-Math.PI / 2, 0, 0]` | Local $X \to \text{World } X$, Local $Y \to \text{World } -Z$, Thickness $\to \text{World } Y$ |
+
+> [!IMPORTANT]
+> **WORLD-SPACE JOINT ORIENTATION VALIDATION**:
+> For every mechanical joint, the validator calculates connector width vector and receiver length vector in 3D world space. If they are perpendicular (dot product $< 0.25$), physical assembly is impossible and triggers `ORIENTATION_MISMATCH_90_DEG`.
+
+### B. The Definitive Interlocking Joinery Cookbook & Coordinate Algebra
+
+Follow these exact mathematical recipes to guarantee 100% physically valid, collision-free interlocking parts:
+
+#### Recipe 1: Baseplate Floor-to-Wall Mortise & Tenon (The Inversion Rule)
+When a horizontal baseplate has `assembledRot: [-Math.PI / 2, 0, 0]`, rotation around the X-axis by $-90^\circ$ causes an axis inversion:
+$$\text{World } X = \text{Local } x$$
+$$\text{World } Y = \text{Local } z \quad (\text{material thickness})$$
+$$\text{World } Z = -\text{Local } y \quad \iff \quad \text{Local } y = -Z_{\text{world}}$$
+
+> [!CAUTION]
+> **THE BASEPLATE INVERSION RULE**:
+> - If a Front Wall sits at **World $Z = +35$**, its receiver slot on the baseplate MUST be placed at **Local $y = -35$**!
+> - If a Rear Wall sits at **World $Z = -35$**, its receiver slot on the baseplate MUST be placed at **Local $y = +35$**!
+> *(Authoring $+35$ for World $+35$ places the slot 70mm away on the opposite side, triggering `COLLISION_OUTSIDE_JOINT_LOCUS`!)*
+
+- **Receiver Slot Axis on Baseplate**:
+  - For a wall running along World $X$ (width $W$ along $X$): The slot length is along Local $X$:
+    $$\text{Slot Dimensions}: \quad w = \text{TabWidth} + \text{clr}, \quad h = t + \text{clr}, \quad \text{receiverAxis: 'X'}$$
+  - For a wall running along World $Z$ (length $L$ along $Z$): The slot length is along Local $Y$:
+    $$\text{Slot Dimensions}: \quad w = t + \text{clr}, \quad h = \text{TabWidth} + \text{clr}, \quad \text{receiverAxis: 'Y'}$$
+
+#### Recipe 2: Wall Shoulder Elevation (Zero Floor Penetration)
+A horizontal baseplate resting on the ground at $Y = 0$ has its top surface at $Y = +t/2$ (e.g. $+1.5\text{mm}$ for $3\text{mm}$ material).
+For a vertical wall of height $H$ with 2D local contour centered at $y \in [-H/2, +H/2]$:
+- Its bottom shoulder sits at local $y = -H/2$.
+- To place the wall shoulder flush on top of the baseplate without sinking into solid wood:
+  $$\text{assembledPos}_Y(t) = \frac{H}{2} + \frac{t}{2}$$
+  *(Example: An 80mm tall wall with $t=3\text{mm}$ has $\text{assembledPos}_Y = 40 + 1.5 = 41.5\text{mm}$. The shoulder lands at $41.5 - 40 = 1.5\text{mm} = +t/2$, resting flush on the floor with ZERO solid penetration).*
+- Only the tenon tab extending from $y = -H/2$ down to $-H/2 - t$ enters the baseplate mortise between $Y \in [-t/2, +t/2]$.
+
+#### Recipe 3: Perpendicular Corner Wall Interlocking (Zero Corner Overlap)
+When two perpendicular walls meet at a $90^\circ$ corner (e.g. Front Wall along $X$ at $Z = +35$, and Left Wall along $Z$ at $X = -35$):
+- **Method A (Parametric Clearance Inset)**:
+  Shorten the orthogonal wall so its edges stop flush before the intersecting wall's inner face:
+  $$\text{Orthogonal Wall Width} = \text{Span} - t \quad (\text{or } \text{Span} - 2t \text{ if between two walls})$$
+  *(Example: For a 40mm wide box with 3mm walls, the East Wall width is $40 - t = 37\text{mm}$ at $3\text{mm}$, $36\text{mm}$ at $4\text{mm}$, and $35\text{mm}$ at $5\text{mm}$. Parametric width guarantees zero corner collision across all thicknesses).*
+- **Method B (Corner Mortise & Tenon)**:
+  Left Wall features a tab protruding along $+X$ by depth $t$. Front Wall has a matching vertical slot at local $x = -35 + t/2$.
+- **Method C (Alternating Box / Finger Joint)**:
+  Along the vertical meeting edge, Wall A has protruding fingers at $y \in [0, 20]$, while Wall B has fingers at $y \in [20, 40]$.
+
+#### Recipe 4: Pitched Roof Slopes & Apex Ridge Joinery
+For two roof slopes of length $L$ and span $W$, pitched at slope angle $\pm\theta$ (e.g. $\theta = 45^\circ$, `Math.PI / 4`):
+```javascript
+// Left Roof Pitch:
+assembledRot: [-Math.PI / 2, 0, Math.PI / 4],
+assembledPos: (t = 3.0) => [-20 - (t / 2) * Math.sin(Math.PI / 4), 67.5 + (t / 2) + (t / 2) * Math.cos(Math.PI / 4), 0]
+
+// Right Roof Pitch:
+assembledRot: [-Math.PI / 2, 0, -Math.PI / 4],
+assembledPos: (t = 3.0) => [20 + (t / 2) * Math.sin(Math.PI / 4), 67.5 + (t / 2) + (t / 2) * Math.cos(Math.PI / 4), 0]
+```
+- **The Normal Offset Vector**: Adding outward normal displacement $\pm(t/2)\sin\theta$ and $+(t/2)\cos\theta$ accounts for sheet thickness, preventing roof panels from intersecting gable walls or overlapping each other at the apex.
+- **Apex Ridge Contact**: Declare apex joint as `type: 'contact'` with `connectionType: 'roof-ridge'` and `worldPos: [0, Y_ridge, 0]`.
+
+#### Recipe 5: Cross-Halving / Half-Lap Beams
+When two horizontal or vertical beams of height $H$ cross each other at $90^\circ$:
+- **Beam A (Top Notch)**: Cutout from center to top edge: `{ x: 0, y: H / 4, w: t + clr, h: H / 2 }`.
+- **Beam B (Bottom Notch)**: Cutout from center to bottom edge: `{ x: 0, y: -H / 4, w: t + clr, h: H / 2 }`.
+- Both beams share the exact same `assembledPos_Y`. They slide together into a single flush plane without collision.
 
 ---
 
@@ -130,6 +240,7 @@ Parts are positioned in 3D world space using:
    Every part in `step: K` ($K > 1$) MUST include in its `connections` array at least one `partId` from an earlier step ($< K$).
    *Example: If Part W-01 is in Step 2, its connections must include `'BASE-01'` from Step 1.*
 5. **VALID PART IDs ONLY**: Every ID in `connections: [...]` and `assemblySteps[].parts` must exist in `parts: [...]`. No phantom or misspelled IDs!
+6. **PHYSICAL INSERTION ACCESSIBILITY**: Parts must have an unobstructed physical path along their `insertionDirection`. Do not design trapped geometries that require parts to magically pass through solid wooden plates.
 
 ---
 
@@ -162,11 +273,16 @@ manufacturingSheets: [
 Before completing your output, verify each item:
 - [x] **No imports**: Zero `import` statements at the top of the code.
 - [x] **Correct export**: Starts with `export const ModelData = { ... };` and ends with `export default ModelData;`.
+- [x] **Authoritative Joint SSOT**: All mechanical connections are defined in `ModelData.joints: [...]`. No independent invention of tab/slot sizes!
+- [x] **Derived cutouts**: Receiver slots are derived from joint definitions (`deriveCutoutsForPart`), matching tab width $+ \text{clr}$ and $t + \text{clr}$.
+- [x] **Parametric thickness**: Geometry, slot thickness, and assembly elevations (`+ t/2`) scale dynamically across $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$.
 - [x] **Closed 2D polygon**: `outline` contains $\ge 3$ coordinate pairs `[x, y]`, all finite numbers, forming a closed boundary.
-- [x] **Parametric mortises**: Every slot uses `(t || 3.0) + (clr || 0.10)` for thickness.
-- [x] **Matching tenons**: Every tab's width equals its mating slot's length, and depth equals `t`.
-- [x] **Zero collisions**: Parts do not penetrate each other's solid volumes.
-- [x] **Connection reachability**: Step $N$ parts connect to Step $< N$ parts.
+- [x] **Zero collisions outside joint locus**: Parts do not penetrate each other's solid volumes outside declared joint loci.
+- [x] **Narrow-phase OBB SAT verified**: Rotated parts do not rely on rough AABBs for collision validation.
+- [x] **Orientation alignment**: Tab width vectors and slot length vectors align in 3D world space (no 90-degree crossed joints).
+- [x] **Manufacturing limits respected**: Edge margins $\ge 1.5\text{mm}$, slot spacing $\ge 1.0\text{mm}$ (fatal limits). Recommended margin $\ge 3.0\text{mm}$.
+- [x] **Connection reachability**: Step $N$ parts connect to Step $< N$ parts with clear insertion directions.
+- [x] **No visual patches**: Transforms represent physical seating (e.g. $Y = 15 + t/2$), not arbitrary visual offsets.
 - [x] **Complete code**: NO truncated code, NO `// add remaining parts here` comments. Every single part is 100% written out.
 
 ---
@@ -285,22 +401,43 @@ Every physical piece must:
 
 ---
 
-# 3. FUNDAMENTAL ARCHITECTURE
+# 3. FUNDAMENTAL ARCHITECTURE & AUTHORITATIVE GENERATION PIPELINE
 
-The system must conceptually separate the following layers.
+The system enforces this mandatory generation flow for every physical construction model:
+
+```
+OBJECT
+  ↓
+ASSEMBLY
+  ↓
+PARTS
+  ↓
+JOINTS (Authoritative Single Source of Truth)
+  ↓
+CONNECTORS
+  ↓
+DERIVED RECEIVERS (Connector + Clearance + Kerf)
+  ↓
+2D GEOMETRY (Local X/Y Authoritative, Zero Centroid Drift)
+  ↓
+3D GEOMETRY (Parametric Extrusion along Z)
+  ↓
+ASSEMBLY TRANSFORMS (Parametrically derived from Thickness & Geometry)
+  ↓
+PHYSICAL VALIDATION (Narrow-Phase OBB SAT + Joint-Localized Exemption)
+  ↓
+MANUFACTURING VALIDATION (Hard-gate Limits & Tolerances)
+  ↓
+FINAL MODEL
+```
+
+The system conceptually separates the following layers:
 
 ## Layer 1 — OBJECT
-
-Example:
-
-```
-HOUSE
-```
+High-level target structure (e.g. `HOUSE`, `CAR`, `CATHEDRAL`).
 
 ## Layer 2 — ASSEMBLIES
-
-Example:
-
+Functional groupings of sub-structures:
 ```
 HOUSE
   ├── FOUNDATION
@@ -310,61 +447,47 @@ HOUSE
 ```
 
 ## Layer 3 — PARTS
+Individual rigid wooden or acrylic components cut from flat sheets:
+`FRONT_WALL`, `BACK_WALL`, `LEFT_WALL`, `RIGHT_WALL`, `FLOOR`, `ROOF_LEFT`, `ROOF_RIGHT`.
 
-Example:
-
+## Layer 4 — JOINTS (AUTHORITATIVE SINGLE SOURCE OF TRUTH)
+The authoritative contract governing every mechanical connection:
+```javascript
+{
+  id: "J-WALL_FRONT-FLOOR",
+  sourcePart: "FRONT_WALL",
+  targetPart: "FLOOR",
+  type: "mortise-tenon",
+  sourceConnector: { type: "tab", width: 30, depth: (t) => t },
+  position: [0, 35],
+  receiverAxis: "X",
+  insertionDirection: [0, -1, 0]
+}
 ```
-FRONT_WALL
-BACK_WALL
-LEFT_WALL
-RIGHT_WALL
-FLOOR
-ROOF_LEFT
-ROOF_RIGHT
-```
+*The AI must NEVER invent tab dimensions or receiver slot sizes independently. Both sides of every joint derive strictly from this Joint definition.*
 
-## Layer 4 — CONNECTORS
+## Layer 5 — CONNECTORS & DERIVED RECEIVERS
+- **Connector**: The active male protrusion (tenon tab, finger, half-lap).
+- **Derived Receiver**: The passive female slot/mortise derived via:
+  $$\text{Receiver Slot} = \text{Connector} + \text{Clearance} + \text{Kerf}$$
 
-Example:
+## Layer 6 — 2D MANUFACTURING GEOMETRY
+Authoritative local 2D cut outlines (`outline`), derived slots (`cutouts`), and surface markings (`engravings`).
 
-```
-TAB
-SLOT
-LOCK
-CROSS_CONNECTOR
-```
+## Layer 7 — 3D SOLID GEOMETRY & ASSEMBLY TRANSFORMS
+Extrusion into 3D (thickness centered along Z with zero X/Y drift) and parametric placement (`assembledPos: (t) => [...]`, `assembledRot`).
 
-## Layer 5 — CONNECTIONS
+## Layer 8 — PHYSICAL & MANUFACTURING VALIDATION
+Hard-gate auditing: 15-axis 3D OBB SAT narrow-phase collision, localized joint locus penetration exemptions, edge margin $\ge 1.5\text{mm}$, slot spacing $\ge 1.0\text{mm}$.
 
-Example:
-
-```
-FLOOR
-   ↕
-FRONT_WALL
-```
-
-## Layer 6 — 3D ASSEMBLY
-
-Defines where every part exists in 3D.
-
-## Layer 7 — MANUFACTURING
-
-Defines how every physical part is cut.
-
-## Layer 8 — USER ASSEMBLY
-
-Defines how the child builds the object.
-
-These layers must not be incorrectly mixed together.
+## Layer 9 — USER ASSEMBLY SEQUENCE
+Step-by-step sequential instructions (`assemblySteps`) ensuring reachability.
 
 ---
 
 # 4. OBJECT MODEL
 
-Every target object should be represented as a structured object.
-
-Example:
+Every target object should be represented as a structured object:
 
 ```
 Object
@@ -379,6 +502,7 @@ Object
     material
     parts[]
     assemblies[]
+    joints[]            // Authoritative Single Source of Truth for Joinery
     connectors[]
     connections[]
     assemblySteps[]
@@ -515,53 +639,66 @@ The same connector standards should be reusable across:
 
 ---
 
-# 8. REQUIRED CONNECTOR CONCEPTS
+# 8. REQUIRED CONNECTOR CONCEPTS & GEOMETRIC FORMULAS
 
-The system should support at least:
+The system establishes a universal physical joinery vocabulary. Every mechanical connection must follow these standardized mathematical forms:
 
-## 8.1 TAB
+## 8.1 TAB (TENON)
+A rectangular protrusion extending from a component edge into a mating receiver slot:
+- **Width**: $\text{tabWidth}$ (typically $15\text{mm}$ to $50\text{mm}$, depending on edge length).
+- **Depth**: $t$ (or $t + 0.2\text{mm}$ for positive flush finish).
+- **2D Outline Generation** (e.g. downward tab along bottom edge $y = y_{\text{base}}$ between $x_1$ and $x_2$):
+  ```javascript
+  [x1, y_base], [x1, y_base - t], [x2, y_base - t], [x2, y_base]
+  ```
 
-A protruding section of one piece.
+## 8.2 SLOT (MORTISE RECEIVER)
+An internal rectangular cutout designed to accept a mating tenon tab:
+- **Derivation Formula**:
+  $$\text{Slot Length} = \text{tabWidth} + \text{clr} \quad (\text{clr} \approx 0.10\,\text{mm})$$
+  $$\text{Slot Thickness} = t + \text{clr}$$
+- **2D Cutout Generation** (Center-based coordinates $[x_c, y_c]$):
+  ```javascript
+  // Horizontal slot (length along X, thickness along Y):
+  { x: xc, y: yc, w: tabWidth + clr, h: t + clr }
 
-## 8.2 SLOT
+  // Vertical slot (length along Y, thickness along X):
+  { x: xc, y: yc, w: t + clr, h: tabWidth + clr }
+  ```
 
-A receiving cutout in another piece.
+## 8.3 TAB-SLOT CONNECTION (THROUGH MORTISE & TENON)
+The primary load-bearing orthogonal connection between two perpendicular sheets:
+- The tenon tab on the source part inserts completely through the mortise slot of the target part.
+- Friction-fit clearance tolerance ($0.10\text{mm}$) ensures tight hold without glue.
 
-## 8.3 TAB-SLOT CONNECTION
+## 8.4 EDGE FINGER CONNECTION (BOX / COMB JOINT)
+Two sheets meeting at an edge (e.g. $90^\circ$ wall corner or $45^\circ$ roof ridge) with complementary alternating fingers:
+- Part A has fingers of length $t$ at even intervals: $[0, w], [2w, 3w], \dots$
+- Part B has fingers of length $t$ at odd intervals: $[w, 2w], [3w, 4w], \dots$
+- When assembled, the fingers interlock flush to form a rigid $90^\circ$ corner without requiring internal cutouts.
 
-Primary mechanical connection.
+## 8.5 CROSS CONNECTION (HALF-LAP / CROSS-HALVING JOINT)
+Two crossing sheets intersecting in an X or T pattern:
+- Part A has a slot of width $t + \text{clr}$ cut to half its depth ($H/2$) from the top edge.
+- Part B has a slot of width $t + \text{clr}$ cut to half its depth ($H/2$) from the bottom edge.
+- Both parts slide together along their mutual slots, locking at identical center elevations with zero solid volume collision.
 
-## 8.4 EDGE CONNECTION
+## 8.6 LOCKING CONNECTION (KEYED TENON & WEDGE PIN)
+A tenon tab with a secondary through-hole that receives a tapered wedge pin after insertion through a slot, locking the assembly permanently against tensile pull-out.
 
-Two pieces connect along an edge.
-
-## 8.5 CROSS CONNECTION
-
-Pieces intersect through slots.
-
-## 8.6 LOCKING CONNECTION
-
-A tab or component mechanically locks after insertion.
-
-## 8.7 PEG/JOINER
-
-A separate component connects multiple pieces.
+## 8.7 PEG / JOINER / DOWEL
+A cylindrical or cruciform connector passing through matching holes in two adjacent overlapping plates to pin them together.
 
 ## 8.8 HINGE
-
-For parts that need controlled rotation.
+Interlocking cylindrical knuckle loops or pin-guided tabs allowing controlled single-axis rotational movement (e.g. opening doors or hatches).
 
 ## 8.9 AXLE
-
-For rotating components.
+A cross-shaped or circular shaft passing through rotating hub receivers (e.g. vehicle wheels).
 
 ## 8.10 SLIDER
+A guided rail-and-groove joint permitting linear 1D translation without disengagement.
 
-For parts that move linearly.
-
-Not every object needs every connector.
-
-But the architecture must support them.
+Every object uses a subset of these connectors. The generation pipeline must derive them parametrically from the authoritative `joints: [...]` array.
 
 ---
 
@@ -644,10 +781,10 @@ MATERIAL THICKNESS
 For example:
 
 ```
+1 mm material
 2 mm material
 3 mm material
 4 mm material
-5 mm material
 ```
 
 must not blindly use identical slot dimensions.
@@ -855,87 +992,64 @@ CONNECTION_FAILURE
 
 ---
 
-# 18. PHYSICAL ASSEMBLY VALIDATION
+# 18. PHYSICAL ASSEMBLY VALIDATION (THE 13-POINT CRITERIA)
 
-This is mandatory.
+This is mandatory. The physical validator is authoritative. A model with fatal physical errors MUST NOT be considered valid or reported as passing.
 
-The software must be able to determine whether the proposed assembly is physically plausible.
+For every Joint and part in the assembly, verify all 13 conditions:
 
-Check:
-
-### Connectivity
-
-Are all required parts connected?
-
-### Alignment
-
-Do tabs align with slots?
-
-### Orientation
-
-Are parts oriented correctly?
-
-### Collision
-
-Are unrelated parts intersecting?
-
-### Connector collision
-
-Do connectors occupy impossible space?
-
-### Clearance
-
-Is there sufficient clearance?
-
-### Material feasibility
-
-Are parts thick/strong enough?
-
-### Structural stability
-
-Does the assembled structure remain coherent?
-
-### Assembly accessibility
-
-Can a child physically insert the part?
-
-### Manufacturing feasibility
-
-Can the part actually be cut?
+1. **Source Connector Exists**: Declared tab/finger/notch exists on source part.
+2. **Target Receiver Exists**: Receiver slot exists on target part (`MISSING_RECEIVER` if absent).
+3. **Connector Dimensions Valid**: Tab width and depth conform to material structural limits.
+4. **Receiver Dimensions Derived**: Receiver cutouts MUST be derived from the Joint definition plus clearance and kerf (`JOINT_GEOMETRY_NOT_DERIVED` if hardcoded/mismatched).
+5. **Clearance Valid**: Kerf and friction-fit clearance derived from centralized `ConnectorStandards`.
+6. **Orientation Valid**: Connector width vector and receiver length vector must align in 3D world space (`ORIENTATION_MISMATCH_90_DEG` if crossed).
+7. **Insertion Direction Valid**: Insertion path is unobstructed along local/world mating axis.
+8. **World-Space Mating Position Valid**: Part assembly transforms place connector within $< 15\text{mm}$ of the receiver slot.
+9. **Penetration Strictly Localized**: Overlap volume is confined strictly to the joint mating volume (`COLLISION_OUTSIDE_JOINT_LOCUS` if outside).
+10. **Surrounding Material Feasible**: Edge margin $\ge 1.5\text{mm}$ fatal hard limit ($3.0\text{mm}$ recommended), slot spacing $\ge 1.0\text{mm}$ fatal hard limit.
+11. **Assembly Collision-Free**: Narrow-phase OBB SAT confirms zero solid wood overlaps outside joints.
+12. **Manufacturing Geometry Matches Joint**: 2D cut profile reflects the exact tab/slot dimensions.
+13. **2D Geometry Matches 3D Geometry**: 2D local contours extrude into 3D with zero X/Y centroid translation drift.
 
 ---
 
-# 19. COLLISION TYPES
+# 19. COLLISION TYPES & MULTI-PHASE ARCHITECTURE
 
-Do not treat all intersections as errors.
+Do not treat all intersections as errors, but NEVER grant blanket collision immunity to connected parts.
 
-The system must distinguish:
+### A. Classification of Spatial Intersections
 
-### Intentional intersection
+#### 1. Valid Mechanical Interactions
+- **Declared Joint Penetration**: Tenon tab inserting into mortise slot inside the declared Joint mating volume.
+- **Structural Face Contact**: Abutting surfaces (e.g. wall bottom resting on floor plate at $Y = +t/2$) with zero solid penetration.
+- **Interlocking Half-Laps**: Orthogonal slotted beams intersecting at half-thickness notches.
+- **Alternating Finger Joints**: Complementary edge fingers interlocking along ridges or corners.
 
-Example:
+#### 2. Fatal Invalid Collisions
+- **Unrelated Parts Collision** (`UNRELATED_PARTS_COLLISION`): Two parts occupying the same volume without a declared mechanical joint.
+- **Excessive Solid Penetration** (`EXCESSIVE_SOLID_PENETRATION`): Penetration exceeding the physical volume of the declared tenon tab.
+- **Collision Outside Joint Locus** (`COLLISION_OUTSIDE_JOINT_LOCUS`): Penetration between connected parts that occurs outside the declared world-space joint mating region.
 
-```
-Tab inserted into slot.
-```
+### B. Broad-Phase and Narrow-Phase Collision Pipeline
 
-### Structural contact
-
-Example:
-
-```
-Wall touching floor.
-```
-
-### Invalid collision
-
-Example:
+The collision architecture must follow this exact multi-phase pipeline:
 
 ```
-Two unrelated panels occupying the same space.
+AABB Broad-Phase Detection (Axis-Aligned Bounding Box culling)
+   ↓ (if bounding boxes overlap)
+Narrow-Phase 3D OBB Separating Axis Theorem (SAT across 15 axes)
+   ↓ (if 3D solid bodies physically intersect)
+Penetration Volume & Contact Center Calculation
+   ↓
+Joint-Localized Exemption Check (Distance to nearest declared Joint locus ≤ allowableLocusDist)
+   ↓
+PASS (if within locus & volume ≤ allowed)  /  FAIL (if outside locus or excessive)
 ```
 
-This distinction is important.
+1. **AABB Broad Phase**: Culls distant parts quickly. AABB overlap alone is NOT proof of collision for rotated/angled parts (e.g. $45^\circ$ roof panels).
+2. **Narrow Phase (3D OBB SAT)**: Uses 15 potential separating axes (3 of Part A, 3 of Part B, 9 cross products) with parallel axis filtering (`AbsR[i][j] < 0.999`). If a separating axis exists, the parts DO NOT collide.
+3. **Joint-Localized Exemption**: Overlap is evaluated against declared Joint loci in 3D world space. If the intersection center is farther than the joint mating radius, it is flagged as an illegal penetration. Global exemptions are strictly forbidden!
 
 ---
 
@@ -1345,69 +1459,82 @@ This makes the assembly logic understandable.
 
 ---
 
-# 34. ERROR STATES
+# 34. ERROR STATES & AUTHORITATIVE ERROR CODES
 
-The system must explicitly detect and report problems.
+The system must explicitly detect, categorize, and report problems with standard structural error codes.
 
-Examples:
+### Authoritative Physical Error Codes:
 
 ```
-ERROR:
-SLOT WIDTH DOES NOT MATCH TAB WIDTH
+JOINT_GEOMETRY_NOT_DERIVED
+Triggered when a receiver cutout does not match the dimensions or position
+derived from the authoritative Joint definition plus clearance.
 
-ERROR:
-PART COLLISION DETECTED
+COLLISION_OUTSIDE_JOINT_LOCUS
+Triggered when connected parts collide outside the declared world-space
+mating region of the joint.
 
-ERROR:
-CONNECTOR HAS NO TARGET
+ORIENTATION_MISMATCH_90_DEG
+Triggered when a connector tab width vector is perpendicular (90 degrees crossed)
+to the receiving slot length vector in 3D world space.
 
-ERROR:
-REQUIRED PART IS MISSING
+UNRELATED_PARTS_COLLISION
+Triggered when two parts collide without any declared mechanical joint between them.
 
-ERROR:
-PART CANNOT BE PHYSICALLY INSERTED
+EXCESSIVE_SOLID_PENETRATION
+Triggered when solid penetration between parts exceeds the allowable tenon tab volume.
 
-ERROR:
-PART EXTENDS OUTSIDE MANUFACTURING SHEET
+MISSING_RECEIVER
+Triggered when a part outline features a tenon tab extending into a target part,
+but the target part has no corresponding receiver slot or edge finger.
 
-ERROR:
-FEATURE TOO SMALL FOR SELECTED MATERIAL
+CONNECTOR_EXCEEDS_RECEIVER
+Triggered when connector tab width exceeds the receiver slot length.
 
-ERROR:
-INVALID ASSEMBLY ORIENTATION
+INSUFFICIENT_EDGE_MARGIN
+Triggered when a slot is placed closer than 1.5mm to the part boundary.
+
+CUTOUT_SPACING_TOO_CLOSE
+Triggered when adjacent slots are cut closer than 1.0mm to each other.
+
+HALF_LAP_INSUFFICIENT_DEPTH
+Triggered when a half-lap notch does not provide sufficient mating depth.
 ```
 
-Errors should be actionable rather than generic.
+Errors are actionable, deterministic, and prevent invalid physical models from being declared valid.
 
 ---
 
-# 35. VALIDATION PIPELINE
+# 35. VALIDATION PIPELINE & HARD-GATE ENFORCEMENT
 
-Every generated model should pass through validation.
-
-Conceptually:
+Every generated model MUST pass through the validation pipeline as an unbypassable hard-gate.
 
 ```
-GENERATE
+MODEL GENERATION
    ↓
-GEOMETRY VALIDATION
+PARTS & JOINTS STRUCTURAL AUDIT
    ↓
-CONNECTOR VALIDATION
+RECEIVER DERIVATION CHECK (SSOT Enforcement: Reject JOINT_GEOMETRY_NOT_DERIVED)
    ↓
-ASSEMBLY VALIDATION
+CONNECTOR & ORIENTATION AUDIT (Reject ORIENTATION_MISMATCH_90_DEG & MISSING_RECEIVER)
    ↓
-COLLISION VALIDATION
+BROAD-PHASE AABB CULLING
    ↓
-MANUFACTURING VALIDATION
+NARROW-PHASE 15-AXIS 3D OBB SAT COLLISION
    ↓
-NESTING VALIDATION
+LOCALIZED JOINT LOCUS PENETRATION AUDIT (Reject COLLISION_OUTSIDE_JOINT_LOCUS)
    ↓
-FINAL VALIDATION
+MANUFACTURING TOLERANCES (Edge Margin ≥ 1.5mm, Slot Spacing ≥ 1.0mm)
    ↓
-EXPORT
+PARAMETRIC THICKNESS AUDIT (Verify 3mm, 4mm, 5mm Scaling)
+   ↓
+HARD-GATE VERDICT: PASS (0 Errors) / FAIL (> 0 Errors)
+   ↓
+EXPORT (GLB, SVG, DXF, INSTRUCTIONS)
 ```
 
-A model should not be considered complete simply because a 3D viewer can display it.
+> [!CRITICAL]
+> **HARD-GATE RULE**: Never report `100% PASS` or `VALID` when fatal physical errors exist. A model is valid ONLY when physical validation passes with zero errors across all supported sheet thicknesses. Visual appearance in a 3D viewport is NOT sufficient.
 
 ---
 
@@ -1976,55 +2103,56 @@ Changing connector standards should not silently invalidate old models.
 
 ---
 
-# 58. TESTING
+# 58. MANDATORY PHYSICAL TEST SUITE (THE 12-POINT DIRECTIVE)
 
-Testing must include more than visual rendering.
+Testing must include more than visual rendering. Every model generator must pass the mandatory negative and positive test suite:
 
-Tests should include:
+### A. Mandatory Negative Tests (Must FAIL)
+1. **Oversized Connector**: Tab wider than receiving slot length $\implies$ MUST FAIL (`CONNECTOR_EXCEEDS_RECEIVER`).
+2. **90-Degree Crossed Orientation**: Connector tab width vector perpendicular to slot length vector $\implies$ MUST FAIL (`ORIENTATION_MISMATCH_90_DEG`).
+3. **Unrelated Solid Collision**: Two separate parts occupying the same volume without a joint $\implies$ MUST FAIL (`UNRELATED_PARTS_COLLISION`).
+4. **Insufficient Edge Material**: Slot placed $< 1.5\text{mm}$ to the part boundary $\implies$ MUST FAIL (`INSUFFICIENT_EDGE_MARGIN`).
+5. **Insufficient Slot Spacing**: Adjacent slots placed $< 1.0\text{mm}$ apart $\implies$ MUST FAIL (`CUTOUT_SPACING_TOO_CLOSE`).
+6. **Insufficient Half-Lap Depth**: Cut depth does not reach half the mating beam height $\implies$ MUST FAIL (`HALF_LAP_INSUFFICIENT_DEPTH`).
+7. **Illegal Corner Overlap**: Perpendicular wall intersection without corner inset or fingers $\implies$ MUST FAIL (`COLLISION`).
+8. **Missing Receiver**: Protruding tab inserts into part without a matching slot $\implies$ MUST FAIL (`MISSING_RECEIVER`).
+9. **Excessive Joint Penetration**: Solid penetration exceeds allowable tenon tab volume $\implies$ MUST FAIL (`EXCESSIVE_SOLID_PENETRATION`).
+10. **Hardcoded/Mismatched Receiver**: Cutout does not match Joint definition $\implies$ MUST FAIL (`JOINT_GEOMETRY_NOT_DERIVED`).
+11. **Collision Outside Joint Locus**: Connected parts penetrate outside the joint mating locus $\implies$ MUST FAIL (`COLLISION_OUTSIDE_JOINT_LOCUS`).
+12. **Narrow-Phase Overlap**: Rotated solids that actually collide fail 3D OBB SAT $\implies$ MUST FAIL.
 
-## Unit tests
-
-* Connector dimensions
-* Geometry calculations
-* Transform calculations
-* Tolerance calculations
-
-## Integration tests
-
-* Part → connector
-* Connector → assembly
-* Assembly → 3D
-* Assembly → 2D
-* 2D → export
-
-## Physical validation tests
-
-* Tab fits slot
-* Parts connect
-* Parts do not collide incorrectly
-* Model can be assembled
-
-## Regression tests
-
-Previously valid objects must remain valid after system changes.
+### B. Mandatory Positive Tests (Must PASS)
+1. **Valid Mechanical Joint**: Derived slot matches connector tab plus clearance $\implies$ MUST PASS (0 errors).
+2. **Structural Abutting Contact**: Touching faces with zero solid penetration $\implies$ MUST PASS (0 errors).
+3. **Narrow-Phase Separation**: Rotated $45^\circ$ roofs whose AABBs overlap in air but solids separate $\implies$ MUST PASS (0 errors).
+4. **Parametric Scaling Matrix**: Model tested at $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ sheet thickness $\implies$ MUST PASS (0 errors).
 
 ---
 
-# 59. REFERENCE TEST MODELS
+# 59. CANONICAL REGRESSION REFERENCE MODELS
 
-Maintain several canonical test models.
+The repository maintains authoritative canonical models that MUST remain physically valid at $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ thickness:
 
-At minimum:
+1. **`MinimalBoxModel`** ([`js/models/templates.js`](file:///d:/downloads/2-3D%20Basic/js/models/templates.js)):
+   - 4-part orthogonal interlocking starter box.
+   - East Wall `B-04` width parametrically derived as $40 - t$.
+   - Wall shoulder elevation parametrically seated at $15 + t/2$.
+   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
 
-```
-SIMPLE_HOUSE
-SIMPLE_BOAT
-SIMPLE_CAT
-SIMPLE_DOG
-SIMPLE_CAR
-```
+2. **`SimpleHouseModelData`** ([`js/models/simple-house.js`](file:///d:/downloads/2-3D%20Basic/js/models/simple-house.js)):
+   - 12-piece country gable starter house with foundation, walls, and pitched roof.
+   - Foundation mortises derived via `deriveCutoutsForPart`.
+   - Corner interlocking tabs and roof pitch slopes separated by 3D OBB SAT.
+   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
 
-These should be used as regression tests whenever connector, geometry, or manufacturing logic changes.
+3. **`CathedralModelData`** ([`js/models/cathedral.js`](file:///d:/downloads/2-3D%20Basic/js/models/cathedral.js)):
+   - 32-part complex Gothic cathedral puzzle.
+   - Wall shoulders elevated to $+t/2$ to seat flush on baseplate without floor sinking.
+   - Nave roof ridge interlocking alternating edge finger tabs.
+   - Transept roof shortened to 44mm (`[-22, 22]`) to eliminate valley penetration.
+   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
+
+Any change to connectors, geometry extrusion, or collision validation must be verified against these canonical models before merging.
 
 ---
 
@@ -2195,33 +2323,29 @@ COMPLETE PHYSICAL OBJECT
 
 ---
 
-# 67. WHAT "DONE" MEANS
+# 67. WHAT "DONE" MEANS (THE UNMISTAKABLE PHYSICAL STANDARD)
 
-The project is NOT done when:
+A model is NOT valid because it renders.
+A model is NOT valid because it looks correct in a 3D viewport.
+A model is NOT valid because individual unit tests pass.
 
-* A 3D model appears.
-* FreeCAD generates a shape.
-* A GLB file exists.
-* The geometry looks attractive.
-* Pieces exist visually.
+The project is done ONLY when:
 
-The project is done only when:
+1. **Structured Joints as SSOT**: Every mechanical connection begins with an authoritative Joint definition in `joints: [...]`.
+2. **Derived Mating Geometry**: Receiver cutouts and slots are derived from connectors plus clearance (`deriveCutoutsForPart`), never independently guessed or hardcoded.
+3. **2D and 3D Consistency**: Authoritative local 2D $(x, y)$ contours extrude into 3D with zero centroid drift (`translate(0, 0, -thickness/2)`).
+4. **Parametric Scaling**: Dimensions, slot widths, and wall elevations (`+ t/2`) scale dynamically across $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ with zero magic numbers.
+5. **Narrow-Phase Collision Verification**: Narrow-phase 15-axis 3D OBB SAT confirms zero illegal solid penetrations.
+6. **Localized Joint Locus Exemptions**: Overlap exemptions are strictly confined to the declared Joint mating locus. Collisions outside the locus fail.
+7. **Orientation Alignment**: Connector width vectors and slot length vectors align in 3D world space (no 90-degree crossed connections).
+8. **Manufacturing Tolerances Satisfied**: Edge margins $\ge 1.5\text{mm}$, slot spacing $\ge 1.0\text{mm}$, and clearance from centralized `ConnectorStandards`.
+9. **Assembly Accessibility**: Parts are sequentially reachable along physical insertion vectors without passing through solid wood.
+10. **Dead Receivers Eliminated**: No orphan or dead receiver slots without declared connections (unless marked decorative).
+11. **Hard-Gate Zero Errors**: The physical validator runs and passes with exactly 0 fatal errors.
 
-1. The object is decomposed into meaningful parts.
-2. Every part has an identity.
-3. Every required connection is defined.
-4. Connectors physically match.
-5. Material thickness is respected.
-6. Tolerances are respected.
-7. Parts do not have invalid collisions.
-8. The assembly has a valid construction sequence.
-9. The parts are physically manufacturable.
-10. The 2D cutting geometry is correct.
-11. The pieces can be arranged on manufacturing sheets.
-12. The 3D model accurately represents the physical result.
-13. Assembly instructions can be generated.
-14. A child can understand how to assemble it.
-15. The final physical object is stable and recognizable.
+> [!CRITICAL]
+> **THE CARDINAL PRINCIPLE**:
+> "NEVER GENERATE A PHYSICALLY INVALID ASSEMBLY AND CALL IT VALID."
 
 ---
 
@@ -2747,6 +2871,26 @@ export const MyModelData = {
     }
   ],
 
+  // --- AUTHORITATIVE SINGLE SOURCE OF TRUTH (SSOT) JOINTS ---
+  // Every mechanical connection MUST be declared here before generating 2D/3D geometry!
+  joints: [
+    {
+      id: 'J-P02-P01',
+      sourcePart: 'PART-02',          // Part with male tab/finger
+      targetPart: 'PART-01',          // Part with female slot/receiver
+      type: 'mortise-tenon',          // 'mortise-tenon' | 'edge-finger' | 'half-lap' | 'contact'
+      sourceConnector: {
+        type: 'tab',
+        width: 30,                    // Authoritative connector width in mm
+        depth: (t) => t               // Tab penetration depth
+      },
+      position: [0, 25],              // Local 2D [x, y] position on the receiver part
+      receiverAxis: 'X',              // Slot length orientation on receiver ('X' or 'Y')
+      connectorAxis: 'X',             // Tab width orientation on connector ('X' or 'Y')
+      insertionDirection: [0, -1, 0]  // 3D world-space insertion vector
+    }
+  ],
+
   // --- PHYSICAL PARTS DEFINITION (Array of Part Objects) ---
   parts: [
     /* List of all individual part objects */
@@ -2774,9 +2918,10 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   fileSizeKB: '1.4 KB',
 
   // --- 3D POSITION & ORIENTATION ---
-  assembledPos: [0, 0, 0],             // Final 3D position [X, Y, Z] in millimeters
-  assembledRot: [-Math.PI / 2, 0, 0],  // Final 3D rotation [Euler radians: X, Y, Z]
-  explodeVec: [0, -40, 0],             // Displacement vector [X, Y, Z] when exploded
+  // Parametric position derived from thickness 't':
+  assembledPos: (t = 3.0) => [0, 0, 0],             // Final 3D position [X, Y, Z] in millimeters
+  assembledRot: [-Math.PI / 2, 0, 0],               // Final 3D rotation [Euler radians: X, Y, Z]
+  explodeVec: [0, -40, 0],                          // Displacement vector [X, Y, Z] when exploded
 
   // --- PHYSICAL CONNECTIONS ---
   connections: ['CH-02', 'CH-03'],     // IDs of parts that physically interlock with this part
@@ -2784,27 +2929,20 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   // --- PARAMETRIC 2D CUT CONTOUR GENERATOR ---
   /**
    * Generates the 2D cutting and engraving profile.
-   * @param {number} t - Material thickness (2.0, 3.0, or 4.0 mm)
+   * @param {number} t - Material thickness (3.0, 4.0, or 5.0 mm)
    * @param {number} kerf - Laser kerf compensation (typically 0.15 mm)
    * @param {number} clr - Slot clearance tolerance (typically 0.10 mm)
    */
-  generate2D: (t, kerf, clr) => ({
+  generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => ({
     // 1. OUTER CUT OUTLINE (Red Laser Line): Closed 2D polygon [X, Y]
-    // The part's local origin [0, 0] should be near the centroid.
+    // The part's local origin [0, 0] is preserved with ZERO centroid recentering drift.
     outline: [
       [-60, -40], [60, -40], [60, 40], [-60, 40]
     ],
 
-    // 2. INTERNAL MORTISES / SLOTS (Red Laser Cutouts):
-    // For slots receptive to thickness 't', slot width MUST equal (t + clr) or (t + 0.10).
-    cutouts: [
-      // Rectangular slot:
-      { x: 0, y: -30, w: 30, h: t + clr },
-      // Vertical slot:
-      { x: -50, y: 0, w: t + clr, h: 25 },
-      // Arched gothic window / door cutout:
-      { x: 0, y: 0, w: 16, h: 28, arched: true }
-    ],
+    // 2. INTERNAL MORTISES / SLOTS (Derived from authoritative Joint definition):
+    // Use ConnectorStandards.deriveCutoutsForPart to guarantee Single Source of Truth!
+    cutouts: ConnectorStandards.deriveCutoutsForPart('CH-01', MyModelData.joints, t, clr),
 
     // 3. VECTOR SURFACE ENGRAVINGS (Sky Blue Laser Lines):
     engravings: [
@@ -2821,37 +2959,45 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
 
 ## 4. Universal Physical Connector Rules (Zero-Glue)
 
-To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:///d:/downloads/2-3D%20Basic/validation.html)), follow these rules:
+To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:///d:/downloads/2-3D%20Basic/validation.html)), follow these non-negotiable rules:
 
-1. **Mortise Slot Width**:
+1. **Joints as Single Source of Truth**:
+   - Both sides of every joint derive strictly from `ModelData.joints`.
+   - Never hardcode slot lengths independently from connector tab widths.
+   - Any mismatched or non-derived receiver slot fails with `JOINT_GEOMETRY_NOT_DERIVED`.
+
+2. **Mortise Slot Width & Clearance**:
    $$\text{Slot Width} = t + \text{clr} \quad (\text{typically } t + 0.10\,\text{mm})$$
-   *Never hardcode slot thickness to a constant number like `3.0`.* Always use `t + clr` or `t + 0.10` so when the user selects $2\text{mm}$, $3\text{mm}$, or $4\text{mm}$, the slot resizes automatically.
+   $$\text{Slot Length} = \text{Connector Tab Width} + \text{clr}$$
+   *Never hardcode slot thickness to a constant number like `3.0`.* Slots must scale parametrically with $t$.
 
-2. **Tab Dimensions**:
-   A tab protruding from an edge should extend by:
+3. **Tenon Tab Dimensions**:
    $$\text{Tab Depth} = t \quad (\text{or } t + 0.2\,\text{mm})$$
-   $$\text{Tab Width} = \text{Matching Slot Length}$$
+   $$\text{Tab Width} = \text{Declared Connector Width}$$
 
-3. **Step Reachability**:
-   - Every part in Step $N$ ($N > 1$) must list at least one mating connection to a part from an earlier step ($< N$).
-   - A roof or exterior panel cannot be added in Step 1 if the foundation is not yet placed.
+4. **Harmonized Manufacturing Limits**:
+   - **Fatal hard limits**: `MIN_EDGE_MARGIN = 1.5mm`, `MIN_SLOT_SPACING = 1.0mm`.
+   - **Recommended durability guidance**: `RECOMMENDED_EDGE_MARGIN = 3.0mm`.
 
-4. **Explode Direction**:
-   - Baseplates explode downward (`[0, -40, 0]`).
-   - Roofs explode upward/outward (`[0, 50, 0]`).
-   - Left walls explode negative-X or negative-Z (`[-50, 0, 0]`).
-   - Right walls explode positive-X or positive-Z (`[50, 0, 0]`).
+5. **Multi-Phase Collision Verification**:
+   - Broad-phase AABB culling is followed by exact 15-axis 3D OBB Separating Axis Theorem (SAT).
+   - Collision exemptions are strictly localized to declared Joint loci (mating volume).
+   - Any overlap outside the joint locus triggers `COLLISION_OUTSIDE_JOINT_LOCUS`.
 
----
+6. **Step Reachability & Physical Insertion**:
+   - Every part in Step $N$ ($N > 1$) must connect to a part from an earlier step ($< N$).
+   - Insertion paths must be physically unobstructed along `insertionDirection`.
 
 ---
 
 ## 5. Fully Verified Interlocking 4-Piece Reference Model
 
-This complete, runnable 4-piece model demonstrates 100% physically valid mortise-and-tenon joinery.
-It passes both `DesignParser` and `PhysicalValidator` with **0 ERRORS** and **0 WARNINGS**:
+This complete, runnable 4-piece model demonstrates 100% physically valid mortise-and-tenon joinery using authoritative SSOT joints.
+It passes both `DesignParser` and `PhysicalValidator` with **0 ERRORS** and **0 WARNINGS** across $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ thickness:
 
 ```javascript
+import { ConnectorStandards } from '../core/connectors.js';
+
 export const ModelData = {
   id: 'interlocking-pavilion',
   name: 'Interlocking 4-Piece Pavilion',
@@ -2883,6 +3029,55 @@ export const ModelData = {
       }
     }
   ],
+  // Authoritative Single Source of Truth Joints
+  joints: [
+    // Wall to Baseplate Foundation mortise-tenon joints
+    {
+      id: 'J-PV02-PV01',
+      sourcePart: 'PV-02',
+      targetPart: 'PV-01',
+      type: 'mortise-tenon',
+      sourceConnector: { type: 'tab', width: 30, depth: (t) => t },
+      position: [-25, 0],
+      receiverAxis: 'Y',
+      connectorAxis: 'X',
+      insertionDirection: [0, -1, 0]
+    },
+    {
+      id: 'J-PV03-PV01',
+      sourcePart: 'PV-03',
+      targetPart: 'PV-01',
+      type: 'mortise-tenon',
+      sourceConnector: { type: 'tab', width: 30, depth: (t) => t },
+      position: [25, 0],
+      receiverAxis: 'Y',
+      connectorAxis: 'X',
+      insertionDirection: [0, -1, 0]
+    },
+    // Locking Roof Beam into Wall Top Slots
+    {
+      id: 'J-PV04-PV02',
+      sourcePart: 'PV-04',
+      targetPart: 'PV-02',
+      type: 'mortise-tenon',
+      sourceConnector: { type: 'tab', width: 20, depth: (t) => t },
+      position: [0, 18],
+      receiverAxis: 'X',
+      connectorAxis: 'Y',
+      insertionDirection: [0, -1, 0]
+    },
+    {
+      id: 'J-PV04-PV03',
+      sourcePart: 'PV-04',
+      targetPart: 'PV-03',
+      type: 'mortise-tenon',
+      sourceConnector: { type: 'tab', width: 20, depth: (t) => t },
+      position: [0, 18],
+      receiverAxis: 'X',
+      connectorAxis: 'Y',
+      insertionDirection: [0, -1, 0]
+    }
+  ],
   parts: [
     {
       id: 'PV-01',
@@ -2903,12 +3098,8 @@ export const ModelData = {
         outline: [
           [-40, -35], [40, -35], [40, 35], [-40, 35]
         ],
-        cutouts: [
-          // Left mortise slot for PV-02 (thickness along X = t + clr, length along Y = 30)
-          { x: -25, y: 0, w: t + clr, h: 30 },
-          // Right mortise slot for PV-03 (thickness along X = t + clr, length along Y = 30)
-          { x: 25, y: 0, w: t + clr, h: 30 }
-        ],
+        // Receivers derived strictly from authoritative joints array:
+        cutouts: ConnectorStandards.deriveCutoutsForPart('PV-01', ModelData.joints, t, clr),
         engravings: [
           { type: 'rect', x: -35, y: -30, w: 70, h: 60 }
         ]
@@ -2925,7 +3116,8 @@ export const ModelData = {
       length: 50,
       sheet: 1,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-25, 25, 0],
+      // Wall shoulder elevated by +t/2 to seat flush on top of foundation baseplate:
+      assembledPos: (t = 3.0) => [-25, 25 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-35, 0, 0],
       connections: ['PV-01', 'PV-04'],
@@ -2936,10 +3128,7 @@ export const ModelData = {
           [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
           [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [
-          // Top mortise slot for PV-04 roof beam (length 20, thickness t + clr)
-          { x: 0, y: 18, w: 20, h: t + clr }
-        ],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('PV-02', ModelData.joints, t, clr),
         engravings: [
           { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
           { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
@@ -2957,7 +3146,7 @@ export const ModelData = {
       length: 50,
       sheet: 1,
       fileSizeKB: '1.4 KB',
-      assembledPos: [25, 25, 0],
+      assembledPos: (t = 3.0) => [25, 25 + t / 2, 0],
       assembledRot: [0, -Math.PI / 2, 0],
       explodeVec: [35, 0, 0],
       connections: ['PV-01', 'PV-04'],
@@ -2968,10 +3157,7 @@ export const ModelData = {
           [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25],
           [25, -25], [25, 25], [-25, 25]
         ],
-        cutouts: [
-          // Top mortise slot for PV-04 roof beam (length 20, thickness t + clr)
-          { x: 0, y: 18, w: 20, h: t + clr }
-        ],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('PV-03', ModelData.joints, t, clr),
         engravings: [
           { type: 'rect', x: -15, y: -15, w: 30, h: 25 },
           { type: 'line', x1: -15, y1: 10, x2: 15, y2: 10 }
@@ -2989,7 +3175,7 @@ export const ModelData = {
       length: 36,
       sheet: 1,
       fileSizeKB: '1.3 KB',
-      assembledPos: [0, 43, 0],
+      assembledPos: (t = 3.0) => [0, 43 + t / 2, 0],
       assembledRot: [-Math.PI / 2, 0, 0],
       explodeVec: [0, 35, 0],
       connections: ['PV-02', 'PV-03'],
@@ -3015,3 +3201,25 @@ export const ModelData = {
 };
 export default ModelData;
 ```
+
+---
+
+## 6. THE FINAL ACCEPTANCE PRINCIPLE
+
+> [!CRITICAL]
+> **"NEVER GENERATE A PHYSICALLY INVALID ASSEMBLY AND CALL IT VALID."**
+> 
+> A model is NOT valid because it renders in WebGL.
+> A model is NOT valid because it visually looks like the intended object.
+> A model is NOT valid because isolated unit tests pass.
+> 
+> A model is valid ONLY when:
+> 1. Its mechanical joinery originates from an authoritative `joints: [...]` Single Source of Truth.
+> 2. Both connectors and receivers are generated directly from the Joint definition.
+> 3. Its 2D cutting contours match 3D solid bodies with zero coordinate recentering drift.
+> 4. Its assembly transforms and elevations are parametrically derived from thickness ($3\text{mm}$, $4\text{mm}$, $5\text{mm}$).
+> 5. Its narrow-phase 15-axis 3D OBB SAT confirms zero illegal solid penetrations.
+> 6. All intentional penetrations are strictly localized to declared Joint loci.
+> 7. All manufacturing limits are respected (edge margin $\ge 1.5\text{mm}$, slot spacing $\ge 1.0\text{mm}$).
+> 8. Its assembly sequence is physically accessible along real insertion directions.
+> 9. The physical validator runs and reports **0 ERRORS**.

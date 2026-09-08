@@ -478,7 +478,7 @@ export class CodeEditorPanel {
 
   async confirmNewModel() {
     const input = document.getElementById('new-model-name-input');
-    const name = (input?.value || '').trim() || `Design ${Math.floor(Math.random() * 900 + 100)}`;
+    const name = (input?.value || '').trim() || `Custom Model ${Math.floor(Math.random() * 900 + 100)}`;
     const slug = DesignService.generateSlug(name);
 
     // Completely blank editor canvas — no starter templates, no dummy parts, no categorization
@@ -490,7 +490,56 @@ export class CodeEditorPanel {
 `;
 
     this.closeNewModelModal();
+
+    // 1. Create a genuinely new isolated blank model in ModelRegistry
+    const cleanModel = ModelRegistry.createBlankModel(slug, name);
+
+    // 2. Persist blank design in DesignService local cache so routing, refreshing, and other pages recognize it
+    await DesignService.saveDesign({
+      id: slug,
+      name: name,
+      category: 'Custom Designs',
+      description: 'Blank construction puzzle design canvas.',
+      jsCode: code,
+      modelData: {
+        id: slug,
+        name: name,
+        category: 'Custom Designs',
+        description: 'Blank construction puzzle design canvas.',
+        difficulty: 'Level 1 - Beginner',
+        defaultScale: 1.0,
+        parts: [],
+        assemblies: [],
+        assemblySteps: [],
+        manufacturingSheets: [],
+        cameraBookmarks: []
+      }
+    });
+
+    // 3. Update AppState to make the new model active and reset model-specific states
+    AppState.setState({
+      activeModelId: slug,
+      selectedPartId: null,
+      activeStep: 0,
+      explodeFactor: 0.0
+    });
+
+    // 4. Reset 3D Engine assembly
+    if (this.engine) {
+      this.engine.loadModel(cleanModel, AppState.getState().materialThickness);
+      if (typeof THREE !== 'undefined' && this.engine.setCameraLook) {
+        this.engine.setCameraLook(new THREE.Vector3(0, 50, 0), 380, 0.55, -0.75);
+      }
+    }
+
+    // 5. Open clean blank editor drawer
     this.open(code, { id: slug, name, isBlank: true });
+    this.hasUnsavedChanges = false;
+
+    // 6. Notify application (renders active model & updates navbar)
+    if (this.onModelUpdated) {
+      this.onModelUpdated(cleanModel);
+    }
 
     // Set clean status
     const status = document.getElementById('editor-status-text');
@@ -537,9 +586,10 @@ export class CodeEditorPanel {
 
     const status = document.getElementById('editor-status-text');
 
-    if (!code || !code.trim()) {
+    const codeWithoutComments = code ? code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').trim() : '';
+    if (!code || !code.trim() || !codeWithoutComments) {
       if (status) status.innerText = 'Editor is empty';
-      Toast.show('Editor is empty. Load a template or write code to preview.', 'ℹ️');
+      Toast.show('Editor has no model code yet. Paste or write model code to preview.', 'ℹ️');
       return null;
     }
 
@@ -652,9 +702,9 @@ export class CodeEditorPanel {
   }
 
   async confirmSaveModal() {
-    const name = document.getElementById('save-input-name').value.trim();
-    const category = document.getElementById('save-input-cat').value.trim();
-    const desc = document.getElementById('save-input-desc').value.trim();
+    const name = document.getElementById('save-input-name')?.value?.trim() || '';
+    const category = document.getElementById('save-input-cat')?.value?.trim() || '';
+    const desc = document.getElementById('save-input-desc')?.value?.trim() || '';
 
     if (!name) {
       Toast.show('Please enter a design name.', '⚠️');

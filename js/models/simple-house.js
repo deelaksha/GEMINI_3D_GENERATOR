@@ -3,12 +3,52 @@
  * Section 22 & 36 of Master Context: Proves universal, reusable modularity.
  */
 
+import { ConnectorStandards } from '../core/connectors.js';
+
 export const SimpleHouseModelData = {
   id: 'simple-house',
   name: 'Country Gable House',
   category: 'Residential / Starter',
   description: '12-piece introductory zero-glue architectural puzzle with interlocking mortise-and-tenon walls, pitched roof, and gabled chimney.',
   difficulty: 'Level 1 — Beginner (12 parts)',
+  joints: [
+    // Floor foundation mortise-tenons
+    { id: 'J-H01-H02', sourcePart: 'H-02', targetPart: 'H-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 50, depth: 3.0 }, position: [0, -35], receiverAxis: 'X' },
+    { id: 'J-H01-H03', sourcePart: 'H-03', targetPart: 'H-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 50, depth: 3.0 }, position: [0, 35], receiverAxis: 'X' },
+    { id: 'J-H01-H04', sourcePart: 'H-04', targetPart: 'H-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 40, depth: 3.0 }, position: [-35, 0], receiverAxis: 'Y' },
+    { id: 'J-H01-H05', sourcePart: 'H-05', targetPart: 'H-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 40, depth: 3.0 }, position: [35, 0], receiverAxis: 'Y' },
+
+    // Wall corner interlocking tabs (H-04 and H-05 into H-02 and H-03)
+    { id: 'J-H02-H04', sourcePart: 'H-04', targetPart: 'H-02', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 20, depth: 3.0 }, position: [-35, -25], receiverAxis: 'Y', connectorAxis: 'Y' },
+    { id: 'J-H02-H05', sourcePart: 'H-05', targetPart: 'H-02', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 20, depth: 3.0 }, position: [35, -25], receiverAxis: 'Y', connectorAxis: 'Y' },
+    { id: 'J-H03-H04', sourcePart: 'H-04', targetPart: 'H-03', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 20, depth: 3.0 }, position: [35, -25], receiverAxis: 'Y', connectorAxis: 'Y' },
+    { id: 'J-H03-H05', sourcePart: 'H-05', targetPart: 'H-03', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 20, depth: 3.0 }, position: [-35, -25], receiverAxis: 'Y', connectorAxis: 'Y' },
+
+    // Roof ridge apex contact
+    { id: 'J-H07-H08', sourcePart: 'H-07', targetPart: 'H-08', type: 'contact', connectionType: 'roof-ridge', worldPos: [0, 85, 0] },
+
+    // Roof resting on front and rear gable walls
+    { id: 'J-H02-H07', sourcePart: 'H-07', targetPart: 'H-02', type: 'contact', connectionType: 'roof-gable', worldPos: [-20, 68, 35] },
+    { id: 'J-H02-H08', sourcePart: 'H-08', targetPart: 'H-02', type: 'contact', connectionType: 'roof-gable', worldPos: [20, 68, 35] },
+    { id: 'J-H03-H07', sourcePart: 'H-07', targetPart: 'H-03', type: 'contact', connectionType: 'roof-gable', worldPos: [-20, 68, -35] },
+    { id: 'J-H03-H08', sourcePart: 'H-08', targetPart: 'H-03', type: 'contact', connectionType: 'roof-gable', worldPos: [20, 68, -35] },
+
+    // Ridge cap beam sitting on top of the ridge
+    { id: 'J-H07-H09', sourcePart: 'H-09', targetPart: 'H-07', type: 'contact', connectionType: 'ridge-cap', worldPos: [0, 88, 0] },
+    { id: 'J-H08-H09', sourcePart: 'H-09', targetPart: 'H-08', type: 'contact', connectionType: 'ridge-cap', worldPos: [0, 88, 0] },
+
+    // Chimney tab to right roof
+    { id: 'J-H08-H10', sourcePart: 'H-10', targetPart: 'H-08', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 10, depth: 3.0 }, position: [0, -18], receiverAxis: 'X', connectorAxis: 'X', worldPos: [20, 80, 18] },
+
+    // Door opening detail
+    { id: 'J-H02-H06', sourcePart: 'H-06', targetPart: 'H-02', type: 'contact', connectionType: 'doorway', worldPos: [0, 18, 36] },
+
+    // Corner gusset supports
+    { id: 'J-H02-H11', sourcePart: 'H-11', targetPart: 'H-02', type: 'contact', worldPos: [-30, 21.5, 34] },
+    { id: 'J-H04-H11', sourcePart: 'H-11', targetPart: 'H-04', type: 'contact', worldPos: [-35, 21.5, 25] },
+    { id: 'J-H02-H12', sourcePart: 'H-12', targetPart: 'H-02', type: 'contact', worldPos: [30, 21.5, 34] },
+    { id: 'J-H05-H12', sourcePart: 'H-12', targetPart: 'H-05', type: 'contact', worldPos: [35, 21.5, 25] }
+  ],
   cameraBookmarks: [
     { name: 'Isometric View', eye: [120, 110, 140], target: [0, 25, 0], dist: 220 },
     { name: 'Front Porch View', eye: [0, 20, 120], target: [0, 20, 0], dist: 130, select: 'H-06' },
@@ -93,17 +133,12 @@ export const SimpleHouseModelData = {
         outline: [
           [-50, -40], [50, -40], [50, 40], [-50, 40]
         ],
-        cutouts: [
-          { x: -45, y: 0, w: t + clr, h: 40 },
-          { x: 45, y: 0, w: t + clr, h: 40 },
-          { x: 0, y: -35, w: 50, h: t + clr },
-          { x: 0, y: 35, w: 50, h: t + clr }
-        ],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('H-01', SimpleHouseModelData.joints, t, clr),
         engravings: [
           { type: 'rect', x: -40, y: -30, w: 80, h: 60 }
         ]
       }),
-      connections: ['H-02', 'H-03', 'H-04', 'H-05']
+      connections: ['H-02', 'H-03', 'H-04', 'H-05', 'H-06']
     },
     {
       id: 'H-02',
@@ -116,22 +151,21 @@ export const SimpleHouseModelData = {
       length: 85,
       sheet: 1,
       fileSizeKB: '1.8 KB',
-      assembledPos: [0, 40, 35],
+      assembledPos: (t = 3.0) => [0, 40 + t / 2, 35],
       assembledRot: [0, 0, 0],
       explodeVec: [0, 0, 45],
-      generate2D: (t) => ({
+      generate2D: (t, kerf, clr) => ({
         outline: [
           [-40, -40], [-25, -40], [-25, -40 - t], [25, -40 - t], [25, -40],
           [40, -40], [40, 10], [0, 45], [-40, 10]
         ],
         cutouts: [
           { x: 0, y: -22, w: 20, h: 36, arched: true },
-          { x: -35, y: -10, w: t + 0.1, h: 20 },
-          { x: 35, y: -10, w: t + 0.1, h: 20 }
+          ...ConnectorStandards.deriveCutoutsForPart('H-02', SimpleHouseModelData.joints, t, clr)
         ],
         engravings: [{ type: 'circle', x: 0, y: 22, r: 8 }]
       }),
-      connections: ['H-01', 'H-04', 'H-05', 'H-06', 'H-07', 'H-08']
+      connections: ['H-01', 'H-04', 'H-05', 'H-06', 'H-07', 'H-08', 'H-09']
     },
     {
       id: 'H-03',
@@ -144,22 +178,21 @@ export const SimpleHouseModelData = {
       length: 85,
       sheet: 1,
       fileSizeKB: '1.6 KB',
-      assembledPos: [0, 40, -35],
+      assembledPos: (t = 3.0) => [0, 40 + t / 2, -35],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [0, 0, -45],
-      generate2D: (t) => ({
+      generate2D: (t, kerf, clr) => ({
         outline: [
           [-40, -40], [-25, -40], [-25, -40 - t], [25, -40 - t], [25, -40],
           [40, -40], [40, 10], [0, 45], [-40, 10]
         ],
         cutouts: [
           { x: 0, y: -10, w: 16, h: 22, arched: true },
-          { x: -35, y: -10, w: t + 0.1, h: 20 },
-          { x: 35, y: -10, w: t + 0.1, h: 20 }
+          ...ConnectorStandards.deriveCutoutsForPart('H-03', SimpleHouseModelData.joints, t, clr)
         ],
         engravings: [{ type: 'circle', x: 0, y: 22, r: 8 }]
       }),
-      connections: ['H-01', 'H-04', 'H-05', 'H-07', 'H-08']
+      connections: ['H-01', 'H-04', 'H-05', 'H-07', 'H-08', 'H-09']
     },
     {
       id: 'H-04',
@@ -172,13 +205,14 @@ export const SimpleHouseModelData = {
       length: 50,
       sheet: 1,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-45, 25, 0],
+      assembledPos: (t = 3.0) => [-35, 25 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-45, 0, 0],
       generate2D: (t) => ({
         outline: [
           [-35, -25], [-20, -25], [-20, -25 - t], [20, -25 - t], [20, -25],
-          [35, -25], [35, 25], [-35, 25]
+          [35, -25], [35, -20], [35 + t, -20], [35 + t, 0], [35, 0], [35, 25],
+          [-35, 25], [-35, 0], [-35 - t, 0], [-35 - t, -20], [-35, -20]
         ],
         cutouts: [
           { x: -16, y: 2, w: 14, h: 18, arched: true },
@@ -186,7 +220,7 @@ export const SimpleHouseModelData = {
         ],
         engravings: [{ type: 'line', x1: -30, y1: -18, x2: 30, y2: -18 }]
       }),
-      connections: ['H-01', 'H-02', 'H-03', 'H-11']
+      connections: ['H-01', 'H-02', 'H-03', 'H-07', 'H-11']
     },
     {
       id: 'H-05',
@@ -199,13 +233,14 @@ export const SimpleHouseModelData = {
       length: 50,
       sheet: 1,
       fileSizeKB: '1.4 KB',
-      assembledPos: [45, 25, 0],
+      assembledPos: (t = 3.0) => [35, 25 + t / 2, 0],
       assembledRot: [0, -Math.PI / 2, 0],
       explodeVec: [45, 0, 0],
       generate2D: (t) => ({
         outline: [
           [-35, -25], [-20, -25], [-20, -25 - t], [20, -25 - t], [20, -25],
-          [35, -25], [35, 25], [-35, 25]
+          [35, -25], [35, -20], [35 + t, -20], [35 + t, 0], [35, 0], [35, 25],
+          [-35, 25], [-35, 0], [-35 - t, 0], [-35 - t, -20], [-35, -20]
         ],
         cutouts: [
           { x: -16, y: 2, w: 14, h: 18, arched: true },
@@ -213,7 +248,7 @@ export const SimpleHouseModelData = {
         ],
         engravings: [{ type: 'line', x1: -30, y1: -18, x2: 30, y2: -18 }]
       }),
-      connections: ['H-01', 'H-02', 'H-03', 'H-12']
+      connections: ['H-01', 'H-02', 'H-03', 'H-08', 'H-12']
     },
     {
       id: 'H-06',
@@ -226,7 +261,7 @@ export const SimpleHouseModelData = {
       length: 34,
       sheet: 1,
       fileSizeKB: '1.1 KB',
-      assembledPos: [0, 18, 36],
+      assembledPos: (t = 3.0) => [0, 18.5 + t / 2, 36],
       assembledRot: [0, 0, 0],
       explodeVec: [0, 0, 55],
       generate2D: () => ({
@@ -238,7 +273,7 @@ export const SimpleHouseModelData = {
           { type: 'rect', x: -6, y: -14, w: 12, h: 10 }
         ]
       }),
-      connections: ['H-02']
+      connections: ['H-01', 'H-02']
     },
     {
       id: 'H-07',
@@ -251,18 +286,16 @@ export const SimpleHouseModelData = {
       length: 60,
       sheet: 1,
       fileSizeKB: '1.5 KB',
-      assembledPos: [-24, 64, 0],
-      assembledRot: [0, 0, Math.PI / 4.4],
+      assembledPos: (t = 3.0) => [-20 - (t / 2) * 0.6586, 67.5 + t / 2 + (t / 2) * 0.7525, 0],
+      assembledRot: [-Math.PI / 2, 0, Math.PI / 4.37],
       explodeVec: [-35, 35, 0],
-      generate2D: (t) => ({
-        outline: [[-45, -30], [45, -30], [45, 30], [-45, 30]],
-        cutouts: [
-          { x: 0, y: 22, w: 30, h: t + 0.1 }
-        ],
+      generate2D: (t, kerf, clr) => ({
+        outline: [[-28, -45], [28, -45], [28, 45], [-28, 45]],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('H-07', SimpleHouseModelData.joints, t, clr),
         engravings: [
-          { type: 'line', x1: -40, y1: -15, x2: 40, y2: -15 },
-          { type: 'line', x1: -40, y1: 0, x2: 40, y2: 0 },
-          { type: 'line', x1: -40, y1: 15, x2: 40, y2: 15 }
+          { type: 'line', x1: -20, y1: -35, x2: 20, y2: -35 },
+          { type: 'line', x1: -20, y1: 0, x2: 20, y2: 0 },
+          { type: 'line', x1: -20, y1: 35, x2: 20, y2: 35 }
         ]
       }),
       connections: ['H-02', 'H-03', 'H-08', 'H-09']
@@ -278,19 +311,16 @@ export const SimpleHouseModelData = {
       length: 60,
       sheet: 1,
       fileSizeKB: '1.6 KB',
-      assembledPos: [24, 64, 0],
-      assembledRot: [0, 0, -Math.PI / 4.4],
+      assembledPos: (t = 3.0) => [20 + (t / 2) * 0.6586, 67.5 + t / 2 + (t / 2) * 0.7525, 0],
+      assembledRot: [-Math.PI / 2, 0, -Math.PI / 4.37],
       explodeVec: [35, 35, 0],
-      generate2D: (t) => ({
-        outline: [[-45, -30], [45, -30], [45, 30], [-45, 30]],
-        cutouts: [
-          { x: 0, y: 22, w: 30, h: t + 0.1 },
-          { x: 18, y: -5, w: 12, h: t + 0.1 }
-        ],
+      generate2D: (t, kerf, clr) => ({
+        outline: [[-28, -45], [28, -45], [28, 45], [-28, 45]],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('H-08', SimpleHouseModelData.joints, t, clr),
         engravings: [
-          { type: 'line', x1: -40, y1: -15, x2: 40, y2: -15 },
-          { type: 'line', x1: -40, y1: 0, x2: 40, y2: 0 },
-          { type: 'line', x1: -40, y1: 15, x2: 40, y2: 15 }
+          { type: 'line', x1: -20, y1: -35, x2: 20, y2: -35 },
+          { type: 'line', x1: -20, y1: 0, x2: 20, y2: 0 },
+          { type: 'line', x1: -20, y1: 35, x2: 20, y2: 35 }
         ]
       }),
       connections: ['H-02', 'H-03', 'H-07', 'H-09', 'H-10']
@@ -306,7 +336,7 @@ export const SimpleHouseModelData = {
       length: 14,
       sheet: 1,
       fileSizeKB: '1.2 KB',
-      assembledPos: [0, 84, 0],
+      assembledPos: (t = 3.0) => [0, 85 + 7 + t, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [0, 45, 0],
       generate2D: (t) => ({
@@ -319,7 +349,7 @@ export const SimpleHouseModelData = {
         ],
         engravings: []
       }),
-      connections: ['H-07', 'H-08']
+      connections: ['H-02', 'H-03', 'H-07', 'H-08']
     },
     {
       id: 'H-10',
@@ -332,7 +362,7 @@ export const SimpleHouseModelData = {
       length: 32,
       sheet: 1,
       fileSizeKB: '1.2 KB',
-      assembledPos: [24, 78, 18],
+      assembledPos: (t = 3.0) => [20, 80 + t, 18],
       assembledRot: [0, 0, 0],
       explodeVec: [24, 45, 18],
       generate2D: (t) => ({
@@ -360,12 +390,12 @@ export const SimpleHouseModelData = {
       length: 24,
       sheet: 1,
       fileSizeKB: '1.1 KB',
-      assembledPos: [-38, 20, 28],
+      assembledPos: (t = 3.0) => [-30, 20 + t / 2, 25],
       assembledRot: [0, Math.PI / 4, 0],
       explodeVec: [-38, 20, 40],
       generate2D: () => ({
         outline: [[-12, -12], [12, -12], [-12, 12]],
-        cutouts: [{ x: -4, y: -4, w: 6, h: 6, arched: true }],
+        cutouts: [{ x: -5, y: -5, w: 5, h: 5, arched: true }],
         engravings: []
       }),
       connections: ['H-02', 'H-04']
@@ -381,12 +411,12 @@ export const SimpleHouseModelData = {
       length: 24,
       sheet: 1,
       fileSizeKB: '1.1 KB',
-      assembledPos: [38, 20, 28],
+      assembledPos: (t = 3.0) => [30, 20 + t / 2, 25],
       assembledRot: [0, -Math.PI / 4, 0],
       explodeVec: [38, 20, 40],
       generate2D: () => ({
         outline: [[-12, -12], [12, -12], [-12, 12]],
-        cutouts: [{ x: -4, y: -4, w: 6, h: 6, arched: true }],
+        cutouts: [{ x: -5, y: -5, w: 5, h: 5, arched: true }],
         engravings: []
       }),
       connections: ['H-02', 'H-05']

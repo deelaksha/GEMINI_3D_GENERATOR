@@ -1,7 +1,4 @@
-/**
- * Authoritative Model Dataset: Grand Gothic Cathedral (32 Pieces)
- * Physical Zero-Glue Modular Assembly Architecture
- */
+import { ConnectorStandards } from '../core/connectors.js';
 
 export const CathedralModelData = {
   id: 'cathedral',
@@ -9,6 +6,46 @@ export const CathedralModelData = {
   category: 'Architectural / Heritage',
   description: '32-piece zero-glue cruciform gothic cathedral featuring flying buttresses, ribbed transepts, nave pews, and flèche spire.',
   difficulty: 'Level 2 — Intermediate (32 parts)',
+  joints: [
+    // Baseplate floor mortises (CH-01)
+    { id: 'J-CH01-CH02-1', sourcePart: 'CH-02', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 22, depth: 3.0 }, position: [-80, 36] },
+    { id: 'J-CH01-CH02-2', sourcePart: 'CH-02', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 22, depth: 3.0 }, position: [-35, 36] },
+    { id: 'J-CH01-CH04-1', sourcePart: 'CH-04', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 22, depth: 3.0 }, position: [-80, -36] },
+    { id: 'J-CH01-CH04-2', sourcePart: 'CH-04', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 22, depth: 3.0 }, position: [-35, -36] },
+    { id: 'J-CH01-CH03', sourcePart: 'CH-03', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 30, depth: 3.0 }, position: [80, 36] },
+    { id: 'J-CH01-CH05', sourcePart: 'CH-05', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 30, depth: 3.0 }, position: [80, -36] },
+    { id: 'J-CH01-CH08', sourcePart: 'CH-08', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 32, depth: 3.0 }, position: [-115, 0], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH09', sourcePart: 'CH-09', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 32, depth: 3.0 }, position: [115, 0], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH06', sourcePart: 'CH-06', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 24, depth: 3.0 }, position: [30, 80] },
+    { id: 'J-CH01-CH07', sourcePart: 'CH-07', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 24, depth: 3.0 }, position: [30, -80] },
+    { id: 'J-CH01-CH10', sourcePart: 'CH-10', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 45, depth: 3.0 }, position: [5, 0], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH15', sourcePart: 'CH-15', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 14, depth: 3.0 }, position: [-80, 55] },
+    { id: 'J-CH01-CH16', sourcePart: 'CH-16', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 14, depth: 3.0 }, position: [-35, 55] },
+    { id: 'J-CH01-CH17', sourcePart: 'CH-17', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 14, depth: 3.0 }, position: [-80, -55] },
+    { id: 'J-CH01-CH18', sourcePart: 'CH-18', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 14, depth: 3.0 }, position: [-35, -55] },
+    { id: 'J-CH01-CH26', sourcePart: 'CH-26', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 16, depth: 3.0 }, position: [-65, 18], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH27', sourcePart: 'CH-27', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 16, depth: 3.0 }, position: [-65, -18], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH28', sourcePart: 'CH-28', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 16, depth: 3.0 }, position: [-35, 18], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH29', sourcePart: 'CH-29', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 16, depth: 3.0 }, position: [-35, -18], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH30', sourcePart: 'CH-30', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 12, depth: 3.0 }, position: [-10, 22] },
+    { id: 'J-CH01-CH31', sourcePart: 'CH-31', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 16, depth: 3.0 }, position: [85, 0], receiverAxis: 'Y' },
+    { id: 'J-CH01-CH32', sourcePart: 'CH-32', targetPart: 'CH-01', type: 'mortise-tenon', sourceConnector: { type: 'tab', width: 10, depth: 3.0 }, position: [-95, 0], receiverAxis: 'X' },
+
+    // Roof ridge finger joint
+    { id: 'J-CH11-CH12', sourcePart: 'CH-11', targetPart: 'CH-12', type: 'edge-finger', connectionType: 'roof-ridge', tabWidth: 30, tabDepth: 3.0, worldPos: [0, 81, 0] },
+
+    // Transept roof valley abuts
+    { id: 'J-CH13-CH11', sourcePart: 'CH-13', targetPart: 'CH-11', type: 'valley-abut', connectionType: 'transept-valley', worldPos: [30, 74, -40] },
+    { id: 'J-CH14-CH12', sourcePart: 'CH-14', targetPart: 'CH-12', type: 'valley-abut', connectionType: 'transept-valley', worldPos: [30, 74, 40] },
+
+    // Transept roof resting on transept gables
+    { id: 'J-CH06-CH13', sourcePart: 'CH-13', targetPart: 'CH-06', type: 'contact', connectionType: 'roof-gable', worldPos: [30, 72, -84] },
+    { id: 'J-CH07-CH14', sourcePart: 'CH-14', targetPart: 'CH-07', type: 'contact', connectionType: 'roof-gable', worldPos: [30, 72, 84] },
+
+    // Rood screen transverse gable contact to roof underside
+    { id: 'J-CH10-CH11', sourcePart: 'CH-10', targetPart: 'CH-11', type: 'contact', connectionType: 'gable-arch', worldPos: [5, 75, -17] },
+    { id: 'J-CH10-CH12', sourcePart: 'CH-10', targetPart: 'CH-12', type: 'contact', connectionType: 'gable-arch', worldPos: [5, 75, 17] }
+  ],
   cameraBookmarks: [
     { name: 'Isometric View', eye: [180, 160, 220], target: [0, 50, 0], dist: 380 },
     { name: 'West Aisle (Pew View)', eye: [-118, 22, 0], target: [75, 18, 0], dist: 155, select: 'CH-32' },
@@ -131,30 +168,7 @@ export const CathedralModelData = {
           [-125, -40], [5, -40], [5, -85], [55, -85], [55, -40], [125, -40],
           [125, 40], [55, 40], [55, 85], [5, 85], [5, 40], [-125, 40]
         ],
-        cutouts: [
-          { x: -80, y: -36, w: 22, h: t + clr },
-          { x: -35, y: -36, w: 22, h: t + clr },
-          { x: -80, y: 36, w: 22, h: t + clr },
-          { x: -35, y: 36, w: 22, h: t + clr },
-          { x: 80, y: -36, w: 22, h: t + clr },
-          { x: 80, y: 36, w: 22, h: t + clr },
-          { x: -115, y: 0, w: t + clr, h: 32 },
-          { x: 115, y: 0, w: t + clr, h: 32 },
-          { x: 30, y: -80, w: 24, h: t + clr },
-          { x: 30, y: 80, w: 24, h: t + clr },
-          { x: 5, y: 0, w: t + clr, h: 45 },
-          { x: -80, y: -55, w: 14, h: t + clr },
-          { x: -35, y: -55, w: 14, h: t + clr },
-          { x: -80, y: 55, w: 14, h: t + clr },
-          { x: -35, y: 55, w: 14, h: t + clr },
-          { x: -65, y: -18, w: 16, h: t + clr },
-          { x: -65, y: 18, w: 16, h: t + clr },
-          { x: -35, y: -18, w: 16, h: t + clr },
-          { x: -35, y: 18, w: 16, h: t + clr },
-          { x: -10, y: -22, w: 12, h: t + clr },
-          { x: 85, y: 0, w: 16, h: t + clr },
-          { x: -95, y: 0, w: 10, h: t + clr }
-        ],
+        cutouts: ConnectorStandards.deriveCutoutsForPart('CH-01', CathedralModelData.joints, t, clr),
         engravings: [
           { type: 'rect', x: -120, y: -35, w: 240, h: 70 },
           { type: 'rect', x: 10, y: -80, w: 40, h: 160 }
@@ -173,7 +187,7 @@ export const CathedralModelData = {
       length: 18,
       sheet: 2,
       fileSizeKB: '1.2 KB',
-      assembledPos: [-65, 9, -18],
+      assembledPos: (t = 3.0) => [-65, 9 + t / 2, -18],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-65, 30, -35],
       generate2D: (t) => ({
@@ -181,7 +195,7 @@ export const CathedralModelData = {
           [-15, -9], [-8, -9], [-8, -9 - t], [8, -9 - t], [8, -9],
           [15, -9], [15, 9], [-15, 9]
         ],
-        cutouts: [{ x: 0, y: 2, w: 20, h: 4 }],
+        cutouts: [{ x: 0, y: 2, w: 20, h: 4, type: 'decorative' }],
         engravings: [{ type: 'line', x1: -12, y1: -2, x2: 12, y2: -2 }]
       }),
       connections: ['CH-01']
@@ -197,7 +211,7 @@ export const CathedralModelData = {
       length: 18,
       sheet: 2,
       fileSizeKB: '1.2 KB',
-      assembledPos: [-65, 9, 18],
+      assembledPos: (t = 3.0) => [-65, 9 + t / 2, 18],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-65, 30, 35],
       generate2D: (t) => ({
@@ -205,7 +219,7 @@ export const CathedralModelData = {
           [-15, -9], [-8, -9], [-8, -9 - t], [8, -9 - t], [8, -9],
           [15, -9], [15, 9], [-15, 9]
         ],
-        cutouts: [{ x: 0, y: 2, w: 20, h: 4 }],
+        cutouts: [{ x: 0, y: 2, w: 20, h: 4, type: 'decorative' }],
         engravings: [{ type: 'line', x1: -12, y1: -2, x2: 12, y2: -2 }]
       }),
       connections: ['CH-01']
@@ -221,7 +235,7 @@ export const CathedralModelData = {
       length: 18,
       sheet: 2,
       fileSizeKB: '1.2 KB',
-      assembledPos: [-35, 9, -18],
+      assembledPos: (t = 3.0) => [-35, 9 + t / 2, -18],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-35, 30, -35],
       generate2D: (t) => ({
@@ -229,7 +243,7 @@ export const CathedralModelData = {
           [-15, -9], [-8, -9], [-8, -9 - t], [8, -9 - t], [8, -9],
           [15, -9], [15, 9], [-15, 9]
         ],
-        cutouts: [{ x: 0, y: 2, w: 20, h: 4 }],
+        cutouts: [{ x: 0, y: 2, w: 20, h: 4, type: 'decorative' }],
         engravings: [{ type: 'line', x1: -12, y1: -2, x2: 12, y2: -2 }]
       }),
       connections: ['CH-01']
@@ -245,7 +259,7 @@ export const CathedralModelData = {
       length: 18,
       sheet: 2,
       fileSizeKB: '1.2 KB',
-      assembledPos: [-35, 9, 18],
+      assembledPos: (t = 3.0) => [-35, 9 + t / 2, 18],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-35, 30, 35],
       generate2D: (t) => ({
@@ -253,7 +267,7 @@ export const CathedralModelData = {
           [-15, -9], [-8, -9], [-8, -9 - t], [8, -9 - t], [8, -9],
           [15, -9], [15, 9], [-15, 9]
         ],
-        cutouts: [{ x: 0, y: 2, w: 20, h: 4 }],
+        cutouts: [{ x: 0, y: 2, w: 20, h: 4, type: 'decorative' }],
         engravings: [{ type: 'line', x1: -12, y1: -2, x2: 12, y2: -2 }]
       }),
       connections: ['CH-01']
@@ -269,7 +283,7 @@ export const CathedralModelData = {
       length: 32,
       sheet: 2,
       fileSizeKB: '1.3 KB',
-      assembledPos: [-10, 16, -22],
+      assembledPos: (t = 3.0) => [-10, 16 + t / 2, -22],
       assembledRot: [0, Math.PI / 4, 0],
       explodeVec: [-10, 40, -45],
       generate2D: (t) => ({
@@ -293,7 +307,7 @@ export const CathedralModelData = {
       length: 28,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [85, 14, 0],
+      assembledPos: (t = 3.0) => [85, 14 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [85, 35, 0],
       generate2D: (t) => ({
@@ -320,7 +334,7 @@ export const CathedralModelData = {
       length: 22,
       sheet: 2,
       fileSizeKB: '1.1 KB',
-      assembledPos: [-95, 11, 0],
+      assembledPos: (t = 3.0) => [-95, 11 + t / 2, 0],
       assembledRot: [0, 0, 0],
       explodeVec: [-95, 35, 0],
       generate2D: (t) => ({
@@ -346,7 +360,7 @@ export const CathedralModelData = {
       length: 65,
       sheet: 1,
       fileSizeKB: '2.1 KB',
-      assembledPos: [-57, 32.5, -36],
+      assembledPos: (t = 3.0) => [-57, 32.5 + t / 2, -36],
       assembledRot: [0, 0, 0],
       explodeVec: [-57, 0, -55],
       generate2D: (t) => ({
@@ -380,7 +394,7 @@ export const CathedralModelData = {
       length: 65,
       sheet: 1,
       fileSizeKB: '1.8 KB',
-      assembledPos: [85, 32.5, -36],
+      assembledPos: (t = 3.0) => [85, 32.5 + t / 2, -36],
       assembledRot: [0, 0, 0],
       explodeVec: [85, 0, -55],
       generate2D: (t) => ({
@@ -409,7 +423,7 @@ export const CathedralModelData = {
       length: 65,
       sheet: 1,
       fileSizeKB: '2.1 KB',
-      assembledPos: [-57, 32.5, 36],
+      assembledPos: (t = 3.0) => [-57, 32.5 + t / 2, 36],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [-57, 0, 55],
       generate2D: (t) => ({
@@ -443,7 +457,7 @@ export const CathedralModelData = {
       length: 65,
       sheet: 1,
       fileSizeKB: '1.8 KB',
-      assembledPos: [85, 32.5, 36],
+      assembledPos: (t = 3.0) => [85, 32.5 + t / 2, 36],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [85, 0, 55],
       generate2D: (t) => ({
@@ -472,7 +486,7 @@ export const CathedralModelData = {
       length: 105,
       sheet: 1,
       fileSizeKB: '2.3 KB',
-      assembledPos: [115, 52.5, 0],
+      assembledPos: (t = 3.0) => [115, 52.5 + t / 2, 0],
       assembledRot: [0, -Math.PI / 2, 0],
       explodeVec: [75, 0, 0],
       generate2D: (t) => ({
@@ -503,7 +517,7 @@ export const CathedralModelData = {
       length: 90,
       sheet: 1,
       fileSizeKB: '1.9 KB',
-      assembledPos: [5, 45, 0],
+      assembledPos: (t = 3.0) => [5, 45 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [5, 40, 0],
       generate2D: (t) => ({
@@ -514,7 +528,7 @@ export const CathedralModelData = {
         cutouts: [{ x: 0, y: -10, w: 38, h: 58, arched: true }],
         engravings: [{ type: 'cross', x: 0, y: 32, size: 8 }]
       }),
-      connections: ['CH-01', 'CH-02', 'CH-04', 'CH-23']
+      connections: ['CH-01', 'CH-02', 'CH-04', 'CH-11', 'CH-12', 'CH-23']
     },
 
     // GROUP 3: TRANSEPT WINGS
@@ -529,7 +543,7 @@ export const CathedralModelData = {
       length: 95,
       sheet: 1,
       fileSizeKB: '1.9 KB',
-      assembledPos: [30, 47.5, -85],
+      assembledPos: (t = 3.0) => [30, 47.5 + t / 2, -85],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [30, 0, -60],
       generate2D: (t) => ({
@@ -559,7 +573,7 @@ export const CathedralModelData = {
       length: 95,
       sheet: 1,
       fileSizeKB: '1.9 KB',
-      assembledPos: [30, 47.5, 85],
+      assembledPos: (t = 3.0) => [30, 47.5 + t / 2, 85],
       assembledRot: [0, 0, 0],
       explodeVec: [30, 0, 60],
       generate2D: (t) => ({
@@ -593,11 +607,11 @@ export const CathedralModelData = {
       assembledRot: [0, Math.PI / 2, Math.PI / 4],
       explodeVec: [30, 40, -50],
       generate2D: (t) => ({
-        outline: [[-24, -25], [24, -25], [24, 25], [-24, 25]],
+        outline: [[-24, -22], [24, -22], [24, 22], [-24, 22]],
         cutouts: [],
         engravings: [{ type: 'line', x1: -22, y1: 0, x2: 22, y2: 0 }]
       }),
-      connections: ['CH-06', 'CH-23']
+      connections: ['CH-06', 'CH-11', 'CH-23']
     },
     {
       id: 'CH-14',
@@ -614,11 +628,11 @@ export const CathedralModelData = {
       assembledRot: [0, -Math.PI / 2, Math.PI / 4],
       explodeVec: [30, 40, 50],
       generate2D: (t) => ({
-        outline: [[-24, -25], [24, -25], [24, 25], [-24, 25]],
+        outline: [[-24, -22], [24, -22], [24, 22], [-24, 22]],
         cutouts: [],
         engravings: [{ type: 'line', x1: -22, y1: 0, x2: 22, y2: 0 }]
       }),
-      connections: ['CH-07', 'CH-23']
+      connections: ['CH-07', 'CH-12', 'CH-23']
     },
 
     // GROUP 4: BUTTRESSES
@@ -633,7 +647,7 @@ export const CathedralModelData = {
       length: 45,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-80, 22, -45],
+      assembledPos: (t = 3.0) => [-80, 22 + t / 2, -45],
       assembledRot: [0, 0, 0],
       explodeVec: [-80, 15, -45],
       generate2D: (t) => ({
@@ -657,7 +671,7 @@ export const CathedralModelData = {
       length: 45,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-35, 22, -45],
+      assembledPos: (t = 3.0) => [-35, 22 + t / 2, -45],
       assembledRot: [0, 0, 0],
       explodeVec: [-35, 15, -45],
       generate2D: (t) => ({
@@ -681,7 +695,7 @@ export const CathedralModelData = {
       length: 45,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-80, 22, 45],
+      assembledPos: (t = 3.0) => [-80, 22 + t / 2, 45],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [-80, 15, 45],
       generate2D: (t) => ({
@@ -705,7 +719,7 @@ export const CathedralModelData = {
       length: 45,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-35, 22, 45],
+      assembledPos: (t = 3.0) => [-35, 22 + t / 2, 45],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [-35, 15, 45],
       generate2D: (t) => ({
@@ -731,7 +745,7 @@ export const CathedralModelData = {
       length: 120,
       sheet: 1,
       fileSizeKB: '2.5 KB',
-      assembledPos: [-115, 60, 0],
+      assembledPos: (t = 3.0) => [-115, 60 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-75, 0, 0],
       generate2D: (t) => ({
@@ -742,8 +756,8 @@ export const CathedralModelData = {
         cutouts: [
           { x: -14, y: -36, w: 14, h: 32, arched: true },
           { x: 14, y: -36, w: 14, h: 32, arched: true },
-          { x: -28, y: 15, w: t + 0.1, h: 18 },
-          { x: 28, y: 15, w: t + 0.1, h: 18 }
+          { x: -28, y: 15, w: 18, h: t + 0.1 },
+          { x: 28, y: 15, w: 18, h: t + 0.1 }
         ],
         engravings: [
           { type: 'circle', x: 0, y: 15, r: 15 },
@@ -763,7 +777,7 @@ export const CathedralModelData = {
       length: 90,
       sheet: 2,
       fileSizeKB: '1.5 KB',
-      assembledPos: [-115, 115, -26],
+      assembledPos: (t = 3.0) => [-115, 165 + t / 2, -26],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-60, 35, -30],
       generate2D: (t) => ({
@@ -787,7 +801,7 @@ export const CathedralModelData = {
       length: 90,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-103, 115, -36],
+      assembledPos: (t = 3.0) => [-103, 165 + t / 2, -36],
       assembledRot: [0, 0, 0],
       explodeVec: [-50, 35, -45],
       generate2D: (t) => ({
@@ -795,7 +809,7 @@ export const CathedralModelData = {
         cutouts: [{ x: 0, y: 14, w: 8, h: 26, arched: true }],
         engravings: [{ type: 'line', x1: -10, y1: -10, x2: 10, y2: -10 }]
       }),
-      connections: ['CH-19']
+      connections: ['CH-08', 'CH-11', 'CH-19']
     },
     {
       id: 'CH-21',
@@ -808,7 +822,7 @@ export const CathedralModelData = {
       length: 90,
       sheet: 2,
       fileSizeKB: '1.5 KB',
-      assembledPos: [-115, 115, 26],
+      assembledPos: (t = 3.0) => [-115, 165 + t / 2, 26],
       assembledRot: [0, Math.PI / 2, 0],
       explodeVec: [-60, 35, 30],
       generate2D: (t) => ({
@@ -832,7 +846,7 @@ export const CathedralModelData = {
       length: 90,
       sheet: 2,
       fileSizeKB: '1.4 KB',
-      assembledPos: [-103, 115, 36],
+      assembledPos: (t = 3.0) => [-103, 165 + t / 2, 36],
       assembledRot: [0, Math.PI, 0],
       explodeVec: [-50, 35, 45],
       generate2D: (t) => ({
@@ -840,7 +854,7 @@ export const CathedralModelData = {
         cutouts: [{ x: 0, y: 14, w: 8, h: 26, arched: true }],
         engravings: [{ type: 'line', x1: -10, y1: -10, x2: 10, y2: -10 }]
       }),
-      connections: ['CH-21']
+      connections: ['CH-08', 'CH-12', 'CH-21']
     },
     {
       id: 'CH-11',
@@ -866,7 +880,7 @@ export const CathedralModelData = {
         ],
         cutouts: [
           { x: 30, y: 15, w: 24, h: t + 0.1 },
-          { x: 100, y: 22, w: 10, h: t + 0.1 }
+          { x: 100, y: 20, w: t + 0.1, h: 8 }
         ],
         engravings: [
           { type: 'line', x1: -105, y1: -14, x2: 105, y2: -14 },
@@ -874,7 +888,7 @@ export const CathedralModelData = {
           { type: 'line', x1: -105, y1: 14, x2: 105, y2: 14 }
         ]
       }),
-      connections: ['CH-02', 'CH-03', 'CH-08', 'CH-09', 'CH-12', 'CH-23', 'CH-25']
+      connections: ['CH-02', 'CH-03', 'CH-08', 'CH-09', 'CH-10', 'CH-12']
     },
     {
       id: 'CH-12',
@@ -900,7 +914,7 @@ export const CathedralModelData = {
         ],
         cutouts: [
           { x: 30, y: 15, w: 24, h: t + 0.1 },
-          { x: 100, y: 22, w: 10, h: t + 0.1 }
+          { x: 100, y: 20, w: t + 0.1, h: 8 }
         ],
         engravings: [
           { type: 'line', x1: -105, y1: -14, x2: 105, y2: -14 },
@@ -908,7 +922,7 @@ export const CathedralModelData = {
           { type: 'line', x1: -105, y1: 14, x2: 105, y2: 14 }
         ]
       }),
-      connections: ['CH-04', 'CH-05', 'CH-08', 'CH-09', 'CH-11', 'CH-23', 'CH-25']
+      connections: ['CH-04', 'CH-05', 'CH-08', 'CH-09', 'CH-10', 'CH-11']
     },
 
     // GROUP 6: CROSSING LANTERN & SPIRE
@@ -958,7 +972,7 @@ export const CathedralModelData = {
           [-12, -32.5], [-6, -32.5], [-6, -32.5 - t], [6, -32.5 - t], [6, -32.5],
           [12, -32.5], [0, 32.5]
         ],
-        cutouts: [{ x: 0, y: 0, w: t + 0.1, h: 30 }],
+        cutouts: [{ x: 0, y: -8, w: t + 0.1, h: 16 }],
         engravings: [{ type: 'line', x1: 0, y1: 30, x2: 0, y2: 5 }]
       }),
       connections: ['CH-23']

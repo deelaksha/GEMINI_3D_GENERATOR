@@ -2,17 +2,8 @@
  * Built-in Design Templates
  * Provides instant starter templates for the in-browser Code Editor.
  */
+import { ConnectorStandards } from '../core/connectors.js';
 
-export const TEMPLATES = {
-  'minimal-box': {
-    id: 'minimal-box',
-    name: 'Minimal Interlocking Box (4 Parts)',
-    category: 'Starter / Minimal',
-    description: 'A clean 4-piece orthogonal interlocking cube with mortise-and-tenon slots illustrating standard slot/tab tolerances.',
-    code: `/**
- * Minimal Interlocking Box (4 Parts)
- * Standard 3mm sheet thickness design with 0.1mm fit clearance.
- */
 export const MinimalBoxModel = {
   id: 'minimal-box',
   name: 'Minimal Interlocking Box',
@@ -32,6 +23,66 @@ export const MinimalBoxModel = {
   manufacturingSheets: [
     { sheetNum: 1, name: 'box_sheet_01.svg', desc: 'Single 200x150mm cardstock sheet.', sheetW: 200, sheetH: 150, partIds: ['B-01', 'B-02', 'B-03', 'B-04'] }
   ],
+  // Authoritative Single Source of Truth Joints (Requirements 1, 2, 3)
+  joints: [
+    {
+      id: 'J-B02-B01',
+      sourcePart: 'B-02',
+      connectorPartId: 'B-02',
+      targetPart: 'B-01',
+      receiverPartId: 'B-01',
+      type: 'mortise-tenon',
+      sourceConnector: {
+        type: 'tab',
+        width: 20,
+        depth: (t) => t
+      },
+      tabWidth: 20,
+      tabDepth: (t) => t,
+      connectorAxis: 'X',
+      receiverAxis: 'X',
+      position: [0, -20],
+      insertionDirection: [0, -1, 0]
+    },
+    {
+      id: 'J-B03-B01',
+      sourcePart: 'B-03',
+      connectorPartId: 'B-03',
+      targetPart: 'B-01',
+      receiverPartId: 'B-01',
+      type: 'mortise-tenon',
+      sourceConnector: {
+        type: 'tab',
+        width: 20,
+        depth: (t) => t
+      },
+      tabWidth: 20,
+      tabDepth: (t) => t,
+      connectorAxis: 'X',
+      receiverAxis: 'X',
+      position: [0, 20],
+      insertionDirection: [0, -1, 0]
+    },
+    {
+      id: 'J-B04-B01',
+      sourcePart: 'B-04',
+      connectorPartId: 'B-04',
+      targetPart: 'B-01',
+      receiverPartId: 'B-01',
+      type: 'mortise-tenon',
+      sourceConnector: {
+        type: 'tab',
+        width: 20,
+        depth: (t) => t
+      },
+      tabWidth: 20,
+      tabDepth: (t) => t,
+      connectorAxis: 'X',
+      receiverAxis: 'Y',
+      position: [20, 0],
+      insertionDirection: [0, -1, 0]
+    }
+  ],
   parts: [
     {
       id: 'B-01',
@@ -44,30 +95,27 @@ export const MinimalBoxModel = {
       thickness: 3.0,
       width: 50,
       length: 50,
-      assembledPos: [0, 1.5, 0],
+      assembledPos: (t = 3.0) => [0, 0, 0],
       assembledRot: [-Math.PI / 2, 0, 0],
-      generate2D: (t, kerf, clr) => ({
-        outline: [
-          [-25, -25], [25, -25], [25, 25], [-25, 25]
-        ],
-        cutouts: [
-          { x: 0, y: 20, w: 20, h: (t || 3.0) + (clr || 0.1), tabId: 'N-SLOT' },
-          { x: 0, y: -20, w: 20, h: (t || 3.0) + (clr || 0.1), tabId: 'S-SLOT' },
-          { x: 20, y: 0, w: (t || 3.0) + (clr || 0.1), h: 20, tabId: 'E-SLOT' }
-        ]
-      }),
-      geometry: {
-        outline: [
-          [-25, -25], [25, -25], [25, 25], [-25, 25]
-        ],
-        cutouts: [
-          // North slot
-          { x: 0, y: 20, w: 20, h: 3.2, tabId: 'N-SLOT' },
-          // South slot
-          { x: 0, y: -20, w: 20, h: 3.2, tabId: 'S-SLOT' },
-          // East slot
-          { x: 20, y: 0, w: 3.2, h: 20, tabId: 'E-SLOT' }
-        ]
+      generate2D: (t = 3.0, kerf = 0.15, clr = 0.10) => {
+        const th = t || 3.0;
+        const c = clr !== undefined ? clr : 0.10;
+        const jList = MinimalBoxModel.joints.filter(j => j.targetPart === 'B-01' || j.receiverPartId === 'B-01');
+        return {
+          outline: [
+            [-25, -25], [25, -25], [25, 25], [-25, 25]
+          ],
+          cutouts: jList.map(j => {
+            const slot = ConnectorStandards.deriveReceiverSlot(j, th, c);
+            return {
+              x: j.position[0],
+              y: j.position[1],
+              w: slot.w,
+              h: slot.h,
+              jointId: j.id
+            };
+          })
+        };
       },
       connections: [
         { partId: 'B-02', type: 'slot-tab', description: 'North Wall Tab into Base North Slot' },
@@ -86,27 +134,20 @@ export const MinimalBoxModel = {
       thickness: 3.0,
       width: 50,
       length: 30,
-      assembledPos: [0, 16.5, 20],
+      assembledPos: (t = 3.0) => [0, 15 + t / 2, 20],
       assembledRot: [0, 0, 0],
-      generate2D: (t) => {
+      generate2D: (t = 3.0) => {
         const th = t || 3.0;
+        const j = MinimalBoxModel.joints.find(j => j.sourcePart === 'B-02' || j.connectorPartId === 'B-02');
+        const hwTab = (j?.tabWidth || 20) / 2;
         return {
           outline: [
             [-25, 15], [25, 15], [25, -15],
-            [10, -15], [10, -15 - th], [-10, -15 - th], [-10, -15],
+            [hwTab, -15], [hwTab, -15 - th], [-hwTab, -15 - th], [-hwTab, -15],
             [-25, -15]
           ],
           cutouts: []
         };
-      },
-      geometry: {
-        // Wall outline with bottom tenon tab
-        outline: [
-          [-25, 15], [25, 15], [25, -15],
-          [10, -15], [10, -18], [-10, -18], [-10, -15],
-          [-25, -15]
-        ],
-        cutouts: []
       },
       connections: [
         { partId: 'B-01', type: 'tab-slot', description: 'Bottom tab into Base North slot' }
@@ -123,27 +164,20 @@ export const MinimalBoxModel = {
       thickness: 3.0,
       width: 50,
       length: 30,
-      assembledPos: [0, 16.5, -20],
+      assembledPos: (t = 3.0) => [0, 15 + t / 2, -20],
       assembledRot: [0, 0, 0],
-      generate2D: (t) => {
+      generate2D: (t = 3.0) => {
         const th = t || 3.0;
+        const j = MinimalBoxModel.joints.find(j => j.sourcePart === 'B-03' || j.connectorPartId === 'B-03');
+        const hwTab = (j?.tabWidth || 20) / 2;
         return {
           outline: [
             [-25, 15], [25, 15], [25, -15],
-            [10, -15], [10, -15 - th], [-10, -15 - th], [-10, -15],
+            [hwTab, -15], [hwTab, -15 - th], [-hwTab, -15 - th], [-hwTab, -15],
             [-25, -15]
           ],
           cutouts: []
         };
-      },
-      geometry: {
-        // Wall outline with bottom tenon tab
-        outline: [
-          [-25, 15], [25, 15], [25, -15],
-          [10, -15], [10, -18], [-10, -18], [-10, -15],
-          [-25, -15]
-        ],
-        cutouts: []
       },
       connections: [
         { partId: 'B-01', type: 'tab-slot', description: 'Bottom tab into Base South slot' }
@@ -158,29 +192,25 @@ export const MinimalBoxModel = {
       sheet: 1,
       color: '#059669',
       thickness: 3.0,
-      width: 40,
+      width: 37,
       length: 30,
-      assembledPos: [20, 16.5, 0],
+      assembledPos: (t = 3.0) => [20, 15 + t / 2, 0],
       assembledRot: [0, Math.PI / 2, 0],
-      generate2D: (t) => {
+      generate2D: (t = 3.0) => {
         const th = t || 3.0;
+        // Parametric width: clearance span between inner faces of North Wall (z=20-th/2) and South Wall (z=-20+th/2) is 40 - th
+        const wallWidth = 40 - th;
+        const hw = wallWidth / 2;
+        const j = MinimalBoxModel.joints.find(j => j.sourcePart === 'B-04' || j.connectorPartId === 'B-04');
+        const hwTab = (j?.tabWidth || 20) / 2;
         return {
           outline: [
-            [-20, 15], [20, 15], [20, -15],
-            [10, -15], [10, -15 - th], [-10, -15 - th], [-10, -15],
-            [-20, -15]
+            [-hw, 15], [hw, 15], [hw, -15],
+            [hwTab, -15], [hwTab, -15 - th], [-hwTab, -15 - th], [-hwTab, -15],
+            [-hw, -15]
           ],
           cutouts: []
         };
-      },
-      geometry: {
-        // East wall with bottom tenon tab
-        outline: [
-          [-20, 15], [20, 15], [20, -15],
-          [10, -15], [10, -18], [-10, -18], [-10, -15],
-          [-20, -15]
-        ],
-        cutouts: []
       },
       connections: [
         { partId: 'B-01', type: 'tab-slot', description: 'Bottom tab into Base East slot' }
@@ -189,7 +219,14 @@ export const MinimalBoxModel = {
   ]
 };
 
-export default MinimalBoxModel;
-`
+export const TEMPLATES = {
+  'minimal-box': {
+    id: 'minimal-box',
+    name: 'Minimal Interlocking Box (4 Parts)',
+    category: 'Starter / Minimal',
+    description: 'A clean 4-piece orthogonal interlocking cube with mortise-and-tenon slots illustrating standard slot/tab tolerances.',
+    model: MinimalBoxModel
   }
 };
+
+export default MinimalBoxModel;

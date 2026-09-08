@@ -151,13 +151,15 @@ export const ClassicCarModelData = {
       connections: ["SPINE-01", "FRAME-L", "FRAME-R"],
       generate2D: (t, kerf, clr) => {
         const sw = t + clr;
-        const bXs = [-115, -85, -55, -20, 15, 50, 85, 115];
-        const cutouts = [];
-        bXs.forEach(x => {
-          cutouts.push({ x: x, y: 0, w: 12, h: sw });
-          cutouts.push({ x: x, y: -22, w: 10, h: sw });
-          cutouts.push({ x: x, y: 22, w: 10, h: sw });
-        });
+        const spineSlots = [-85, 0, 85];
+        const railSlots = [-70, 70];
+        const cutouts = [
+          // Synchronized slots matching SPINE-01 three 20mm tenon tabs
+          ...spineSlots.map(x => ({ x: x, y: 0, w: 20 + clr, h: sw })),
+          // Synchronized slots matching FRAME-L and FRAME-R 20mm tabs
+          ...railSlots.map(x => ({ x: x, y: -22, w: 20 + clr, h: sw })),
+          ...railSlots.map(x => ({ x: x, y: 22, w: 20 + clr, h: sw }))
+        ];
         return {
           outline: [
             [-125, -32], [-100, -32], [-95, -40], [-50, -40], [-45, -32],
@@ -195,11 +197,12 @@ export const ClassicCarModelData = {
           outline: [
             [-115, -9],
             [-95, -9], [-95, -9 - t], [-75, -9 - t], [-75, -9],
-            [-10, -9], [-10, -9 - t], [10, -10 - t], [10, -9],
+            [-10, -9], [-10, -9 - t], [10, -9 - t], [10, -9],
             [75, -9], [75, -9 - t], [95, -9 - t], [95, -9],
             [115, -9], [115, 9], [-115, 9]
           ],
-          cutouts: bXs.map(x => ({ x: x, y: 2, w: sw, h: 9 })),
+          // Half-lap slots cutting downward from top edge y=9 to y=0.8 (depth 8.2mm)
+          cutouts: bXs.map(x => ({ x: x, y: 4.9, w: sw, h: 8.2 })),
           engravings: []
         };
       }
@@ -288,11 +291,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-35, -13],
-            [-16, -13], [-16, -13 - t], [16, -13 - t], [16, -13],
+            
             [35, -13], [35, 6], [30, 13], [-30, 13], [-35, 6]
           ],
           cutouts: [
-            { x: 0, y: -7, w: sw, h: 10 },
+            { x: 0, y: -8.9, w: sw, h: 8.2 },
             { x: -22, y: -9, w: sw, h: 7 }, { x: 22, y: -9, w: sw, h: 7 },
             { x: -32, y: 0, w: 5, h: sw }, { x: 32, y: 0, w: 5, h: sw }
           ],
@@ -320,11 +323,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-37, -15],
-            [-17, -15], [-17, -15 - t], [17, -15 - t], [17, -15],
+            
             [37, -15], [37, 7], [33, 15], [-33, 15], [-37, 7]
           ],
           cutouts: [
-            { x: 0, y: -8, w: sw, h: 11 },
+            { x: 0, y: -10.9, w: sw, h: 8.2 },
             { x: -22, y: -10, w: sw, h: 7 }, { x: 22, y: -10, w: sw, h: 7 },
             { x: -34, y: 0, w: 5, h: sw }, { x: 34, y: 0, w: 5, h: sw },
             { x: -32, y: 8, w: sw, h: 6 }, { x: 32, y: 8, w: sw, h: 6 }
@@ -353,11 +356,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-39, -19],
-            [-18, -19], [-18, -19 - t], [18, -19 - t], [18, -19],
+            
             [39, -19], [39, 9], [34, 19], [-34, 19], [-39, 9]
           ],
           cutouts: [
-            { x: 0, y: -10, w: sw, h: 13 },
+            { x: 0, y: -14.9, w: sw, h: 8.2 },
             { x: -22, y: -12, w: sw, h: 7 }, { x: 22, y: -12, w: sw, h: 7 },
             { x: -36, y: 0, w: 5, h: sw }, { x: 36, y: 0, w: 5, h: sw },
             { x: -33, y: 10, w: sw, h: 6 }, { x: 33, y: 10, w: sw, h: 6 }
@@ -386,11 +389,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-40, -20],
-            [-19, -20], [-19, -20 - t], [19, -20 - t], [19, -20],
+            
             [40, -20], [40, 10], [35, 20], [-35, 20], [-40, 10]
           ],
           cutouts: [
-            { x: 0, y: -11, w: sw, h: 13 },
+            { x: 0, y: -15.9, w: sw, h: 8.2 },
             { x: -22, y: -13, w: sw, h: 7 }, { x: 22, y: -13, w: sw, h: 7 },
             { x: -37, y: 0, w: 5, h: sw }, { x: 37, y: 0, w: 5, h: sw }
           ],
@@ -418,11 +421,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-40, -20],
-            [-19, -20], [-19, -20 - t], [19, -20 - t], [19, -20],
+            
             [40, -20], [40, 10], [35, 20], [-35, 20], [-40, 10]
           ],
           cutouts: [
-            { x: 0, y: -11, w: sw, h: 13 },
+            { x: 0, y: -15.9, w: sw, h: 8.2 },
             { x: -22, y: -13, w: sw, h: 7 }, { x: 22, y: -13, w: sw, h: 7 },
             { x: -37, y: 0, w: 5, h: sw }, { x: 37, y: 0, w: 5, h: sw }
           ],
@@ -450,11 +453,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-39, -19],
-            [-18, -19], [-18, -19 - t], [18, -19 - t], [18, -19],
+            
             [39, -19], [39, 9], [34, 19], [-34, 19], [-39, 9]
           ],
           cutouts: [
-            { x: 0, y: -10, w: sw, h: 13 },
+            { x: 0, y: -14.9, w: sw, h: 8.2 },
             { x: -22, y: -12, w: sw, h: 7 }, { x: 22, y: -12, w: sw, h: 7 },
             { x: -36, y: 0, w: 5, h: sw }, { x: 36, y: 0, w: 5, h: sw },
             { x: -33, y: 10, w: sw, h: 6 }, { x: 33, y: 10, w: sw, h: 6 }
@@ -483,11 +486,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-37, -16],
-            [-17, -16], [-17, -16 - t], [17, -16 - t], [17, -16],
+            
             [37, -16], [37, 7], [33, 16], [-33, 16], [-37, 7]
           ],
           cutouts: [
-            { x: 0, y: -9, w: sw, h: 11 },
+            { x: 0, y: -11.9, w: sw, h: 8.2 },
             { x: -22, y: -11, w: sw, h: 7 }, { x: 22, y: -11, w: sw, h: 7 },
             { x: -34, y: 0, w: 5, h: sw }, { x: 34, y: 0, w: 5, h: sw },
             { x: -32, y: 8, w: sw, h: 6 }, { x: 32, y: 8, w: sw, h: 6 }
@@ -516,11 +519,11 @@ export const ClassicCarModelData = {
         return {
           outline: [
             [-35, -13],
-            [-16, -13], [-16, -13 - t], [16, -13 - t], [16, -13],
+            
             [35, -13], [35, 6], [31, 13], [-31, 13], [-35, 6]
           ],
           cutouts: [
-            { x: 0, y: -7, w: sw, h: 10 },
+            { x: 0, y: -8.9, w: sw, h: 8.2 },
             { x: -22, y: -9, w: sw, h: 7 }, { x: 22, y: -9, w: sw, h: 7 },
             { x: -32, y: 0, w: 5, h: sw }, { x: 32, y: 0, w: 5, h: sw }
           ],
@@ -1350,22 +1353,19 @@ export const ClassicCarModelData = {
       assembledRot: [0, 1.5707963267948966, 0],
       explodeVec: [20, 0, 0],
       connections: ["BLK-08"],
-      generate2D: (t, kerf, clr) => {
-        const sw = (t || 3.0) + (clr || 0.10);
-        return {
-          outline: [[-33, -8], [33, -8], [33, 8], [-33, 8]],
-          cutouts: [
-            { x: -24, y: 0, w: sw, h: 9 },
-            { x: -19, y: 0, w: sw, h: 9 },
-            { x: -14, y: 0, w: sw, h: 9 },
-            { x: 14, y: 0, w: sw, h: 9 },
-            { x: 19, y: 0, w: sw, h: 9 },
-            { x: 24, y: 0, w: sw, h: 9 },
-            { x: 0, y: 0, w: 7, h: 7 }
-          ],
-          engravings: [{ type: "circle", x: 0, y: 0, r: 4 }]
-        };
-      }
+      generate2D: () => ({
+        outline: [[-33, -8], [33, -8], [33, 8], [-33, 8]],
+        cutouts: [
+          { x: -24, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: -19, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: -14, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: 14, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: 19, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: 24, y: 0, w: 2.5, h: 9, type: 'decorative' },
+          { x: 0, y: 0, w: 7, h: 7, type: 'decorative' }
+        ],
+        engravings: [{ type: "circle", x: 0, y: 0, r: 4 }]
+      })
     },
     {
       id: "BMPR-R",

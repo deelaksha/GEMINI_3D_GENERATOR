@@ -55,7 +55,7 @@ graph TD
 * **Observer Pattern**: Subscribed UI components (such as the global navigation model selector) are notified on model additions and re-render without requiring page reloads.
 
 ### 3.4. 3D Assembly & Geometry Engines (`js/assembly/engine3d.js`, `js/core/geometry.js`)
-* **Parametric Extrusion**: Shapes are defined as 2D polygonal outlines with inner cutouts, then extruded in Three.js along the Z-axis by `materialThickness` (e.g., 2.0mm, 3.0mm, 4.0mm).
+* **Parametric Extrusion**: Shapes are defined as 2D polygonal outlines with inner cutouts, then extruded in Three.js along the Z-axis by `materialThickness` (e.g., 1.0mm, 2.0mm, 3.0mm, 4.0mm).
 * **Kerf & Fit Clearance Compensation**: Slot widths and tenon tabs are dynamically adjusted at runtime based on the selected material profile.
 * **Camera Sightlines & Exploded View**: Custom bookmarks and step-by-step assembly sequencing are respected across all dynamic models.
 

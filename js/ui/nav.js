@@ -128,7 +128,11 @@ export const WorkbenchNav = {
         // Reload current page with updated model param
         const url = new URL(window.location.href);
         url.searchParams.set('model', newModelId);
-        if (firstPart) url.searchParams.set('part', firstPart);
+        if (firstPart) {
+          url.searchParams.set('part', firstPart);
+        } else {
+          url.searchParams.delete('part');
+        }
         window.location.href = url.toString();
       });
     }
@@ -184,6 +188,13 @@ export const WorkbenchNav = {
         const t = parseFloat(e.target.value);
         AppState.setState({ materialThickness: t });
         Toast.show(`Material gauge set to: ${t.toFixed(1)} mm`, '📏');
+      });
+
+      AppState.subscribe((state) => {
+        const val = state.materialThickness.toFixed(1);
+        if (thickSel.value !== val) {
+          thickSel.value = val;
+        }
       });
     }
 

@@ -52,7 +52,9 @@ export const GeometryEngine = {
     };
 
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geometry.center();
+    // Center strictly along the Z axis (thickness).
+    // Preserve local 2D (X, Y) origin so tabs and slots align predictably without centroid drift.
+    geometry.translate(0, 0, -(thickness / 2));
     return geometry;
   },
 

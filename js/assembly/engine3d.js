@@ -79,12 +79,37 @@ export class Engine3D {
     this.animate();
   }
 
-  loadModel(model, materialThickness) {
-    // Clear existing
+  clearAssembly() {
+    if (!this.rootGroup) return;
     while (this.rootGroup.children.length > 0) {
-      this.rootGroup.remove(this.rootGroup.children[0]);
+      const child = this.rootGroup.children[0];
+      this.disposeObject(child);
+      this.rootGroup.remove(child);
     }
     this.meshMap.clear();
+  }
+
+  disposeObject(obj) {
+    if (!obj) return;
+    obj.traverse(child => {
+      if (child.geometry) {
+        child.geometry.dispose();
+      }
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+  }
+
+  loadModel(model, materialThickness) {
+    // Clear and dispose all existing meshes thoroughly
+    this.clearAssembly();
+
+    if (!model) return;
 
     const parts = model.parts || [];
     parts.forEach(part => {
@@ -96,9 +121,13 @@ export class Engine3D {
     });
 
     const { explodeFactor, activeStep, selectedPartId } = AppState.getState();
-    ExplodeEngine.applyExplode(this.meshMap, parts, explodeFactor);
-    AssemblySequencer.applyStepFilter(this.meshMap, parts, activeStep);
-    this.updateHighlight(selectedPartId);
+    if (parts.length > 0) {
+      ExplodeEngine.applyExplode(this.meshMap, parts, explodeFactor);
+      AssemblySequencer.applyStepFilter(this.meshMap, parts, activeStep);
+      this.updateHighlight(selectedPartId);
+    } else {
+      this.updateHighlight(null);
+    }
   }
 
   buildPartGroup(part, thickness) {

@@ -244,8 +244,11 @@ export class DesignBrowser {
    */
   async autoRepairMissingThumbnails() {
     for (const d of this.designs) {
+      const isBlank = d.isBlank || (d.modelData && Array.isArray(d.modelData.parts) && d.modelData.parts.length === 0) || (d.partCount === 0);
+      if (isBlank) continue;
+
       const isBlackOrMissing = await ThumbnailGenerator.isBlackOrEmpty(d.thumbnail);
-      const needsParts = !d.partCount || d.partCount === '?' || d.partCount === 0;
+      const needsParts = d.partCount === undefined || d.partCount === null || d.partCount === '?';
 
       if (isBlackOrMissing || needsParts) {
         try {
@@ -558,6 +561,11 @@ export class DesignBrowser {
     const modelData = await ThumbnailGenerator.resolveModelData(design);
     if (!modelData || !Array.isArray(modelData.parts)) {
       container.innerHTML = `<div class="text-rose-400 p-8 text-center text-xs">Could not load 3D parts for this design.</div>`;
+      return;
+    }
+
+    if (modelData.parts.length === 0) {
+      container.innerHTML = `<div class="text-slate-400 p-8 text-center text-xs space-y-2"><span>📦</span><div class="font-medium text-slate-300">This design is currently blank (0 parts).</div><div class="text-[11px] text-slate-500">Click "Edit in Code Studio" to add parts.</div></div>`;
       return;
     }
 
