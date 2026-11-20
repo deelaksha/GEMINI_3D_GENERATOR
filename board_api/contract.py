@@ -15,16 +15,30 @@ COMPONENT = {'type': 'object', 'required': ['id', 'outline'], 'properties': {
     'id': {'type': 'string'}, 'name': {'type': 'string'}, 'group': {'type': 'string'},
     'thickness': {'type': 'number'}, 'color': {'type': 'string'},
     'grain_locked': {'type': 'boolean', 'description': 'nesting may not rotate this part'},
+    'grain': {'enum': ['none', 'x', 'y'], 'description': 'grain direction (local axis); nesting aligns it with the sheet'},
+    'material': {'type': 'object', 'description': 'override of the design material',
+                 'properties': {'name': {'type': 'string'}, 'type': {'enum': ['plywood', 'mdf', 'particle_board',
+                                'solid_wood', 'hardboard', 'cardboard', 'other']}}},
+    'edge_banding': {'type': 'array', 'items': {'type': 'object', 'properties': {
+        'edge': {'type': 'integer'}, 'thickness': {'type': 'number'}, 'material': {'type': 'string'}}}},
     'outline': {'type': 'array', 'items': _VEC2, 'description': 'CCW polygon in local mm (plate lies in local XY)'},
     'features': {'type': 'array', 'items': FEATURE}, 'tabs': {'type': 'array', 'items': TAB},
     'placement': {'type': 'object', 'properties': {'position': _VEC3, 'rotation': {
         **_VEC3, 'description': 'degrees, Euler XYZ (THREE.js order)'}}}}}
 JOINT = {'type': 'object', 'required': ['id', 'type', 'a', 'b'], 'properties': {
-    'id': {'type': 'string'}, 'type': {'enum': ['tab_slot', 'edge_butt', 'edge_mitre', 'face_lap']},
-    'a': {'type': 'string', 'description': 'tab_slot: part with the tab; edge_*: part whose edge mates'},
-    'b': {'type': 'string', 'description': 'receiving part'},
+    'id': {'type': 'string'}, 'type': {'enum': ['tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge']},
+    'a': {'type': 'string', 'description': 'tab_slot: part with the tab; edge_*: part whose edge mates; hinge: the door'},
+    'b': {'type': 'string', 'description': 'receiving part (hinge: the carcass board the door hangs on)'},
     'tab': {'type': 'string'}, 'slot': {'type': 'string', 'description': 'optional; found or generated otherwise'},
-    'a_edge': {'type': 'integer'}, 'b_edge': {'type': 'integer'}}}
+    'a_edge': {'type': 'integer', 'description': 'edge_*: mating edge of a; hinge: hinge edge of the door'},
+    'b_edge': {'type': 'integer'},
+    'bevel': {'type': 'boolean', 'description': 'edge_mitre: both edges bevelled to half the corner angle'},
+    'fasteners': {'type': 'object', 'description': 'edge_butt / coplanar edge_mitre (dowel only)', 'properties': {
+        'kind': {'enum': ['screw', 'confirmat', 'dowel']}, 'count': {'type': 'integer'},
+        'diameter': {'type': 'number'}, 'length': {'type': 'number'},
+        'end': {'type': 'number', 'description': 'mm from the contact ends to the first/last fastener (stagger)'}}},
+    'count': {'type': 'integer', 'description': 'hinge: number of hinges (default from door height)'},
+    'gap': {'type': 'number', 'description': 'hinge: allowed door-to-carcass gap, mm (default 2)'}}}
 
 
 def _tool(name, desc, method, path, props=None, required=()):
@@ -86,6 +100,13 @@ TOOLS = [
           dict(_D, max_steps={'type': 'integer'}), ['design_id']),
     _tool('get_layout2d', 'Nest parts on sheets and return cutting paths + material statistics.', 'GET',
           '/api/v1/designs/{design_id}/layout2d', dict(_D, preset={'type': 'string'}), ['design_id']),
+    _tool('get_manufacturing', 'Can it be made and assembled? Fastener layout and drilling, fastener collisions, '
+                               'tool access, hinge positions, undeclared contacts and near-miss gaps (with '
+                               'corrections), joint alternatives per connection, assembly plan, material limits.',
+          'GET', '/api/v1/designs/{design_id}/manufacturing', dict(_D, kerf={'type': 'string'}), ['design_id']),
+    _tool('get_cut_list', 'Board identification and cut list: finished and blank sizes, material, grain, edges, '
+                          'cutting and drilling operations, connections, quantities of identical boards.', 'GET',
+          '/api/v1/designs/{design_id}/cutlist', _D, ['design_id']),
 ]
 
 CONTRACT = {
@@ -129,6 +150,8 @@ CONTRACT = {
         'GET  /api/v1/designs/{id}/fixes', 'POST /api/v1/designs/{id}/fixes/apply', 'POST /api/v1/designs/{id}/fixes/auto',
         'GET  /api/v1/designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1',
         'GET  /api/v1/designs/{id}/export/pdf|svg|dxf?sheet=1&preset=A3&paper=A4&kerf=1&force=0',
+        'GET  /api/v1/designs/{id}/manufacturing?kerf=1', 'GET  /api/v1/designs/{id}/cutlist',
+        'POST /api/v1/designs/examples/furniture/{product}',
     ],
     'docs': '/docs/board-api.md',
 }

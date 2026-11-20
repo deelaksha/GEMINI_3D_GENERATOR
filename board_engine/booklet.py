@@ -16,7 +16,7 @@ import time
 import zlib
 
 from . import geometry as G
-from .model import Plate, find_component
+from .model import Plate, find_component, material_of
 from .nesting import SHEET_PRESETS
 
 MM = 72.0 / 25.4
@@ -176,6 +176,12 @@ def mat_label(mat):
     return name if f"{mat['thickness']:g} mm" in name else f"{name} ({mat['thickness']:g} mm)"
 
 
+def sheet_stock_label(nesting, index, mat):
+    """Stock board of one cutting sheet (sheets are never shared between materials/thicknesses)."""
+    st = next((s['stock'] for s in nesting.get('sheets', []) if s['index'] == index), None)
+    return mat_label({'name': st['material'], 'thickness': st['thickness']}) if st else mat_label(mat)
+
+
 def _wrap(text, width_mm, size, font='F1'):
     lines, cur = [], ''
     for word in text.split():
@@ -285,20 +291,80 @@ def assembly_sequence(design):
 
 
 def _joint_text(j):
+    fx = (j.get('fasteners') or {}).get('kind')
+    how = {'screw': 'screws', 'confirmat': 'confirmat screws', 'dowel': 'glue + dowels'}.get(fx, 'glue')
     if j['type'] == 'tab_slot':
         return f"tab '{j['tab']}' of {j['a']} into slot '{j.get('slot', '?')}' of {j['b']}"
     if j['type'] == 'edge_butt':
-        return f"edge {j['a_edge']} of {j['a']} butts against face of {j['b']} (glue)"
+        return f"edge {j['a_edge']} of {j['a']} butts against face of {j['b']} ({how})"
     if j['type'] == 'edge_mitre':
-        return f"edge {j['a_edge']} of {j['a']} meets edge {j['b_edge']} of {j['b']} (corner, glue)"
+        kind = 'bevelled mitre' if j.get('bevel') else 'corner'
+        return f"edge {j['a_edge']} of {j['a']} meets edge {j['b_edge']} of {j['b']} ({kind}, {how})"
+    if j['type'] == 'hinge':
+        return f"hang door {j['a']} on {j['b']} (concealed cup hinges on edge {j['a_edge']})"
     return f"{j['a']} laminated face-to-face onto {j['b']} (glue)"
+
+
+def _plan_rows(design, plan):
+    """Rows for the validated assembly plan (manufacturing.plan_assembly): every step brings a board or a
+    pre-built sub-assembly in along a direction that all its tabs / dowels allow."""
+    joined = [j for j in design['joints'] if j.get('status') == 'joined']
+    rows, n = [], [0]
+
+    def dirtxt(v):
+        names = {(1, 0, 0): '+X (right)', (-1, 0, 0): '-X (left)', (0, 1, 0): 'up', (0, -1, 0): 'down',
+                 (0, 0, 1): '+Z (forward)', (0, 0, -1): '-Z (back)'}
+        key = tuple(round(c) for c in v)
+        return names.get(key, '[' + ', '.join(f'{c:.2f}' for c in v) + ']')
+
+    def walk(steps, present, label):
+        for st in steps:
+            if 'base' in st:
+                present |= set(st['base'])
+                rows.append([str(n[0]), ', '.join(st['base']), f'Base {label}- lay out on the bench', ''])
+                n[0] += 1
+                continue
+            if 'subassembly' in st:
+                rows.append(['', ', '.join(st['add']), 'Pre-assemble this sub-assembly first:', ''])
+                walk(st['subassembly'], set(), 'of the sub-assembly ')
+            add = set(st['add'])
+            js = [j for j in joined if (j['a'] in add and j['b'] in present) or (j['b'] in add and j['a'] in present)]
+            for i, j in enumerate(js or [None]):
+                rows.append([str(n[0]) if i == 0 else '', ', '.join(st['add']) if i == 0 else '',
+                             (f"move {dirtxt(st['direction'])}: " if i == 0 else '') + (_joint_text(j) if j else ''),
+                             j['id'] if j else ''])
+            n[0] += 1
+            present |= add
+    for asm in plan:
+        walk(asm['steps'], set(), '')
+    return rows
+
+
+def _cutlist_pages(doc, pw, ph, ctx, cutlist):
+    cols = [('Part', 40, 'left'), ('Qty', 9, 'center'), ('Material', 46, 'left'), ('t', 8, 'right'),
+            ('Finished L x W', 30, 'right'), ('Blank L x W', 30, 'right'), ('Grain', 18, 'left'),
+            ('Band', 9, 'center'), ('Drill', 9, 'center')]
+    rows = [[l['part'], str(l['quantity']), l['material'], f"{l['thickness']:g}",
+             f"{l['finished_length']:.1f} x {l['finished_width']:.1f}", f"{l['blank_length']:.1f} x {l['blank_width']:.1f}",
+             l['grain'], str(l['banded_edges']), str(l['drilling'])] for l in cutlist['lines']]
+    first, rest = True, rows
+    while rest or first:
+        pg = doc.page(pw, ph)
+        x0, y0, x1, y1 = _frame(pg, ctx, 'Cut list' + ('' if first else ' (cont.)'))
+        if first:
+            pg.text(x0, y0 + 2, 'CUT LIST', 4.0, 'F2', INK)
+            for i, line in enumerate(_wrap(cutlist['note'], x1 - x0, 2.4)):
+                pg.text(x0, y0 + 7 + i * 3.6, line, 2.4, 'F1', MUTED)
+            y0 += 14
+        yy, rest = _table(pg, x0, y0, cols, rest, size=2.3, row_h=4.2, max_y=y1)
+        first = False
 
 
 # ---------------------------------------------------------------------------
 # Booklet
 # ---------------------------------------------------------------------------
 
-def build_booklet(design, report, nesting, cut, paper='A4'):
+def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=None):
     if paper not in PAPER:
         raise ValueError(f"paper must be one of {sorted(PAPER)}")
     pw, ph = max(PAPER[paper]), min(PAPER[paper])  # landscape booklet pages
@@ -343,9 +409,9 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
     rows = []
     for c in comps:
         pl = Plate(design, c)
-        bx = pl.bbox2d
+        orr = G.oriented_rect(pl.cut)
         pm = by_id.get(c['id'])
-        rows.append([c['id'], c.get('name', ''), c.get('group', ''), f"{bx[2] - bx[0]:.1f} x {bx[3] - bx[1]:.1f}",
+        rows.append([c['id'], c.get('name', ''), c.get('group', ''), f"{orr['length']:.1f} x {orr['width']:.1f}",
                      f"{pl.t:g}", str(pm['sheet'] + 1) if pm else '—', '1'])
     yy, rest = _table(pg, tx, y0 + 22, cols, rows, max_y=y1)
     while rest:
@@ -360,6 +426,9 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
         pg.text(x0, ny, 'PRODUCTION NOTES', 3.0, 'F2', ACCENT)
         for i, n in enumerate(notes):
             pg.text(x0, ny + 5 + i * 4.4, f'{i + 1}. {n}', 2.7, 'F1', INK)
+
+    if cutlist:
+        _cutlist_pages(doc, pw, ph, ctx, cutlist)
 
     # 2. Cutting templates (1:1) -----------------------------------------------
     sw, sh = nesting['sheet']['width'], nesting['sheet']['height']
@@ -386,7 +455,7 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
             pg.line(m + 14 + k * 10, base + (8.5 if k % 5 else 7.5), m + 14 + k * 10, base + 11)
         pg.text(m + 14, base + 5.5, '10 mm square  |  50 mm scale check', 2.2, 'F1', MUTED)
         info_txt = (f"{design['name']}  -  CUTTING SHEET {si + 1} OF {nesting['sheet_count']}  -  "
-                    f"{mat_label(mat)}  -  SCALE 1:1 (print at 100 %)  -  "
+                    f"{sheet_stock_label(nesting, si, mat)}  -  SCALE 1:1 (print at 100 %)  -  "
                     f"kerf comp. {cut['kerf_compensation']:g} mm  -  page {{PAGE}}")
         pg.text(sw - m, base + 9, info_txt, 2.4, 'F2', INK, 'right')
 
@@ -455,6 +524,29 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
             yy, _ = _table(pg, tx, yy + 6.5, [('ID', 18, 'left'), ('Edge', 12, 'center'), ('Offset', 18, 'right'),
                                               ('Width', 18, 'right'), ('Depth', 18, 'right')], trows, size=2.3,
                            row_h=4.0, max_y=y1 - 30)
+        drills = [d for d in (mfg or {}).get('drilling', []) if d['component'] == c['id']]
+        if drills:
+            drows = []
+            for n_, d in enumerate(drills, 1):
+                dx, dy = tf(d['position'])
+                pg.stroke('#b45309', 0.2)
+                if d['type'] == 'face_bore':
+                    pg.circle(dx, dy, max(d['diameter'] / 2 * k, 0.6))
+                else:
+                    pg.line(dx - 1.2, dy - 1.2, dx + 1.2, dy + 1.2)
+                    pg.line(dx - 1.2, dy + 1.2, dx + 1.2, dy - 1.2)
+                where = (f"face {d['face']}" + (' thru' if d.get('through') else '')) if d['type'] == 'face_bore' \
+                    else f"edge {d['edge']}"
+                drows.append([str(n_), where, f"{d['position'][0] - bx0:.1f}, {d['position'][1] - by0:.1f}",
+                              f"{d['diameter']:g}", f"{d['depth']:g}", d['fastener']])
+            pg.text(tx, yy + 5, 'DRILLING (from datum)', 3.0, 'F2', ACCENT)
+            yy, more = _table(pg, tx, yy + 6.5, [('#', 6, 'center'), ('Where', 22, 'left'), ('x, y', 24, 'right'),
+                                                 ('Ø', 9, 'right'), ('Depth', 11, 'right'), ('For', tw - 72, 'left')],
+                              drows, size=2.2, row_h=3.8, max_y=y1 - 34)
+            if more:
+                pg.text(tx, yy + 3, f'+ {len(more)} more drilling operations (see the manufacturing report)', 2.2,
+                        'F1', MUTED)
+                yy += 3
         mine = [j for j in joints if j.get('status') == 'joined' and c['id'] in (j['a'], j['b'])]
         pg.text(tx, yy + 5, 'ASSEMBLY REFERENCES', 3.0, 'F2', ACCENT)
         jrows = [[j['id'], j['type'], j['b'] if j['a'] == c['id'] else j['a']] for j in mine]
@@ -462,7 +554,7 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
                                           ('Mates with', tw * 0.35, 'left')],
                        jrows or [['—', '', '']], size=2.3, row_h=4.0, max_y=y1 - 14)
         pm = by_id.get(c['id'])
-        instr = (f"Cut from {mat['name']} at {pl.t:g} mm thickness. "
+        instr = (f"Cut from {material_of(design, c)['name']} at {pl.t:g} mm thickness. "
                  + (f"Cutting sheet {pm['sheet'] + 1}, rotated {pm['rotation']:g} deg. " if pm else
                     'NOT NESTED: the part does not fit the selected sheet. ')
                  + 'Cut slots, holes and openings first and the outer profile last. '
@@ -473,8 +565,9 @@ def build_booklet(design, report, nesting, cut, paper='A4'):
                 pg.text(tx, yy + 11 + i * 3.8, line, 2.4, 'F1', INK)
 
     # 4. Assembly sequence --------------------------------------------------------
-    seq = assembly_sequence(design)
-    rows = []
+    plan = (mfg or {}).get('assembly_plan')
+    seq = [] if plan else assembly_sequence(design)
+    rows = _plan_rows(design, plan) if plan else []
     if seq:
         rows.append(['0', seq[0]['base'], 'Base component - lay flat on the bench', ''])
         for n, st_ in enumerate(seq[1:], 1):

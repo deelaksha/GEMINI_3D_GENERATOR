@@ -77,15 +77,25 @@ def build_components(params=None):
                                tab('d1', 2, aft_len * 0.25, 20, t), tab('d2', 2, aft_len * 0.75, 20, t)],
                       'placement': {'position': [round(aft_cx, 3), y_side, z], 'rotation': [0, 0, 0]}})
 
-    # Bow sides run from the shoulder to the stem, yawed about Y.
+    # Bow sides run from the shoulder to the stem, yawed about Y. Square-cut boards whose mid-planes meet at
+    # angle phi overlap through their thickness by (t/2)(1+cos phi)/sin phi; shortening ONE board by that
+    # amount turns the overlap into a clean corner (its end rests on the other's inner face). So the port bow
+    # panel is shortened at the stem, and both bow panels at the shoulder (the aft sides stay full length).
     bow_dx, bow_len = xb - xsh, math.hypot(xb - xsh, hb)
+    corner = lambda phi: (t / 2.0) * (1 + math.cos(phi)) / math.sin(phi)
+    cut_stem = corner(2 * math.atan2(hb, bow_dx))
+    cut_shoulder = corner(math.pi - math.atan2(hb, bow_dx))
     for side, z, sgn in (('PORT', -hb, -1), ('STBD', hb, 1)):
-        ry = math.degrees(math.atan2(hb, bow_dx)) * sgn
+        ry = math.atan2(hb, bow_dx) * sgn
+        fwd, aft = (cut_stem if side == 'PORT' else 0.0), cut_shoulder
+        length = bow_len - fwd - aft
+        shift = (aft - fwd) / 2.0                     # along the panel's local +x (towards the bow)
+        cx, cz = (xsh + xb) / 2 + math.cos(ry) * shift, z / 2 - math.sin(ry) * shift
         comps.append({'id': f'SIDE-BOW-{side}', 'name': f'Bow side panel ({side.lower()})', 'group': 'Hull',
-                      'outline': rect(bow_len, H),
-                      'tabs': [tab('b1', 0, bow_len / 2, 20, t), tab('d1', 2, bow_len / 2, 20, t)],
-                      'placement': {'position': [round((xsh + xb) / 2, 3), y_side, z / 2],
-                                    'rotation': [0, round(ry, 4), 0]}})
+                      'outline': rect(round(length, 4), H),
+                      'tabs': [tab('b1', 0, length / 2, 20, t), tab('d1', 2, length / 2, 20, t)],
+                      'placement': {'position': [round(cx, 4), y_side, round(cz, 4)],
+                                    'rotation': [0, round(math.degrees(ry), 4), 0]}})
 
     # Transverse boards (rotation ry = 90: local x -> world -z, normal -> +x). Besides the bottom and
     # deck tabs they carry a tab on each end that locks through a slot in the hull side.

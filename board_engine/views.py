@@ -3,7 +3,9 @@ Read-only projections of a design for renderers, AI agents and production.
 """
 from . import geometry as G
 from .booklet import build_booklet
+from .cutlist import cut_list
 from .cutpaths import generate_cut_paths, sheet_dxf, sheet_svg
+from .manufacturing import manufacturing_report
 from .model import Plate, edge_frame, tab_geometry
 from .nesting import nest
 from .validation import component_states, validate_design
@@ -39,6 +41,7 @@ def component_view(design, comp):
         'features': comp.get('features', []), 'tabs': tabs, 'edges': edges,
         'placement': comp['placement'], 'matrix_world': _r(pl.frame.matrix4(), 6),
         'world_normal': _r(pl.frame.normal),
+        'cut_size': {k: _r(v) for k, v in G.oriented_rect(pl.cut).items() if k in ('length', 'width', 'angle')},
         'dimensions_2d': {'width': _r(x1 - x0), 'height': _r(y1 - y0),
                           'area': _r(abs(G.signed_area(pl.cut)) - sum(abs(G.signed_area(p))
                                                                      for _f, p in pl.feature_polys), 1)},
@@ -78,17 +81,21 @@ def production_package(design, opts=None):
     nesting = nest(design, nest_opts)
     cut = generate_cut_paths(design, nesting, compensate_kerf=bool(opts.get('compensate_kerf', False)),
                              include_labels=opts.get('labels', True))
+    # Geometry can be valid and still not be makeable: fasteners, drilling, assembly order, stock limits
+    mfg = manufacturing_report(design, compensate_kerf=bool(opts.get('compensate_kerf', False)))
     blocking = [i for i in report['issues'] if i['severity'] == 'error'] + \
         [i for i in nesting['issues'] if i['severity'] == 'error'] + cut['issues'] + \
-        [dict(u, severity='error') for u in nesting['unplaced']]
-    return {'design': design, 'validation': report, 'nesting': nesting, 'cut': cut,
-            'ready_for_production': not blocking, 'blocking_issues': blocking}
+        [dict(u, severity='error') for u in nesting['unplaced']] + \
+        [i for i in mfg['issues'] if i['severity'] == 'error']
+    return {'design': design, 'validation': report, 'nesting': nesting, 'cut': cut, 'manufacturing': mfg,
+            'cut_list': cut_list(design, mfg), 'ready_for_production': not blocking, 'blocking_issues': blocking}
 
 
 def export(pkg, fmt, sheet=None, paper='A4'):
     d, n, c = pkg['design'], pkg['nesting'], pkg['cut']
     if fmt == 'pdf':
-        return build_booklet(d, pkg['validation'], n, c, paper), 'application/pdf', f"{d['id']}-booklet.pdf"
+        return (build_booklet(d, pkg['validation'], n, c, paper, mfg=pkg.get('manufacturing'), cutlist=pkg.get('cut_list')),
+                'application/pdf', f"{d['id']}-booklet.pdf")
     if sheet is None or not (0 <= sheet < n['sheet_count']):
         raise ValueError(f"sheet must be between 1 and {n['sheet_count']}")
     if fmt == 'svg':

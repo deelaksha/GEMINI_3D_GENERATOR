@@ -19,7 +19,7 @@ from .model import (SchemaError, build_plates, find_component, normalize_compone
 from .validation import TOL, _signature, evaluate_joint, validate_component
 
 EDITABLE = ('name', 'group', 'description', 'outline', 'features', 'tabs', 'placement', 'thickness', 'color',
-            'grain_locked')
+            'grain_locked', 'grain', 'material', 'edge_banding')
 
 
 class OperationRejected(Exception):
@@ -211,7 +211,7 @@ def op_unjoin(design, op):
 
 def op_set_material(design, op):
     mat = op.get('material') or {}
-    allowed = {'name', 'thickness', 'kerf', 'clearance', 'color'}
+    allowed = {'name', 'thickness', 'kerf', 'clearance', 'color', 'type'}
     if set(mat) - allowed:
         raise SchemaError(f'material fields: {sorted(allowed)}', 'material')
     design['material'] = dict(design['material'], **mat)

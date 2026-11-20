@@ -12,7 +12,10 @@ import logging
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from board_engine.autofix import plan_fixes
+from board_engine.cutlist import cut_list
 from board_engine.examples.boat import build_design as build_boat
+from board_engine.examples.furniture import PRODUCTS as FURNITURE, build as build_furniture, product_params
+from board_engine.manufacturing import manufacturing_report
 from board_engine.joining import check_joint
 from board_engine.model import SchemaError, check_id, find_component, normalize_design
 from board_engine.nesting import NestingError, SHEET_PRESETS
@@ -180,6 +183,27 @@ def create_boat():
     return jsonify({'ok': True, 'revision': created['revision'], 'design_id': did,
                     'join_failures': [{'joint': f['joint']['id'], 'status': f['status'], 'issues': f['issues']}
                                       for f in failures],
+                    'validation': summarize(report)}), 201
+
+
+@bp.post('/designs/examples/furniture/<name>')
+@require('editor')
+def create_furniture(name):
+    if name not in FURNITURE:
+        return fail(404, 'not_found', f"unknown product '{name}'; choose one of {sorted(FURNITURE)}")
+    data = request.get_json(silent=True) or {}
+    did = check_id(data.get('id', name), 'id')
+    params = data.get('params') or {}
+    allowed = product_params(name)
+    if not isinstance(params, dict) or set(params) - set(allowed):
+        raise SchemaError(f'params may contain {sorted(allowed)}', 'params')
+    for k, v in params.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not (0 <= v <= 5000):
+            raise SchemaError(f'params.{k} must be a number between 0 and 5000', f'params.{k}')
+    design, failures = build_furniture(name, did, **params)
+    created = store().create(design, actor=g.principal['id'], overwrite=bool(data.get('overwrite')))
+    report = validate_design(created)
+    return jsonify({'ok': True, 'revision': created['revision'], 'design_id': did, 'join_failures': failures,
                     'validation': summarize(report)}), 201
 
 
@@ -445,6 +469,22 @@ def layout2d(did):
     return jsonify({'ok': True, 'revision': d['revision'], 'nesting': pkg['nesting'], 'cut': pkg['cut'],
                     'ready_for_production': pkg['ready_for_production'],
                     'blocking_issues': pkg['blocking_issues']})
+
+
+@bp.get('/designs/<did>/manufacturing')
+@require('viewer')
+def manufacturing(did):
+    d = store().get(did)
+    report = manufacturing_report(d, compensate_kerf=request.args.get('kerf') in ('1', 'true')
+                                  if request.args.get('kerf') is not None else None)
+    return jsonify(dict(report, ok=True, revision=d['revision']))
+
+
+@bp.get('/designs/<did>/cutlist')
+@require('viewer')
+def cutlist(did):
+    d = store().get(did)
+    return jsonify(dict(cut_list(d), ok=True, revision=d['revision']))
 
 
 @bp.get('/designs/<did>/export/<fmt>')

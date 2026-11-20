@@ -174,9 +174,9 @@ def test_svg_dxf_pdf_exports(boat):
     assert pdf.startswith(b'%PDF-1.4') and pdf.rstrip().endswith(b'%%EOF')
     sizes = re.findall(rb'/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]', pdf)
     pages = len(sizes)
-    assert pages == 1 + pkg['nesting']['sheet_count'] + 14 + 1
+    assert pages == 1 + 1 + pkg['nesting']['sheet_count'] + 14 + 1   # cover, cut list, sheets, parts, assembly
     # cutting template pages are exactly the sheet size in points (1:1)
-    assert sizes[1] == (b'1190.55', b'841.89')
+    assert sizes[2] == (b'1190.55', b'841.89')
     with pytest.raises(ValueError):
         export(pkg, 'svg', 99)
 

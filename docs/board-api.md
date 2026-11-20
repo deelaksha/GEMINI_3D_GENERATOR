@@ -111,6 +111,23 @@ interlock (`tab_slot` — a tab locked through a slot). Glued joint types (`edge
 | `edge_butt` | `a`, `a_edge`, `b` | edge of A glued against the face of B (`glue_allowed` only) |
 | `edge_mitre` | `a`, `a_edge`, `b`, `b_edge` | two edges meeting at a corner (`glue_allowed` only) |
 | `face_lap` | `a`, `b` | parallel boards laminated face to face (`glue_allowed` only) |
+| `hinge` | `a` (door), `a_edge` (hinge edge), `b` (carcass board), optional `count`, `gap` | overlay door on concealed 35 mm cup hinges (`glue_allowed` only) |
+
+Furniture joints (`glue_allowed`) can carry **fasteners**: `edge_butt` and coplanar `edge_mitre` (dowels only)
+take `"fasteners": {"kind": "screw" | "confirmat" | "dowel", "count"?, "diameter"?, "length"?, "end"?}` — `end`
+is the distance from the contact ends to the first fastener, used to stagger fasteners at 4-way junctions.
+`edge_mitre` takes `"bevel": true` for a true mitre (both edges bevelled to half the corner angle; saw / CNC).
+
+### Furniture fields (all optional; existing designs are unchanged)
+
+| Where | Field | Meaning |
+|---|---|---|
+| `material` | `type` | `plywood`, `mdf`, `particle_board`, `solid_wood`, `hardboard`, `cardboard`, `other` — selects the catalogue in `manufacturing.MATERIALS` |
+| component | `material` | `{name?, type?}` override, e.g. a 6 mm hardboard back in a particle-board carcass |
+| component | `grain` | `x` / `y` (local axis): nesting turns the part so its grain runs along the sheet's long side |
+| component | `edge_banding` | `[{edge, thickness, material?}]` — the cut list shortens the blank on banded edges |
+
+Limits for real furniture: thickness up to 50 mm (solid tops), kerf up to 6 mm (panel saws cut 3.2–4.8 mm).
 
 ## 4. Validation rules
 
@@ -227,6 +244,9 @@ validation, 429 rate limit. Every accepted mutation bumps `revision` and is reco
 | `POST /designs/{id}/operations` | editor | atomic batch (`add_component`, `update_component`, `translate`, `delete_component`, `add_feature`, `remove_feature`, `add_tab`, `remove_tab`, `join`, `unjoin`, `set_material`) |
 | `GET /designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1` | viewer | nesting + cutting paths + readiness |
 | `GET /designs/{id}/export/{pdf|svg|dxf}?sheet=1&preset=A3&paper=A4&kerf=1[&force=1]` | viewer | production files (409 unless ready, `force=1` exports a marked draft) |
+| `GET /designs/{id}/manufacturing?kerf=1` | viewer | manufacturability: fasteners, drilling, hinges, contacts and gaps, joint options, assembly plan, material limits (§9) |
+| `GET /designs/{id}/cutlist` | viewer | board identification and grouped cut list (§9) |
+| `POST /designs/examples/furniture/{product}` | editor | build a real product through the join pipeline (`table`, `bookshelf`, `cabinet`, `wardrobe`, `drawer`, `l-desk`, `storage-rack`, `tv-unit`, `mitred-stand`, `cube-storage`; numeric `params`) |
 
 ## 7. AI-agent workflow
 
@@ -249,7 +269,10 @@ For LLM function calling, map `GET /api/v1/tools` entries (`name`, `description`
 ## 8. Production
 
 * **Nesting** (`board_engine/nesting.py`): MaxRects best-short-side-fit on cut-profile bounding
-  boxes, largest first, multiple sheets. Presets `A4, A3, A2, Letter, Tabloid, board-600x400,
+  boxes, largest first, multiple sheets. **Each stock board (material, type, thickness) is nested on its own
+  sheets** — an 18 mm side and a 6 mm back never share a sheet; every sheet records its `stock`, and the
+  verification pass rejects `MIXED_STOCK_ON_SHEET`. Declared grain fixes the rotation (grain along the sheet's
+  long side). Spacing below the kerf is `SPACING_BELOW_KERF` (neighbouring cuts would eat into parts). Presets `A4, A3, A2, Letter, Tabloid, board-600x400,
   board-800x600, board-1220x610, board-2440x1220` or custom `width/height`; `margin`, `spacing`,
   `rotation` (`orthogonal` = 0°/90°, or `none`), per-part `grain_locked`. Parts that cannot fit are
   reported (`PART_EXCEEDS_SHEET`), never placed outside the usable area. A second pass verifies
@@ -265,3 +288,32 @@ For LLM function calling, map `GET /api/v1/tools` entries (`name`, `description`
   one dimensioned drawing per component (standard scale, datum, feature/tab tables, assembly
   references, cutting instructions); an assembly sequence derived from the joint graph; page
   numbering and a title block on every page. PNG previews are rendered client-side from the SVG.
+
+## 9. Manufacturing engineering & cut list
+
+A design that is geometrically valid is not necessarily manufacturable. `board_engine/manufacturing.py`
+checks what it takes to make and assemble it; `production_package` (layout, exports) includes its errors in
+`ready_for_production`. Catalogue values (`MATERIALS`, `FASTENERS`, `HINGE`) are typical European / 32 mm
+system figures — review them for your supplier.
+
+| Area | Checks / output | Codes |
+|---|---|---|
+| Materials | stock thickness, minimum part width, grain across a solid-wood span, banding on short / joined / tabbed edges, uncompensated kerf larger than the cut tolerance | `NONSTANDARD_THICKNESS`, `PART_BELOW_MIN_SIZE`, `GRAIN_ACROSS_LENGTH`, `GRAIN_UNSPECIFIED` (info), `BANDING_ON_*`, `KERF_NOT_COMPENSATED` |
+| Fasteners | positions along the real contact (end distance, max spacing, count); edge wall beside the bore; screw engagement; break-out of the far board or into cut-outs; face bores near an edge; drilling list per board (face bore: face, position, Ø, depth, through; edge bore: edge, offset, Ø, depth) | `FASTENER_TOO_THICK_FOR_EDGE`, `FASTENER_TOO_SHORT`, `FASTENER_BREAKS_OUT`, `FASTENER_IN_CUTOUT`, `FASTENER_NEAR_EDGE`, `FASTENER_TOO_CLOSE_TO_END`, `FASTENER_NO_CONTACT`, `DOWEL_SHALLOW`, `SINGLE_FASTENER` |
+| Cross-checks | fastener bodies closer than r1+r2+2 mm (spatial hash), a fastener running into a third board, a board in the driver's line | `FASTENER_COLLISION` (with a **verified** `stagger_fasteners` suggestion), `FASTENER_HITS_BOARD`, `TOOL_ACCESS_BLOCKED` |
+| Hinges | count from door height, cup bores (Ø35 × 13 at 22.5 mm), mounting-plate holes, hinge positions moved clear of shelves, door reveal | `HINGE_POSITION_ADJUSTED` (info), `HINGE_OBSTRUCTED`, `HINGE_CUP_OFF_DOOR`, `DOOR_GAP_TOO_SMALL`; in validation: `HINGE_CUP_TOO_DEEP`, `DOOR_NOT_OVER_CARCASS`, `DOOR_FACES_AWAY`, `HINGE_COUNT_LOW` |
+| Connections | boards touching without a joint (L / T / face, with recommended joints and alternatives checked against thickness and material), near-miss gaps up to 5 mm with the exact `translate` delta, glue-only butt joints on particle board / MDF; hinged doors are excluded (their clearance is intentional) | `CONTACT_WITHOUT_JOINT`, `POSSIBLE_GAP`, `WEAK_JOINT` |
+| Assembly | assembly by disassembly on a local blocking graph: tabs and dowels allow one sliding direction, butt / lap contacts forbid moving into the other board; strongly connected components give removable sub-assemblies. Output: ordered steps with sub-assemblies and approach directions (each step attaches to what is built, doors last), or the boards that lock each other | `ASSEMBLY_LOCKED`, `FASTEN_BEFORE_FITTING` (info) |
+
+`board_engine/cutlist.py` identifies every board by its component id (stable under moving, rotating and
+resizing) and reports: purpose (group), material, thickness, world orientation, **finished size from the
+minimum-area rectangle of the cut profile** (not the bounding box), **blank size** (minus edge banding, plus
+mitre long points `t/2·cot(φ/2)`), each edge (straight / angled, banding, bevel), operations (angled cuts,
+notches, tabs, through cuts, bevels with blade tilt, drilling), connections, and `process` (`saw` / `cnc`).
+Identical boards (same profile, cut-outs, banding and drilling, allowing the board to be turned over or end
+for end) are grouped with a quantity. The PDF booklet adds a cut-list page, drilling tables on each component
+drawing, and uses the validated assembly plan.
+
+Not modelled yet: housing joints (dado / rabbet / groove), cam locks, biscuits, pocket screws, blind pockets,
+CNC tool radius in inside corners, sweep paths for the assembly planner (it reasons from contacts only),
+pre-mill allowance on edge banders.

@@ -286,3 +286,77 @@ def offset_convex_polygon(poly, d):
 def angle_diff_mod180(a, b):
     d = (a - b) % 180.0
     return min(d, 180.0 - d)
+
+
+def convex_hull(points):
+    """Andrew's monotone chain; CCW, no collinear points."""
+    pts = sorted(set((float(p[0]), float(p[1])) for p in points))
+    if len(pts) <= 2:
+        return [list(p) for p in pts]
+
+    def half(seq):
+        h = []
+        for p in seq:
+            while len(h) >= 2 and _orient(h[-2], h[-1], p) <= EPS:
+                h.pop()
+            h.append(p)
+        return h
+    lower, upper = half(pts), half(reversed(pts))
+    return [list(p) for p in lower[:-1] + upper[:-1]]
+
+
+def oriented_rect(poly):
+    """Minimum-area bounding rectangle (rotating calipers over the hull edges).
+
+    Returns {'length', 'width', 'angle', 'origin'}: length >= width; `angle` (deg) is the direction of the
+    length axis in the polygon's frame; `origin` is the rectangle corner with minimum (u, v) along
+    (length axis, width axis). This is the blank a board is cut from, independent of how it is drawn.
+    """
+    hull = convex_hull(poly)
+    best = None
+    for i in range(len(hull)):
+        a, b = hull[i], hull[(i + 1) % len(hull)]
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        if L < EPS:
+            continue
+        ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+        us = [p[0] * ux + p[1] * uy for p in hull]
+        vs = [-p[0] * uy + p[1] * ux for p in hull]
+        w, h = max(us) - min(us), max(vs) - min(vs)
+        # prefer the axis-aligned candidate on (numerical) ties so rectangles drawn square stay at 0 deg
+        key = (round(w * h, 6), round(min(abs(math.degrees(math.atan2(uy, ux))) % 90, 90 - abs(math.degrees(math.atan2(uy, ux))) % 90), 6))
+        if best is None or key < best[0]:
+            best = (key, ux, uy, min(us), min(vs), w, h)
+    if best is None:
+        return {'length': 0.0, 'width': 0.0, 'angle': 0.0, 'origin': [0.0, 0.0]}
+    _k, ux, uy, u0, v0, w, h = best
+    if h > w:  # make the long side the length axis (rotate the frame by +90 deg)
+        ux, uy, u0, v0, w, h = -uy, ux, v0, -(u0 + w), h, w
+    ang = math.degrees(math.atan2(uy, ux))
+    if ang <= -90 + 1e-9 or ang > 90 + 1e-9:  # report the length axis pointing towards +x
+        ux, uy, u0, v0 = -ux, -uy, -(u0 + w), -(v0 + h)
+        ang = math.degrees(math.atan2(uy, ux))
+    return {'length': w, 'width': h, 'angle': ang, 'origin': [u0 * ux - v0 * uy, u0 * uy + v0 * ux]}
+
+
+def offset_edges(poly, inward):
+    """Move each edge of a CCW simple polygon inward by inward[i] mm (negative = outward); vertices are
+    re-intersected from the moved neighbouring edge lines (collinear neighbours keep the moved point)."""
+    n = len(poly)
+    lines = []
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+        nx, ny = -(b[1] - a[1]) / L, (b[0] - a[0]) / L   # inward normal for CCW
+        d = inward[i]
+        lines.append(((a[0] + nx * d, a[1] + ny * d), (b[0] - a[0], b[1] - a[1])))
+    out = []
+    for i in range(n):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(den) < 1e-12:
+            out.append([p2[0], p2[1]])
+            continue
+        t = ((p2[0] - p1[0]) * d2[1] - (p2[1] - p1[1]) * d2[0]) / den
+        out.append([p1[0] + d1[0] * t, p1[1] + d1[1] * t])
+    return out

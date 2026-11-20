@@ -12,7 +12,7 @@ is shown as seen from its local +z face, never mirrored:
 import math
 
 from . import geometry as G
-from .model import Plate, feature_polygon
+from .model import Plate, feature_polygon, material_of
 
 SHEET_PRESETS = {
     'A4': (297.0, 210.0), 'A3': (420.0, 297.0), 'A2': (594.0, 420.0),
@@ -111,6 +111,24 @@ def part_area(plate):
     return a
 
 
+def stock_key(design, comp):
+    """Parts may share a sheet only when they are cut from the same stock board."""
+    m = material_of(design, comp)
+    return (m['name'], m['type'], m['thickness'])
+
+
+def _allowed_rotations(pl, sheet):
+    """Rotations (deg) a part may take on the sheet. Declared grain must run along the sheet's long side
+    (the grain of plywood / veneered and solid stock); grain_locked forbids rotation altogether."""
+    grain = pl.comp.get('grain')
+    if grain in ('x', 'y'):
+        sheet_axis = 'x' if sheet['width'] >= sheet['height'] else 'y'
+        return [0.0 if grain == sheet_axis else 90.0], True
+    if sheet['rotation'] == 'orthogonal' and not pl.comp.get('grain_locked'):
+        return [0.0, 90.0], False
+    return [0.0], False
+
+
 def nest(design, opts=None):
     opts = opts or {}
     sheet = resolve_sheet(opts, design)
@@ -118,11 +136,9 @@ def nest(design, opts=None):
     sp = sheet['spacing']
     plates = [Plate(design, c) for c in design['components']]
 
-    items, unplaced = [], []
+    groups, unplaced = {}, []
     for pl in plates:
-        allowed = [0.0]
-        if sheet['rotation'] == 'orthogonal' and not pl.comp.get('grain_locked'):
-            allowed = [0.0, 90.0]
+        allowed, grain = _allowed_rotations(pl, sheet)
         options = []
         for r in allowed:
             x0, y0, x1, y1 = _rotated_bbox(pl.cut, r)
@@ -134,45 +150,65 @@ def nest(design, opts=None):
             unplaced.append({'id': pl.id, 'code': 'PART_EXCEEDS_SHEET',
                              'message': f"'{pl.id}' ({x1 - x0:.1f} x {y1 - y0:.1f} mm) does not fit the usable "
                                         f"{ux1 - ux0:.0f} x {uy1 - uy0:.0f} mm area"
-                                        + (" (rotation not permitted)" if len(allowed) == 1 else "") + "."})
+                                        + (" with its grain along the sheet" if grain else
+                                           " (rotation not permitted)" if len(allowed) == 1 else "") + "."})
             continue
-        items.append((pl, options))
-    items.sort(key=lambda it: -max(o[1] * o[2] for o in it[1]))
+        groups.setdefault(stock_key(design, pl.comp), []).append((pl, options, grain))
 
-    bins, placements = [], []
-    for pl, options in items:
-        placed = False
-        for si, mr in enumerate(bins + [None]):
-            if mr is None:
-                mr = _MaxRects(ux0, uy0, ux1 + sp, uy1 + sp)  # spacing is added to every item's size
-                bins.append(mr)
-            best = None
-            for r, w, h, bx0, by0 in options:
-                hit = mr.find(w + sp, h + sp)
-                if hit and (best is None or hit[0] < best[0]):
-                    best = (hit[0], hit[1], r, w, h, bx0, by0)
-            if best:
-                _s, (fx, fy), r, w, h, bx0, by0 = best
-                mr.place(fx, fy, w + sp, h + sp)
-                placements.append({'id': pl.id, 'name': pl.comp.get('name', pl.id), 'sheet': si, 'rotation': r,
-                                   'tx': round(fx - bx0, 4), 'ty': round(fy - by0, 4),
-                                   'bbox': [round(fx, 3), round(fy, 3), round(fx + w, 3), round(fy + h, 3)],
-                                   'thickness': pl.t, 'area': round(part_area(pl), 2)})
-                placed = True
-                break
-        if not placed:
-            unplaced.append({'id': pl.id, 'code': 'NESTING_FAILED', 'message': f"Could not place '{pl.id}'."})
-            if bins and not mr_has_items(placements, len(bins) - 1):
-                bins.pop()
+    sheets, placements = [], []
+    # Thickest stock first, then by name: deterministic sheet numbering
+    for key in sorted(groups, key=lambda k: (-k[2], k[0], k[1])):
+        items = sorted(groups[key], key=lambda it: -max(o[1] * o[2] for o in it[1]))
+        stock = {'material': key[0], 'type': key[1], 'thickness': key[2]}
+        bins, first = [], len(sheets)
+        for pl, options, grain in items:
+            placed = False
+            for bi, mr in enumerate(bins + [None]):
+                if mr is None:
+                    mr = _MaxRects(ux0, uy0, ux1 + sp, uy1 + sp)  # spacing is added to every item's size
+                    bins.append(mr)
+                best = None
+                for r, w, h, bx0, by0 in options:
+                    hit = mr.find(w + sp, h + sp)
+                    if hit and (best is None or hit[0] < best[0]):
+                        best = (hit[0], hit[1], r, w, h, bx0, by0)
+                if best:
+                    _s, (fx, fy), r, w, h, bx0, by0 = best
+                    mr.place(fx, fy, w + sp, h + sp)
+                    placements.append({'id': pl.id, 'name': pl.comp.get('name', pl.id), 'sheet': first + bi,
+                                       'rotation': r,
+                                       'tx': fx - bx0, 'ty': fy - by0,  # unrounded: rounding can push a part past the usable edge
+                                       'bbox': [round(fx, 3), round(fy, 3), round(fx + w, 3), round(fy + h, 3)],
+                                       'thickness': pl.t, 'area': round(part_area(pl), 2),
+                                       **({'grain_aligned': True} if grain else {})})
+                    placed = True
+                    break
+            if not placed:
+                unplaced.append({'id': pl.id, 'code': 'NESTING_FAILED', 'message': f"Could not place '{pl.id}'."})
+                if bins and not mr_has_items(placements, first + len(bins) - 1):
+                    bins.pop()
+        sheets.extend({'index': first + i, 'stock': stock} for i in range(len(bins)))
 
-    nsheets = len(bins)
+    nsheets = len(sheets)
     sheet_area = sheet['width'] * sheet['height']
     usable_area = (ux1 - ux0) * (uy1 - uy0)
     used = sum(p['area'] for p in placements)
     total = nsheets * sheet_area
+    by_stock = []
+    for sh in sheets:
+        st = next((x for x in by_stock if x['stock'] == sh['stock']), None)
+        if st is None:
+            st = {'stock': sh['stock'], 'sheets': 0, 'used_area': 0.0}
+            by_stock.append(st)
+        st['sheets'] += 1
+        st['used_area'] += sum(p['area'] for p in placements if p['sheet'] == sh['index'])
+    for st in by_stock:
+        st['used_area'] = round(st['used_area'], 1)
+        st['efficiency_percent'] = round(100 * st['used_area'] / (st['sheets'] * sheet_area), 2)
     report = {
         'sheet': sheet,
         'sheet_count': nsheets,
+        'sheets': sheets,
         'placements': placements,
         'unplaced': unplaced,
         'stats': {
@@ -183,6 +219,7 @@ def nest(design, opts=None):
             'waste_percent': round(100 * (total - used) / total, 2) if total else 0.0,
             'efficiency_percent': round(100 * used / total, 2) if total else 0.0,
             'usable_efficiency_percent': round(100 * used / (nsheets * usable_area), 2) if nsheets else 0.0,
+            'by_stock': by_stock,
         },
     }
     report['issues'] = verify_nesting(design, report)
@@ -209,6 +246,21 @@ def verify_nesting(design, report):
     issues = []
     ux0, uy0, ux1, uy1 = report['sheet']['usable']
     sp = report['sheet']['spacing']
+    kerf = design['material']['kerf']
+    if report['placements'] and sp < kerf - 1e-9:
+        # The saw/laser removes `kerf` of material along every cut: closer parts are cut into by their neighbour.
+        issues.append({'code': 'SPACING_BELOW_KERF', 'severity': 'error', 'components': [],
+                       'message': f"Part spacing {sp:g} mm is less than the {kerf:g} mm kerf: neighbouring cuts "
+                                  f"would eat into each other's parts. Use spacing >= {kerf:g} mm."})
+    from .model import find_component
+    stock_of = {s['index']: s['stock'] for s in report.get('sheets', [])}
+    for p in report['placements']:
+        st = stock_of.get(p['sheet'])
+        key = stock_key(design, find_component(design, p['id']))
+        if st is not None and (st['material'], st['type'], st['thickness']) != key:
+            issues.append({'code': 'MIXED_STOCK_ON_SHEET', 'severity': 'error', 'components': [p['id']],
+                           'message': f"'{p['id']}' ({key[0]}, {key[2]:g} mm) is placed on sheet {p['sheet'] + 1} "
+                                      f"of {st['material']} {st['thickness']:g} mm."})
     geo = {p['id']: placed_geometry(design, p)['outline'] for p in report['placements']}
     for p in report['placements']:
         x0, y0, x1, y1 = G.bbox(geo[p['id']])

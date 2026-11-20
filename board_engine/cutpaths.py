@@ -154,12 +154,13 @@ def _esc(s):
 
 
 def sheet_svg(design, nesting, cut, index, labels=True):
+    from .booklet import sheet_stock_label
     sh = nesting['sheet']
     w, h = sh['width'], sh['height']
     sheet = cut['sheets'][index]
     out = [f'<?xml version="1.0" encoding="UTF-8"?>',
            f'<!-- {_esc(design["name"])} | sheet {index + 1} of {nesting["sheet_count"]} | '
-           f'{_esc(design["material"]["name"])} | 1 user unit = 1 mm | kerf compensation '
+           f'{_esc(sheet_stock_label(nesting, index, design["material"]))} | 1 user unit = 1 mm | kerf compensation '
            f'{cut["kerf_compensation"]} mm -->',
            f'<svg xmlns="http://www.w3.org/2000/svg" width="{_fmt(w)}mm" height="{_fmt(h)}mm" '
            f'viewBox="0 0 {_fmt(w)} {_fmt(h)}">',

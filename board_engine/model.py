@@ -41,10 +41,15 @@ from . import geometry as G
 
 FEATURE_KINDS = ('slot', 'hole', 'opening')
 FEATURE_SHAPES = ('rect', 'circle')
-JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap')
+JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge')
 # Glue-free products (cardboard, friction-fit board) can only use mechanical interlocks.
 JOINERY_MODES = ('interlocking', 'glue_allowed')
 INTERLOCKING_JOINTS = ('tab_slot',)
+# Material families; manufacturing.MATERIALS holds their stock and tolerance data.
+MATERIAL_TYPES = ('plywood', 'mdf', 'particle_board', 'solid_wood', 'hardboard', 'cardboard', 'other')
+# Mechanical fasteners for edge_butt (and coplanar edge_mitre: dowel only); see manufacturing.FASTENERS.
+FASTENER_KINDS = ('screw', 'confirmat', 'dowel')
+GRAIN = ('none', 'x', 'y')   # grain direction in the component's local frame
 
 LIMITS = {
     'max_components': 300,
@@ -54,7 +59,8 @@ LIMITS = {
     'max_joints': 1000,
     'max_coord': 5000.0,
     'min_thickness': 0.5,
-    'max_thickness': 25.0,
+    'max_thickness': 50.0,    # solid-wood worktops / table tops (38-40 mm)
+    'max_kerf': 6.0,          # panel-saw blades cut 3.2-4.8 mm
 }
 
 DEFAULT_MATERIAL = {'name': 'Birch plywood 3 mm', 'thickness': 3.0, 'kerf': 0.15,
@@ -191,7 +197,64 @@ def normalize_component(c, path='component'):
         out['description'] = _text(c.get('description'), path + '.description', 500)
     if c.get('grain_locked'):
         out['grain_locked'] = True  # nesting may not rotate this part (grain / print direction)
+    if c.get('grain') not in (None, 'none'):
+        if c['grain'] not in GRAIN:
+            raise SchemaError(f'{path}.grain must be one of {GRAIN}', path + '.grain')
+        out['grain'] = c['grain']  # visible grain runs along local x or y; nesting aligns it with the sheet grain
+    if c.get('material') is not None:
+        out['material'] = normalize_material_ref(c['material'], path + '.material')
+    if c.get('edge_banding'):
+        eb = c['edge_banding']
+        if not isinstance(eb, list) or len(eb) > len(outline):
+            raise SchemaError(f'{path}.edge_banding must be a list of <= {len(outline)} items', path + '.edge_banding')
+        out['edge_banding'] = []
+        for i, b in enumerate(eb):
+            bp = f'{path}.edge_banding[{i}]'
+            if not isinstance(b, dict):
+                raise SchemaError(f'{bp} must be an object', bp)
+            e = b.get('edge')
+            if isinstance(e, bool) or not isinstance(e, int) or not (0 <= e < len(outline)):
+                raise SchemaError(f'{bp}.edge must be an outline edge index', bp + '.edge')
+            out['edge_banding'].append({'edge': e, 'thickness': _num(b.get('thickness'), bp + '.thickness', 0.3, 5.0),
+                                        **({'material': _text(b['material'], bp + '.material', 64)}
+                                           if b.get('material') else {})})
+        if len({b['edge'] for b in out['edge_banding']}) != len(out['edge_banding']):
+            raise SchemaError(f'{path}.edge_banding lists an edge twice', path + '.edge_banding')
     return out, notes
+
+
+def normalize_material_ref(m, path):
+    """Per-component material override: {name?, type?} (thickness stays on the component)."""
+    if not isinstance(m, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    out = {}
+    if m.get('name'):
+        out['name'] = _text(m['name'], path + '.name')
+    if m.get('type') is not None:
+        if m['type'] not in MATERIAL_TYPES:
+            raise SchemaError(f'{path}.type must be one of {MATERIAL_TYPES}', path + '.type')
+        out['type'] = m['type']
+    return out
+
+
+def normalize_fasteners(f, path):
+    if not isinstance(f, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    if f.get('kind') not in FASTENER_KINDS:
+        raise SchemaError(f'{path}.kind must be one of {FASTENER_KINDS}', path + '.kind')
+    out = {'kind': f['kind']}
+    if f.get('count') is not None:
+        n = f['count']
+        if isinstance(n, bool) or not isinstance(n, int) or not (1 <= n <= 20):
+            raise SchemaError(f'{path}.count must be an integer 1..20', path + '.count')
+        out['count'] = n
+    if f.get('diameter') is not None:
+        out['diameter'] = _num(f['diameter'], path + '.diameter', 2.0, 20.0)
+    if f.get('length') is not None:
+        out['length'] = _num(f['length'], path + '.length', 5.0, 200.0)
+    if f.get('end') is not None:   # distance of the first/last fastener from the contact ends (staggering)
+        out['end'] = _num(f['end'], path + '.end', 5.0, 1000.0)
+    return out
 
 
 def normalize_joint(j, path='joint'):
@@ -206,7 +269,7 @@ def normalize_joint(j, path='joint'):
         out['tab'] = check_id(j.get('tab'), path + '.tab')
         if j.get('slot') is not None:
             out['slot'] = check_id(j.get('slot'), path + '.slot')
-    if jtype in ('edge_butt', 'edge_mitre'):
+    if jtype in ('edge_butt', 'edge_mitre', 'hinge'):
         e = j.get('a_edge')
         if isinstance(e, bool) or not isinstance(e, int) or e < 0:
             raise SchemaError(f'{path}.a_edge must be a non-negative integer', path + '.a_edge')
@@ -216,6 +279,19 @@ def normalize_joint(j, path='joint'):
         if isinstance(e, bool) or not isinstance(e, int) or e < 0:
             raise SchemaError(f'{path}.b_edge must be a non-negative integer', path + '.b_edge')
         out['b_edge'] = e
+        if j.get('bevel'):
+            out['bevel'] = True   # both edges bevelled to half the corner angle (saw / CNC; not laser)
+    if jtype in ('edge_butt', 'edge_mitre') and j.get('fasteners') is not None:
+        out['fasteners'] = normalize_fasteners(j['fasteners'], path + '.fasteners')
+    if jtype == 'hinge':
+        # a = door, a_edge = its hinge edge, b = the carcass board it hangs on
+        if j.get('count') is not None:
+            n = j['count']
+            if isinstance(n, bool) or not isinstance(n, int) or not (1 <= n <= 8):
+                raise SchemaError(f'{path}.count must be an integer 1..8', path + '.count')
+            out['count'] = n
+        if j.get('gap') is not None:
+            out['gap'] = _num(j['gap'], path + '.gap', 0.0, 5.0)
     for k in ('status', 'repairs', 'joined_at', 'detached_reason'):
         if k in j:
             out[k] = copy.deepcopy(j[k])
@@ -255,9 +331,11 @@ def normalize_design(d):
             'name': _text(mat.get('name'), 'material.name'),
             'thickness': _num(mat.get('thickness'), 'material.thickness',
                               LIMITS['min_thickness'], LIMITS['max_thickness']),
-            'kerf': _num(mat.get('kerf'), 'material.kerf', 0, 2),
+            'kerf': _num(mat.get('kerf'), 'material.kerf', 0, LIMITS['max_kerf']),
             'clearance': _num(mat.get('clearance'), 'material.clearance', 0, 2),
             'color': _text(mat.get('color'), 'material.color', 16, '#d9b98b'),
+            **({'type': normalize_material_ref({'type': mat['type']}, 'material')['type']}
+               if mat.get('type') is not None else {}),
         },
         'sheet': {
             'width': _num(sheet.get('width'), 'sheet.width', 10, LIMITS['max_coord']),
@@ -278,6 +356,14 @@ def normalize_design(d):
 
 def thickness_of(design, comp):
     return comp.get('thickness', design['material']['thickness'])
+
+
+def material_of(design, comp):
+    """Effective stock material of a component: {name, type, thickness}."""
+    m = design['material']
+    ref = comp.get('material') or {}
+    return {'name': ref.get('name', m['name']), 'type': ref.get('type', m.get('type', 'other')),
+            'thickness': thickness_of(design, comp)}
 
 
 def feature_polygon(f):
@@ -343,6 +429,14 @@ class Plate:
         self._feature_boxes = [G.bbox(poly) for _f, poly in self.feature_polys]
         self.bbox2d = G.bbox(self.cut)
         self._aabb = None
+
+    def signature(self):
+        """Hashable identity of this plate's solid geometry (thickness, placement, cut profile, cut-outs)."""
+        if getattr(self, '_sig', None) is None:
+            self._sig = (self.id, self.t, tuple(self.comp['placement']['position']),
+                         tuple(self.comp['placement']['rotation']), tuple(map(tuple, self.cut)),
+                         tuple(tuple(map(tuple, poly)) for _f, poly in self.feature_polys))
+        return self._sig
 
     def world_aabb(self):
         if self._aabb is None:

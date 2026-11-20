@@ -148,6 +148,29 @@ def test_boat_example_and_production_exports(client):
     assert r.status_code == 201 and r.json['validation']['valid']
 
 
+def test_furniture_example_cutlist_and_manufacturing(client):
+    r = client.post('/api/v1/designs/examples/furniture/cabinet', headers=ED,
+                    json={'id': 'cab-api', 'params': {'W': 900}})
+    assert r.status_code == 201 and r.json['join_failures'] == [] and r.json['validation']['complete']
+    assert client.post('/api/v1/designs/examples/furniture/cabinet', headers=ED,
+                       json={'id': 'x', 'params': {'colour': 1}}).status_code == 400
+    assert client.post('/api/v1/designs/examples/furniture/sofa', headers=ED, json={}).status_code == 404
+    assert client.post('/api/v1/designs/examples/furniture/cabinet', headers=VIEW, json={}).status_code == 403
+    cl = client.get('/api/v1/designs/cab-api/cutlist', headers=VIEW).json
+    shelf = next(l for l in cl['lines'] if 'SHELF' in l['ids'])
+    # W = 900: shelf spans the left side's inner face (-432) to the partition (-9) = 423, depth 560 - 40 = 520
+    assert cl['ok'] and (shelf['finished_length'], shelf['finished_width']) == (520, 423)
+    m = client.get('/api/v1/designs/cab-api/manufacturing?kerf=1', headers=VIEW).json
+    assert m['ok'] and m['manufacturable'] and m['summary']['drilling_operations'] > 0 and m['assembly_plan']
+    m = client.get('/api/v1/designs/cab-api/manufacturing?kerf=0', headers=VIEW).json
+    assert 'KERF_NOT_COMPENSATED' in [i['code'] for i in m['issues']]
+    lay = client.get('/api/v1/designs/cab-api/layout2d?preset=board-2440x1220&spacing=4&kerf=1', headers=VIEW).json
+    assert lay['ready_for_production'] and all(len({p['thickness'] for p in lay['nesting']['placements']
+                                                    if p['sheet'] == s['index']}) == 1 for s in lay['nesting']['sheets'])
+    tools = {t['name'] for t in client.get('/api/v1/tools').json['tools']}
+    assert {'get_manufacturing', 'get_cut_list'} <= tools
+
+
 def test_export_refused_for_invalid_design(client):
     client.post('/api/v1/designs', headers=ED, json={'id': 'broken', 'components': [base_plate(), wall()]})
     r = client.get('/api/v1/designs/broken/export/pdf', headers=VIEW)

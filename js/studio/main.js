@@ -75,7 +75,7 @@ function showTip(tipEl, id, e) {
   const c = S.model?.components.find((x) => x.id === id);
   if (!c) return;
   const r = tipEl.parentElement.getBoundingClientRect();
-  tipEl.innerHTML = `<b class="mono">${esc(id)}</b> · ${esc(c.name)}<br><span class="muted">${fmt(c.dimensions_2d.width)} × ${fmt(c.dimensions_2d.height)} × ${c.thickness} mm · ${stateLabel(c.state)}</span>`;
+  tipEl.innerHTML = `<b class="mono">${esc(id)}</b> · ${esc(c.name)}<br><span class="muted">${fmt(c.cut_size.length)} × ${fmt(c.cut_size.width)} × ${c.thickness} mm · ${stateLabel(c.state)}</span>`;
   tipEl.style.display = 'block';
   tipEl.style.left = `${Math.max(8, Math.min(e.clientX - r.left + 14, r.width - 230))}px`;
   tipEl.style.top = `${e.clientY - r.top + 14}px`;
@@ -268,7 +268,7 @@ function renderSidebar() {
         <div class="group-items">${cs.map((c) => `
           <div class="item${c.id === S.selected ? ' sel' : ''}" data-id="${esc(c.id)}" title="${esc(c.name)}">
             <span class="dot ${c.state}"></span><span class="name">${esc(c.id)}</span>
-            <span class="meta">${fmt(c.dimensions_2d.width, 0)}×${fmt(c.dimensions_2d.height, 0)}</span></div>`).join('')}</div>
+            <span class="meta">${fmt(c.cut_size.length, 0)}×${fmt(c.cut_size.width, 0)}</span></div>`).join('')}</div>
       </div>`).join('') || `<div class="empty">${m.components.length ? 'No parts match.' : 'This design has no parts yet.'}</div>`;
     $$('#tree .item').forEach((n) => (n.onclick = () => select(n.dataset.id, 'tree')));
     $$('#tree .group-title').forEach((b) => (b.onclick = () => {
@@ -376,7 +376,7 @@ function renderInspector(body) {
       <div class="muted" style="margin:2px 0 12px">${esc(c.name)} · ${esc(c.group)}</div>
       ${profileSvg(c)}
       <dl class="kv" style="margin-top:12px">
-        <dt>Cut size</dt><dd>${fmt(c.dimensions_2d.width, 2)} × ${fmt(c.dimensions_2d.height, 2)} mm</dd>
+        <dt>Cut size</dt><dd>${fmt(c.cut_size.length, 2)} × ${fmt(c.cut_size.width, 2)} mm</dd>
         <dt>Thickness</dt><dd>${c.thickness} mm</dd><dt>Net area</dt><dd>${fmt(c.dimensions_2d.area / 100, 1)} cm²</dd></dl>
     </div>
     ${errs ? `<div class="callout err">${errs} error(s) on this part. <a href="#" id="go-check">Show in Check</a></div>` : ''}

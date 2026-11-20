@@ -19,11 +19,12 @@ Issue shape:
    repair?:     {action, ...}   # set only when the engine can SAFELY auto-correct it
    suggestion?: {...}}          # a hint the caller (user / AI agent) may apply
 """
+import copy
 import math
 
 from . import geometry as G
 from .model import (INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
-                    find_component, thickness_of)
+                    find_component, material_of, thickness_of)
 
 TOL = {
     'contact': 0.25,          # mm: allowed gap/penetration at a mating surface
@@ -212,13 +213,14 @@ def evaluate_joint(design, plates, joint, tol=TOL):
         return {'ok': False, 'issues': issues, 'matched_slot': None, 'location': None}
 
     if design.get('joinery', 'interlocking') == 'interlocking' and joint['type'] not in INTERLOCKING_JOINTS:
+        why = ('needs cabinet hardware' if joint['type'] == 'hinge' else 'only holds with glue')
         issues.append(issue('GLUE_JOINT_NOT_ALLOWED', 'error', 'joint',
-                            f"'{jid}' is a {joint['type'].replace('_', ' ')} joint, which only holds with glue. This design "
+                            f"'{jid}' is a {joint['type'].replace('_', ' ')} joint, which {why}. This design "
                             f"is glue-free (interlocking): connect '{a.id}' and '{b.id}' with a tab through a slot instead.",
                             [a.id, b.id], joint=jid))
         return {'ok': False, 'issues': issues, 'matched_slot': None, 'location': None}
     fn = {'tab_slot': _eval_tab_slot, 'edge_butt': _eval_edge_butt,
-          'edge_mitre': _eval_edge_mitre, 'face_lap': _eval_face_lap}[joint['type']]
+          'edge_mitre': _eval_edge_mitre, 'face_lap': _eval_face_lap, 'hinge': _eval_hinge}[joint['type']]
     res = fn(design, a, b, joint, tol, issues)
     res['issues'] = issues
     res['ok'] = not any(i['severity'] == 'error' for i in issues)
@@ -270,18 +272,38 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             joint=jid, location=location))
         return {'matched_slot': None, 'location': location}
 
-    gap = abs(z_root) - b.t / 2.0
-    move = G.v_scale(ins_w, gap)  # moving A by this closes the gap / removes the overlap
-    if gap > tol['contact']:
-        issues.append(issue('UNINTENDED_GAP', 'error', 'joint',
-                            f"'{a.id}' stands {gap:.2f} mm off the face of '{b.id}' at tab '{tab['id']}'. "
-                            f"The shoulder must sit on the board.", comps, joint=jid, location=location,
-                            gap=_r(gap), suggestion={'action': 'translate', 'component': a.id, 'delta': _r(move, 3)}))
-    elif gap < -tol['contact']:
-        issues.append(issue('PENETRATION', 'error', 'joint',
-                            f"The body of '{a.id}' sinks {-gap:.2f} mm into '{b.id}' beyond the tab shoulder.",
-                            comps, joint=jid, location=location, overlap=_r(-gap),
-                            suggestion={'action': 'translate', 'component': a.id, 'delta': _r(move, 3)}))
+    # Shoulder gap sampled at both ends of the tab root and its centre (receiver-local z). A single
+    # centre sample misses tilt: a board rotated by a few degrees lifts one end and sinks the other.
+    side = 1.0 if z_root > 0 else -1.0 if z_root < 0 else (-1.0 if dot > 0 else 1.0)
+    root_pts = [(tg['root'][0] + tg['dir'][0] * k * tab['width'] / 2.0, tg['root'][1] + tg['dir'][1] * k * tab['width'] / 2.0)
+                for k in (-1, 0, 1)]
+    gaps = [side * b.frame.to_local(a.frame.to_world([x, y, 0]))[2] - b.t / 2.0 for x, y in root_pts]
+    gmax, gmin = max(gaps), min(gaps)
+    spread = gmax - gmin
+    measured = {'gaps': [round(g, 4) for g in gaps]}
+    if gmax > tol['contact'] or gmin < -tol['contact']:
+        extra = {}
+        if spread <= 2 * tol['contact']:
+            # A pure offset (or a tilt small enough that one move brings both ends inside tolerance):
+            # moving A along the insertion direction by the mid value closes it.
+            extra['suggestion'] = {'action': 'translate', 'component': a.id,
+                                   'delta': _r(G.v_scale(ins_w, (gmax + gmin) / 2.0), 3)}
+            tilt_txt = ''
+        else:
+            # A tilt: no translation brings both ends within tolerance; which board to rotate is a design choice.
+            extra['tilt_deg'] = _r(math.degrees(math.atan2(spread, tab['width'])), 2)
+            tilt_txt = (f" '{a.id}' is tilted {extra['tilt_deg']:.2f}° along tab '{tab['id']}' "
+                        f"({gmin:+.2f} mm at one end, {gmax:+.2f} mm at the other) — rotate it square to '{b.id}'.")
+        if gmax > tol['contact']:
+            issues.append(issue('UNINTENDED_GAP', 'error', 'joint',
+                                f"'{a.id}' stands {gmax:.2f} mm off the face of '{b.id}' at tab '{tab['id']}'. "
+                                f"The shoulder must sit on the board." + tilt_txt, comps, joint=jid, location=location,
+                                gap=_r(gmax), gaps=measured['gaps'], **extra))
+        if gmin < -tol['contact']:
+            issues.append(issue('PENETRATION', 'error', 'joint',
+                                f"The body of '{a.id}' sinks {-gmin:.2f} mm into '{b.id}' beyond the tab shoulder."
+                                + tilt_txt, comps, joint=jid, location=location, overlap=_r(-gmin),
+                                gaps=measured['gaps'], **extra))
 
     # Tab depth relative to the receiving board
     if tab['depth'] < b.t * 0.5:
@@ -298,18 +320,35 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             comps, joint=jid))
 
     # Footprint of the tab on the receiver
-    centre = [root_b[0], root_b[1]]
+    # = the region the tab solid sweeps while crossing the receiver's thickness (receiver-local XY). For a
+    # square tab this is exactly width x thickness; a lean or yaw within the orientation gate widens it,
+    # and the required slot grows accordingly (no new tolerance: clearance is added as before).
     dir_b = b.frame.dir_to_local(a.frame.dir_to_world([tg['dir'][0], tg['dir'][1], 0]))
     angle = math.degrees(math.atan2(dir_b[1], dir_b[0]))
+    ca, sa = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+    ins_b = b.frame.dir_to_local(ins_w)
+    swept = []
+    for kd in (-0.5, 0.5):
+        for kn in (-0.5, 0.5):
+            start = b.frame.to_local(a.frame.to_world([tg['root'][0] + tg['dir'][0] * kd * tab['width'],
+                                                       tg['root'][1] + tg['dir'][1] * kd * tab['width'], kn * a.t]))
+            for zf in (-b.t / 2.0, b.t / 2.0):
+                s_ = (zf - start[2]) / ins_b[2]
+                swept.append((start[0] + ins_b[0] * s_, start[1] + ins_b[1] * s_))
+    us = [x * ca + y * sa for x, y in swept]
+    vs = [-x * sa + y * ca for x, y in swept]
+    len_eff, wid_eff = max(us) - min(us), max(vs) - min(vs)
+    cu, cv = (max(us) + min(us)) / 2.0, (max(vs) + min(vs)) / 2.0
+    centre = [cu * ca - cv * sa, cu * sa + cv * ca]
     clearance = design['material']['clearance']
-    exp_len, exp_wid = tab['width'] + clearance, a.t + clearance
-    footprint = G.rect_polygon(centre, tab['width'], a.t, angle)
+    exp_len, exp_wid = len_eff + clearance, wid_eff + clearance
+    footprint = G.rect_polygon(centre, len_eff, wid_eff, angle)
 
     if not all(G.point_in_polygon(p, b.cut) for p in footprint):
         issues.append(issue('TAB_OUTSIDE_RECEIVER', 'error', 'joint',
                             f"Tab '{tab['id']}' lands outside the outline of '{b.id}' — there is no material to "
                             f"receive it.", comps, joint=jid, location=location))
-        return {'matched_slot': None, 'location': location}
+        return dict(measured, matched_slot=None, location=location)
 
     for f, poly in b.feature_polys:
         if f['kind'] == 'slot' or not G.polygons_overlap(footprint, poly):
@@ -319,7 +358,7 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             f"Tab '{tab['id']}' lands in {f['kind']} '{f['id']}' of '{b.id}'. "
                             f"That {f['kind']} is intentional and is preserved; the joint must be moved.",
                             comps, joint=jid, feature=f['id'], location=location))
-        return {'matched_slot': None, 'location': location}
+        return dict(measured, matched_slot=None, location=location)
 
     # Locate the receiving slot
     slot = None
@@ -328,7 +367,7 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
         if slot is None or slot['kind'] != 'slot':
             issues.append(issue('SLOT_NOT_FOUND', 'error', 'joint',
                                 f"'{b.id}' has no slot '{joint['slot']}'.", comps, joint=jid))
-            return {'matched_slot': None, 'location': location}
+            return dict(measured, matched_slot=None, location=location)
     else:
         best = None
         for f, poly in b.feature_polys:
@@ -351,14 +390,14 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             f"{exp_len:.2f} x {exp_wid:.2f} mm slot is required at [{centre[0]:.2f}, {centre[1]:.2f}].",
                             comps, joint=jid, location=location,
                             repair={'action': 'create_slot', 'component': b.id, 'feature': new_slot}))
-        return {'matched_slot': None, 'location': location}
+        return dict(measured, matched_slot=None, location=location)
 
     users = slot_users(design, b.id, slot['id'], exclude_joint=jid)
     if users:
         issues.append(issue('SLOT_ALREADY_USED', 'error', 'joint',
                             f"Slot '{slot['id']}' on '{b.id}' already receives joint '{users[0]}'.",
                             comps, joint=jid, feature=slot['id']))
-        return {'matched_slot': slot['id'], 'location': location}
+        return dict(measured, matched_slot=slot['id'], location=location)
 
     off = math.hypot(slot['center'][0] - centre[0], slot['center'][1] - centre[1])
     if off > tol['slot_position']:
@@ -369,7 +408,7 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             feature=slot['id'], location=location, offset=_r(off),
                             suggestion={'action': 'translate', 'component': a.id,
                                         'delta': _r(b.frame.dir_to_world(delta_local), 3)}))
-        return {'matched_slot': slot['id'], 'location': location}
+        return dict(measured, matched_slot=slot['id'], location=location)
 
     # Express slot size along the tab direction
     rel = G.angle_diff_mod180(slot.get('angle', 0.0), angle)
@@ -381,13 +420,13 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
         issues.append(issue('SLOT_ORIENTATION_MISMATCH', 'error', 'joint',
                             f"Slot '{slot['id']}' on '{b.id}' is rotated {rel:.1f}° relative to tab '{tab['id']}'.",
                             comps, joint=jid, feature=slot['id'], location=location))
-        return {'matched_slot': slot['id'], 'location': location}
+        return dict(measured, matched_slot=slot['id'], location=location)
 
     resize = None
-    if s_len < tab['width'] + clearance - tol['slot_fit'] or s_wid < a.t + clearance - tol['slot_fit']:
+    if s_len < exp_len - tol['slot_fit'] or s_wid < exp_wid - tol['slot_fit']:
         code = 'SLOT_TOO_SMALL'
         msg = (f"Slot '{slot['id']}' on '{b.id}' is {s_len:.2f} x {s_wid:.2f} mm; tab '{tab['id']}' needs "
-               f"{exp_len:.2f} x {exp_wid:.2f} mm (tab + {clearance} mm clearance).")
+               f"{exp_len:.2f} x {exp_wid:.2f} mm (swept tab + {clearance} mm clearance).")
         resize = True
     elif s_wid > exp_wid + tol['slot_loose']:
         code = 'SLOT_TOO_LOOSE'
@@ -403,7 +442,7 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
         issues.append(issue('SLOT_LONGER_THAN_TAB', 'warning', 'joint',
                             f"Slot '{slot['id']}' is {s_len - exp_len:.2f} mm longer than tab '{tab['id']}'.",
                             comps, joint=jid, feature=slot['id']))
-    return {'matched_slot': slot['id'], 'location': location}
+    return dict(measured, matched_slot=slot['id'], location=location)
 
 
 def _edge_world(plate, edge_index):
@@ -452,21 +491,34 @@ def _eval_edge_butt(design, a, b, joint, tol, issues):
                             f"Edge {joint['a_edge']} of '{a.id}' penetrates {-gap:.2f} mm into '{b.id}'.",
                             comps, joint=jid, location=location, overlap=_r(-gap),
                             suggestion={'action': 'translate', 'component': a.id, 'delta': _r(move, 3)}))
-    # Contact length on receiver material
+    # Contact length on receiver material, measured in B-local XY along A's mid-plane edge AND along both
+    # of A's faces (offset +/- tA/2 along A's normal): the whole thickness of A must rest on B, not just its
+    # mid-line (an edge hanging over B's end or straddling a slot/opening is otherwise missed).
     L = math.dist(l0[:2], l1[:2])
-    steps = max(2, int(L / tol['sample_step']))
-    hits = 0
-    for k in range(steps + 1):
-        s = k / steps
-        p = [l0[0] + (l1[0] - l0[0]) * s, l0[1] + (l1[1] - l0[1]) * s]
-        if b.is_material(p, 0.0):
-            hits += 1
-    contact = L * hits / (steps + 1)
-    if contact < min(tol['min_contact_length'], L * 0.5):
+    contact_by_line = []
+    # Face lines are inset by the contact tolerance: a face flush with b's end lies exactly on b's outline,
+    # where point-in-polygon is undefined (a flush L-corner is fully supported, not overhanging).
+    face = a.t / 2.0 - tol['contact']
+    for off in (-face, 0.0, face):
+        q0 = b.frame.to_local(G.v_add(w0, G.v_scale(a.frame.normal, off)))
+        q1 = b.frame.to_local(G.v_add(w1, G.v_scale(a.frame.normal, off)))
+        # Exact length of the line on b's material (outline minus cut-outs), r in [0, 1] along the edge
+        ivs = _material_intervals(b, q0, [q1[0] - q0[0], q1[1] - q0[1]], 0.0)
+        contact_by_line.append(_r(L * sum(max(0.0, min(r1, 1.0) - max(r0, 0.0)) for r0, r1 in ivs)))
+    contact = contact_by_line[1]
+    need = min(tol['min_contact_length'], L * 0.5)
+    if max(contact_by_line) < need:
         issues.append(issue('NOT_IN_CONTACT', 'error', 'joint',
-                            f"Edge {joint['a_edge']} of '{a.id}' only touches {contact:.1f} mm of '{b.id}' material.",
-                            comps, joint=jid, location=location, contact_length=_r(contact)))
-    return {'location': location, 'contact_length': _r(contact)}
+                            f"Edge {joint['a_edge']} of '{a.id}' only touches {max(contact_by_line):.1f} mm of '{b.id}' "
+                            f"material.", comps, joint=jid, location=location, contact_length=_r(contact),
+                            contact_by_line=contact_by_line))
+    elif min(contact_by_line) < need:
+        issues.append(issue('EDGE_PARTIALLY_SUPPORTED', 'warning', 'joint',
+                            f"Only part of the {a.t:g} mm thickness of edge {joint['a_edge']} of '{a.id}' rests on "
+                            f"'{b.id}' (contact along -t/2, mid, +t/2: "
+                            f"{', '.join(f'{c:.1f}' for c in contact_by_line)} mm) — it overhangs an edge, slot or opening.",
+                            comps, joint=jid, location=location, contact_by_line=contact_by_line))
+    return {'location': location, 'contact_length': _r(contact), 'contact_by_line': contact_by_line}
 
 
 def _eval_edge_mitre(design, a, b, joint, tol, issues):
@@ -490,10 +542,141 @@ def _eval_edge_mitre(design, a, b, joint, tol, issues):
                             location=location, gap=_r(err),
                             suggestion={'action': 'translate', 'component': a.id, 'delta': _r(delta, 3)}))
     elif abs(G.v_dot(a.frame.normal, b.frame.normal)) > tol['parallel']:
-        issues.append(issue('COPLANAR_EDGE_JOINT', 'warning', 'joint',
-                            f"'{a.id}' and '{b.id}' meet edge-to-edge in the same plane; this joint has no "
-                            f"mechanical strength without a backing plate.", comps, joint=jid))
+        # Edge-to-edge in one plane: dowels (or a long-grain glue line in solid wood) make a real joint;
+        # a plain glued edge of sheet material does not.
+        solid = all(material_of(design, p.comp)['type'] == 'solid_wood' for p in (a, b))
+        if not joint.get('fasteners') and not solid:
+            issues.append(issue('COPLANAR_EDGE_JOINT', 'warning', 'joint',
+                                f"'{a.id}' and '{b.id}' meet edge-to-edge in the same plane; this joint has no "
+                                f"mechanical strength without dowels or a backing plate.", comps, joint=jid))
+        return {'location': location, 'relation': 'edge_to_edge'}
+    else:
+        # Thickness check (world, in the plane perpendicular to the shared edge). The data model has square
+        # edges only, so with coincident mid-plane edges the inner halves overlap. Along A the overlap is
+        # (tB/2 + tA/2*cos(phi)) / sin(phi), phi = angle between the boards' material directions.
+        _p, _d, nA2, _L = edge_frame(a.outline, joint['a_edge'])
+        _p, _d, nB2, _L = edge_frame(b.outline, joint['b_edge'])
+        uA = G.v_scale(a.frame.dir_to_world([nA2[0], nA2[1], 0]), -1.0)
+        uB = G.v_scale(b.frame.dir_to_world([nB2[0], nB2[1], 0]), -1.0)
+        phi = math.acos(max(-1.0, min(1.0, G.v_dot(uA, uB))))
+        if joint.get('bevel') and math.sin(phi) > 1e-6:
+            # Both edges cut on the bisector plane through the shared mid-plane edge: the boards then meet on
+            # that plane with no overlap. Each board's face on the outside of the corner runs past the
+            # mid-plane edge by (t/2)*cot(phi/2) (the long point) — the cut list sizes blanks from that.
+            deg = math.degrees(phi)
+            if abs(a.t - b.t) > tol['contact']:
+                issues.append(issue('MITRE_THICKNESS_MISMATCH', 'warning', 'joint',
+                                    f"Mitre '{jid}' joins a {a.t:g} mm and a {b.t:g} mm board; a bisecting bevel "
+                                    f"leaves the outer faces {abs(a.t - b.t) / 2:.1f} mm out of line.", comps, joint=jid))
+            bevel = {'corner_angle_deg': _r(deg, 2), 'bevel_deg': _r(deg / 2, 2), 'blade_tilt_deg': _r(90 - deg / 2, 2),
+                     'long_point': {a.id: _r(a.t / 2 / math.tan(phi / 2), 3), b.id: _r(b.t / 2 / math.tan(phi / 2), 3)}}
+            return {'location': location, 'relation': 'mitre', 'bevel': bevel}
+        if math.sin(phi) > 1e-6:
+            over_a = (b.t / 2.0 + a.t / 2.0 * math.cos(phi)) / math.sin(phi)
+            over_b = (a.t / 2.0 + b.t / 2.0 * math.cos(phi)) / math.sin(phi)
+            overlap = max(over_a, over_b)
+            if overlap > tol['contact']:
+                deg = math.degrees(phi)
+                issues.append(issue('PENETRATION', 'error', 'joint',
+                                    f"Square-cut edges of '{a.id}' and '{b.id}' meeting at {deg:.1f}° overlap "
+                                    f"{overlap:.2f} mm through their thickness. A true mitre needs both edges "
+                                    f"bevelled to {deg / 2:.1f}°, which flat cutting cannot produce — shorten one "
+                                    f"board or use a tab and slot.", comps, joint=jid, location=location,
+                                    overlap=_r(overlap), overlap_a=_r(over_a), overlap_b=_r(over_b),
+                                    angle_deg=_r(deg, 2), bevel_deg=_r(deg / 2, 2)))
     return {'location': location}
+
+
+HINGE = {'cup_diameter': 35.0, 'cup_depth': 13.0, 'cup_centre_from_edge': 22.5, 'end_distance': 100.0,
+         'min_remaining': 3.0, 'default_gap': 2.0}
+
+
+def hinge_count(length):
+    """Hinges per door by door height (hardware makers' charts for 18-19 mm doors)."""
+    return 2 if length <= 900 else 3 if length <= 1600 else 4 if length <= 2000 else 5
+
+
+def _eval_hinge(design, a, b, joint, tol, issues):
+    """Overlay door (a) hung on carcass board (b) by concealed cup hinges along door edge a_edge."""
+    jid, comps = joint['id'], [a.id, b.id]
+    if joint['a_edge'] >= len(a.outline):
+        issues.append(issue('EDGE_INVALID', 'error', 'joint', f"'{a.id}' has no edge {joint['a_edge']}.", comps, joint=jid))
+        return {'location': None}
+    w0, w1 = _edge_world(a, joint['a_edge'])
+    location = _r([(w0[i] + w1[i]) / 2 for i in range(3)])
+    if abs(G.v_dot(a.frame.normal, b.frame.normal)) > tol['perpendicular']:
+        issues.append(issue('ORIENTATION_MISMATCH', 'error', 'joint',
+                            f"Door '{a.id}' must be square to carcass board '{b.id}' to hang on it.", comps,
+                            joint=jid, location=location))
+        return {'location': location}
+    hinge_dir = G.v_norm(G.v_sub(w1, w0))
+    if abs(G.v_dot(hinge_dir, b.frame.normal)) > tol['perpendicular']:
+        issues.append(issue('HINGE_EDGE_MISALIGNED', 'error', 'joint',
+                            f"Hinge edge {joint['a_edge']} of '{a.id}' does not run along '{b.id}'.", comps,
+                            joint=jid, location=location))
+        return {'location': location}
+    # The carcass edge facing the door: the outline edge of b lying in a plane parallel to the door, nearest it.
+    best = None
+    for i in range(len(b.outline)):
+        e0, e1 = _edge_world(b, i)
+        z0, z1 = a.frame.to_local(e0)[2], a.frame.to_local(e1)[2]
+        if abs(z0 - z1) <= tol['contact'] and (best is None or abs(z0 + z1) < abs(best[1])):
+            best = (i, (z0 + z1) / 2.0)
+    if best is None:
+        issues.append(issue('NOT_IN_CONTACT', 'error', 'joint',
+                            f"No edge of '{b.id}' faces door '{a.id}'.", comps, joint=jid, location=location))
+        return {'location': location}
+    b_edge, zc = best
+    bc = b.frame.to_local(a.frame.to_world([0, 0, 0]))  # where the door's mid-plane sits relative to b
+    pb, _d, nb2, _L = edge_frame(b.outline, b_edge)
+    if nb2[0] * (bc[0] - pb[0]) + nb2[1] * (bc[1] - pb[1]) < 0:  # door must be outside b's front edge
+        issues.append(issue('DOOR_FACES_AWAY', 'error', 'joint',
+                            f"Door '{a.id}' is behind the edge of '{b.id}', not in front of it.", comps,
+                            joint=jid, location=location))
+        return {'location': location}
+    gap = abs(zc) - a.t / 2.0
+    allowed = joint.get('gap', HINGE['default_gap'])
+    move = G.v_scale(a.frame.normal, -gap if zc > 0 else gap)
+    if gap < -tol['contact']:
+        issues.append(issue('PENETRATION', 'error', 'joint',
+                            f"Door '{a.id}' sinks {-gap:.2f} mm into the front edge of '{b.id}'.", comps,
+                            joint=jid, location=location, overlap=_r(-gap),
+                            suggestion={'action': 'translate', 'component': a.id, 'delta': _r(move, 3)}))
+    elif gap > allowed + tol['contact']:
+        issues.append(issue('UNINTENDED_GAP', 'error', 'joint',
+                            f"Door '{a.id}' stands {gap:.2f} mm off the front edge of '{b.id}' (hinge allows "
+                            f"{allowed:g} mm).", comps, joint=jid, location=location, gap=_r(gap),
+                            suggestion={'action': 'translate', 'component': a.id,
+                                        'delta': _r(G.v_scale(move, (gap - allowed / 2.0) / gap), 3)}))
+    # Overlay: how much of the carcass edge the door covers, measured in the door plane inward from its hinge
+    # edge (b's faces are perpendicular to that direction). outer > 0 means the door overhangs b's outer face.
+    _p, _d, na2, L = edge_frame(a.outline, joint['a_edge'])
+    inward = a.frame.dir_to_world([-na2[0], -na2[1], 0])
+    faces = [G.v_dot(G.v_sub(b.frame.to_world([0, 0, s * b.t / 2.0]), w0), inward) for s in (-1, 1)]
+    outer, inner = min(faces), max(faces)
+    overlay = inner - max(outer, 0.0)
+    if overlay <= tol['contact']:
+        issues.append(issue('DOOR_NOT_OVER_CARCASS', 'error', 'joint',
+                            f"Door '{a.id}' does not overlap the edge of '{b.id}' (overlay {overlay:.1f} mm); an "
+                            f"overlay hinge needs the door to cover the board edge.", comps, joint=jid, location=location))
+    elif outer > tol['contact']:
+        issues.append(issue('DOOR_OVERHANGS_CARCASS', 'warning', 'joint',
+                            f"Door '{a.id}' overhangs the outer face of '{b.id}' by {outer:.1f} mm.", comps,
+                            joint=jid, location=location))
+    kind = 'full' if overlay >= b.t - 4.0 else 'half' if overlay >= b.t / 2.0 - 3.0 else 'partial'
+    if a.t < HINGE['cup_depth'] + HINGE['min_remaining']:
+        issues.append(issue('HINGE_CUP_TOO_DEEP', 'error', 'joint',
+                            f"Door '{a.id}' is {a.t:g} mm thick; a {HINGE['cup_diameter']:g} mm hinge cup is "
+                            f"{HINGE['cup_depth']:g} mm deep and needs at least "
+                            f"{HINGE['cup_depth'] + HINGE['min_remaining']:g} mm.", comps, joint=jid))
+    need = hinge_count(L)
+    count = joint.get('count', need)
+    if count < need:
+        issues.append(issue('HINGE_COUNT_LOW', 'warning', 'joint',
+                            f"Door '{a.id}' is {L:.0f} mm high and needs {need} hinges; {count} specified.",
+                            comps, joint=jid))
+    return {'location': location, 'relation': 'hinge', 'gap': _r(gap), 'overlay': _r(overlay),
+            'overlay_kind': kind, 'hinge_count': count, 'carcass_edge': b_edge}
 
 
 def _eval_face_lap(design, a, b, joint, tol, issues):
@@ -573,10 +756,26 @@ def _line_range_2d(p, u, bb):
     return (lo, hi) if hi > lo else None
 
 
+_INTERFERENCE_CACHE = {}
+
+
 def plate_interference(a, b, tol=TOL):
-    """Return a list of {'kind', 'length'|'area', 'location'} regions where two plates share material."""
+    """Return a list of {'kind', 'length'|'area', 'location'} regions where two plates share material.
+
+    Pure function of the two plates' geometry and the tolerances, so results are memoised per geometry
+    pair: a join or edit changes one board, and every other pair is reused on the next validation."""
     if not _aabb_overlap(a, b, -0.01):
         return []
+    key = (a.signature(), b.signature(), tol['contact'], tol['sample_step'])
+    hit = _INTERFERENCE_CACHE.get(key)
+    if hit is None:
+        if len(_INTERFERENCE_CACHE) > 20000:
+            _INTERFERENCE_CACHE.clear()
+        hit = _INTERFERENCE_CACHE[key] = _plate_interference(a, b, tol)
+    return copy.deepcopy(hit)
+
+
+def _plate_interference(a, b, tol):
     na, nb = a.frame.normal, b.frame.normal
     cr = G.v_cross(na, nb)
     if G.v_len(cr) < 1e-4:
@@ -594,42 +793,165 @@ def plate_interference(a, b, tol=TOL):
     # point = (da*(nb x u) + db*(u x na)) / (u . (na x nb))
     denom = G.v_dot(u, cr)
     p0 = G.v_scale(G.v_add(G.v_scale(G.v_cross(nb, u), da), G.v_scale(G.v_cross(u, na), db)), 1.0 / denom)
-    pa, ua = a.frame.to_local(p0), a.frame.dir_to_local(u)
-    pb, ub = b.frame.to_local(p0), b.frame.dir_to_local(u)
-    ra, rb = _line_range_2d(pa, ua, a.bbox2d), _line_range_2d(pb, ub, b.bbox2d)
-    if not ra or not rb:
-        return []
-    lo, hi = max(ra[0], rb[0]), min(ra[1], rb[1])
+    pad = 2.0 * max(a.t, b.t) + 1.0
+    ranges = []
+    for pl in (a, b):
+        x0, y0, x1, y1 = pl.bbox2d
+        rr = _line_range_2d(pl.frame.to_local(p0), pl.frame.dir_to_local(u), (x0 - pad, y0 - pad, x1 + pad, y1 + pad))
+        if not rr:
+            return []
+        ranges.append(rr)
+    lo, hi = max(ranges[0][0], ranges[1][0]), min(ranges[0][1], ranges[1][1])
     if hi <= lo:
         return []
+    # Solid-vs-solid test (not just mid-plane vs mid-plane): at every station s along the line, take the
+    # cross-section of board P through its mid-plane and both faces (P-local) and intersect, in r, the part
+    # that is P's material with the part that lies inside Q's thickness slab AND on Q's material (Q-local).
+    # P's boundary is exact; Q's slab and outline are shrunk by the joining tolerance so touching faces,
+    # tabs seated in slots and edges resting on faces are not collisions.
     step = tol['sample_step']
+    hit_idx = set()
+    for P, Q in ((a, b), (b, a)):
+        vP = G.v_norm(G.v_cross(P.frame.normal, u))          # in P's plane, perpendicular to the line
+        vp_loc, vq_loc = P.frame.dir_to_local(vP), Q.frame.dir_to_local(vP)
+        for off in (-P.t / 2.0, 0.0, P.t / 2.0):
+            base = G.v_add(p0, G.v_scale(P.frame.normal, off))
+            k = 0
+            while lo + k * step <= hi:
+                w = G.v_add(base, G.v_scale(u, lo + k * step))
+                pq = Q.frame.to_local(w)
+                ivs = _slab_interval(pq[2], vq_loc[2], Q.t / 2.0 - tol['contact'])   # cheapest test first
+                if ivs:
+                    ivs = _intersect(_material_intervals(P, P.frame.to_local(w), vp_loc, 0.0), ivs)
+                if ivs:
+                    ivs = _intersect(ivs, _material_intervals(Q, pq, vq_loc, tol['contact']))
+                if any(r1 - r0 > 1e-6 for r0, r1 in ivs):
+                    hit_idx.add(k)
+                k += 1
     runs, cur = [], None
-    s = lo
-    while s <= hi:
-        qa = [pa[0] + ua[0] * s, pa[1] + ua[1] * s]
-        qb = [pb[0] + ub[0] * s, pb[1] + ub[1] * s]
-        if a.is_material(qa, tol['contact']) and b.is_material(qb, tol['contact']):
-            if cur and s - cur[1] <= step * 1.5:
-                cur[1] = s
-            else:
-                cur = [s, s]
-                runs.append(cur)
-        s += step
+    for k in sorted(hit_idx):
+        if cur and k - cur[1] <= 1:
+            cur[1] = k
+        else:
+            cur = [k, k]
+            runs.append(cur)
     # One entry per contiguous overlap region, so each region keeps a stable identity
-    return [{'kind': 'crossing', 'length': _r(e - b0 + step),
-             'location': _r(G.v_add(p0, G.v_scale(u, (b0 + e) / 2.0)))} for b0, e in runs]
+    return [{'kind': 'crossing', 'length': _r((e - b0 + 1) * step),
+             'location': _r(G.v_add(p0, G.v_scale(u, lo + (b0 + e) * step / 2.0)))} for b0, e in runs]
+
+
+def _slab_interval(z0, vz, half):
+    """r-interval where |z0 + vz*r| < half (receiver-local z)."""
+    if half <= 0:
+        return []
+    if abs(vz) < 1e-12:
+        return [(-1e9, 1e9)] if abs(z0) < half else []
+    r0, r1 = (-half - z0) / vz, (half - z0) / vz
+    return [(min(r0, r1), max(r0, r1))]
+
+
+def _polygon_line_intervals(poly, p, v):
+    """r-intervals where the 2D line p + v*r is inside polygon (even-odd)."""
+    rs = []
+    n = len(poly)
+    vv = v[0] * v[0] + v[1] * v[1]
+    for i in range(n):
+        q1, q2 = poly[i], poly[(i + 1) % n]
+        # Half-open side rule (as in point-in-polygon): a vertex lying exactly on the line is counted on
+        # one side only, so crossings always pair up even when stations hit vertices or collinear edges.
+        d1 = v[0] * (q1[1] - p[1]) - v[1] * (q1[0] - p[0])
+        d2 = v[0] * (q2[1] - p[1]) - v[1] * (q2[0] - p[0])
+        if (d1 > 0) == (d2 > 0):
+            continue
+        t = d1 / (d1 - d2)
+        x, y = q1[0] + (q2[0] - q1[0]) * t, q1[1] + (q2[1] - q1[1]) * t
+        rs.append(((x - p[0]) * v[0] + (y - p[1]) * v[1]) / vv)
+    rs.sort()
+    return [(rs[i], rs[i + 1]) for i in range(0, len(rs) - 1, 2)]
+
+
+def _material_intervals(plate, p, v, shrink):
+    """r-intervals where local point p + v*r is solid material (outline minus cut-outs), shrunk by `shrink` mm."""
+    vlen = math.hypot(v[0], v[1])
+    if vlen < 1e-9:  # the line crosses this board's plane at a single point
+        return [(-1e9, 1e9)] if plate.is_material([p[0], p[1]], shrink) else []
+    if _line_misses_box(p, v, plate.bbox2d):
+        return []
+    ivs = _polygon_line_intervals(plate.cut, p, v)
+    for (_f, poly), box in zip(plate.feature_polys, plate._feature_boxes):
+        if not ivs:
+            break
+        if _line_misses_box(p, v, box):
+            continue
+        holes = _polygon_line_intervals(poly, p, v)
+        if holes:
+            ivs = _subtract(ivs, holes)
+    d = shrink / vlen
+    return [(r0 + d, r1 - d) for r0, r1 in ivs if r1 - r0 > 2 * d]
+
+
+def _line_misses_box(p, v, box):
+    x0, y0, x1, y1 = box
+    sides = [v[0] * (y - p[1]) - v[1] * (x - p[0]) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+    return all(d > 0 for d in sides) or all(d < 0 for d in sides)
+
+
+def _intersect(xs, ys):
+    out = []
+    for a0, a1 in xs:
+        for b0, b1 in ys:
+            lo_, hi_ = max(a0, b0), min(a1, b1)
+            if hi_ > lo_:
+                out.append((lo_, hi_))
+    return out
+
+
+def _subtract(xs, holes):
+    out = []
+    for a0, a1 in xs:
+        segs = [(a0, a1)]
+        for h0, h1 in holes:
+            nxt = []
+            for s0, s1 in segs:
+                if h1 <= s0 or h0 >= s1:
+                    nxt.append((s0, s1))
+                    continue
+                if h0 > s0:
+                    nxt.append((s0, h0))
+                if h1 < s1:
+                    nxt.append((h1, s1))
+            segs = nxt
+        out.extend(segs)
+    return out
+
+
+def _dist_point_segment3(p, a, b):
+    ab = G.v_sub(b, a)
+    L2 = G.v_dot(ab, ab)
+    t = 0.0 if L2 < 1e-12 else max(0.0, min(1.0, G.v_dot(G.v_sub(p, a), ab) / L2))
+    return G.v_len(G.v_sub(p, G.v_add(a, G.v_scale(ab, t))))
 
 
 def find_collisions(design, plates, only=None, tol=TOL):
     ids = list(plates)
     out = []
     joined_pairs = {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined'}
+    # A bevelled mitre removes exactly the square-cut wedge along its shared edge (validated in _eval_edge_mitre).
+    bevelled = {}
+    for j in design['joints']:
+        if j.get('status') == 'joined' and j['type'] == 'edge_mitre' and j.get('bevel') and j['a'] in plates \
+                and j['b'] in plates and j['a_edge'] < len(plates[j['a']].outline):
+            bevelled.setdefault(frozenset((j['a'], j['b'])), []).append(_edge_world(plates[j['a']], j['a_edge']))
     for i in range(len(ids)):
         for k in range(i + 1, len(ids)):
             a, b = plates[ids[i]], plates[ids[k]]
             if only and a.id not in only and b.id not in only:
                 continue
             for hit in plate_interference(a, b, tol):
+                edges = bevelled.get(frozenset((a.id, b.id)), [])
+                if hit['kind'] == 'crossing' and any(
+                        _dist_point_segment3(hit['location'], e0, e1) <= max(a.t, b.t) for e0, e1 in edges):
+                    continue
                 joined = frozenset((a.id, b.id)) in joined_pairs
                 size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
                 out.append(issue('COLLISION', 'error', 'assembly',
