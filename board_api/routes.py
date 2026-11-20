@@ -521,11 +521,12 @@ def _canvas_slug(name):
 @bp.get('/canvas/spec')
 def canvas_spec():
     from board_engine.canvas import CONNECTION_TYPES, FORMAT, pretty_json
-    from board_engine.canvas_prompt import EXAMPLE, spec_markdown
+    from board_engine.canvas_prompt import COMPLEX_EXAMPLE, EXAMPLE, spec_markdown
     from board_engine.manufacturing import MATERIALS
     # example_source keeps the authored key order (jsonify sorts object keys)
     return jsonify({'ok': True, 'format': FORMAT, 'markdown': spec_markdown(), 'example': EXAMPLE,
                     'example_source': pretty_json(EXAMPLE),
+                    'complex_example_source': pretty_json(COMPLEX_EXAMPLE),
                     'connection_types': list(CONNECTION_TYPES),
                     'materials': {k: {'thicknesses': v['thicknesses'], 'kerf': v['kerf']} for k, v in MATERIALS.items()}})
 

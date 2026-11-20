@@ -18,8 +18,8 @@ from .model import (SchemaError, build_plates, find_component, normalize_compone
                     normalize_tab)
 from .validation import TOL, _signature, evaluate_joint, validate_component
 
-EDITABLE = ('name', 'group', 'description', 'outline', 'features', 'tabs', 'placement', 'thickness', 'color',
-            'grain_locked', 'grain', 'material', 'edge_banding')
+EDITABLE = ('name', 'group', 'description', 'outline', 'arcs', 'features', 'marks', 'tabs', 'placement', 'thickness',
+            'color', 'grain_locked', 'grain', 'material', 'edge_banding')
 
 
 class OperationRejected(Exception):
@@ -115,6 +115,8 @@ def op_update_component(design, op):
             merged['placement'] = dict(merged['placement'], **(v or {}))
         else:
             merged[k] = v
+    if 'outline' in patch and 'arcs' not in patch:
+        merged.pop('arcs', None)      # arc runs index the old outline's vertices: never carry them over
     new, notes = normalize_component(merged)
     if patch.get('grain_locked') is not None:
         new['grain_locked'] = bool(patch['grain_locked'])

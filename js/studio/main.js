@@ -348,9 +348,11 @@ function profileSvg(c) {
     const col = { slot: 'var(--slot)', opening: 'var(--opening)', hole: 'var(--hole)' }[f.kind];
     const dash = f.kind === 'opening' ? 'stroke-dasharray="3 2"' : '';
     if (f.shape === 'circle') return `<circle cx="${f.center[0]}" cy="${-f.center[1]}" r="${f.diameter / 2}" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
+    if (f.polygon) return `<path d="M${f.polygon.map((p) => `${p[0]},${-p[1]}`).join('L')}Z" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
     return `<rect x="${f.center[0] - f.width / 2}" y="${-f.center[1] - f.height / 2}" width="${f.width}" height="${f.height}"
       transform="rotate(${-(f.angle || 0)} ${f.center[0]} ${-f.center[1]})" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
-  }).join('');
+  }).join('') + (c.marks || []).map((m) => `<path d="M${m.points.map((p) => `${p[0]},${-p[1]}`).join('L')}${m.closed ? 'Z' : ''}"
+      fill="none" stroke="${m.kind === 'pocket' ? '#15803d' : '#1d4ed8'}" stroke-dasharray="2 1.5" vector-effect="non-scaling-stroke"/>`).join('');
   const fs = Math.max(w, h) * 0.055;
   return `<svg class="profile" viewBox="${x0 - pad} ${-y1 - pad} ${w + 2 * pad} ${h + 2 * pad}" preserveAspectRatio="xMidYMid meet">
     <path d="${d}" fill="#d6b483" stroke="var(--cut)" vector-effect="non-scaling-stroke" stroke-width="1.2"/>${feats}
@@ -396,12 +398,14 @@ function renderInspector(body) {
         <button class="btn small ghost" data-check="${esc(j.id)}" title="Dry-run validation">Check</button>
         ${j.status !== 'joined' ? `<button class="btn small" data-rejoin="${esc(j.id)}">Re-join</button>` : ''}</div>`).join('') || '<p class="lead">Not joined to anything.</p>'}
     </div>
-    <div class="section"><details class="more"><summary>${icon('chev')}Cut features (${c.features.length}) &amp; tabs (${c.tabs.length})</summary>
+    <div class="section"><details class="more"><summary>${icon('chev')}Cut features (${c.features.length}) &amp; tabs (${c.tabs.length})${c.marks?.length ? ` · engravings (${c.marks.length})` : ''}</summary>
       ${c.features.map((f) => `<div class="line"><span class="chip ${f.kind}">${f.kind}</span><span class="grow mono">${esc(f.id)}</span>
-        <span class="muted mono">${f.shape === 'circle' ? 'Ø' + fmt(f.diameter, 2) : fmt(f.width, 2) + '×' + fmt(f.height, 2)}</span></div>`).join('')}
+        <span class="muted mono">${f.shape === 'circle' ? 'Ø' + fmt(f.diameter, 2) : f.shape === 'polygon' ? 'shape' : fmt(f.width, 2) + '×' + fmt(f.height, 2)}</span></div>`).join('')}
       ${c.tabs.map((t) => `<div class="line"><span class="chip tab">tab</span><span class="grow mono">${esc(t.id)} · edge ${t.edge}</span>
         <span class="muted mono">${fmt(t.width, 1)}×${fmt(t.depth, 1)}</span></div>`).join('')}
-      ${!c.features.length && !c.tabs.length ? '<p class="lead">None.</p>' : ''}</details></div>`;
+      ${(c.marks || []).map((m) => `<div class="line"><span class="chip">${m.kind}</span><span class="grow mono">${esc(m.id)}</span>
+        <span class="muted mono">${fmt(m.depth, 1)} mm deep</span></div>`).join('')}
+      ${!c.features.length && !c.tabs.length && !(c.marks || []).length ? '<p class="lead">None.</p>' : ''}</details></div>`;
 
   $('#btn-deselect').onclick = () => select(null);
   if ($('#go-check')) $('#go-check').onclick = (e) => { e.preventDefault(); setStep('check', { keepPanel: true }); };

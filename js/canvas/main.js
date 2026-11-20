@@ -515,9 +515,8 @@ $('#btn-update').onclick = () => save(true);
 $('#btn-open-studio').onclick = () => { if (S.savedId) location.href = `/?design=${encodeURIComponent(S.savedId)}`; };
 $('#btn-import').onclick = () => openImport().catch(reportError);
 $('#sel-example').onchange = (e) => {
-  if (e.target.value === 'spec' && S.spec) {
-    if (!cm.getValue().trim() || confirm('Replace the editor contents with the example?')) cm.setValue(S.spec.example_source);
-  }
+  const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source }[e.target.value];
+  if (src && (!cm.getValue().trim() || confirm('Replace the editor contents with the example?'))) cm.setValue(src);
   e.target.value = '';
 };
 narrow.addEventListener('change', () => setPane(document.body.dataset.pane));

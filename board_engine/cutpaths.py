@@ -4,17 +4,68 @@ Machine-independent cutting paths, plus SVG and DXF writers.
 Each placed part yields:
   * one OUTER closed path (cut profile incl. tabs and notches) - cut last
   * one INNER closed path per feature (slots, holes, openings)  - cut first
+  * ENGRAVE / POCKET paths (partial depth, never through)        - machined before any cut
+Curved runs carry `arcs` (vertex index ranges on a circle) so SVG and DXF get TRUE arcs.
 Kerf compensation (optional) moves outer paths outward and inner paths inward by kerf/2 so
 that the finished part keeps its design dimensions.
 """
 import math
 
 from . import geometry as G
-from .model import Plate, find_component
+from .model import Plate, feature_shape, find_component
 from .nesting import transform_point
+from .shapes import arc_sweep
 
 LAYERS = {'outer': ('CUT_OUTER', '#e11d48', 1), 'inner': ('CUT_INNER', '#2563eb', 5),
+          'engrave': ('ENGRAVE', '#0ea5e9', 4), 'pocket': ('POCKET', '#16a34a', 3),
           'label': ('ENGRAVE_LABELS', '#111827', 7)}
+ARC_TOL = 0.02   # mm: an arc run is exported as a true arc only if its end points sit on the circle
+
+
+def _map_arcs(src, arcs, dst):
+    """Re-index arc runs from polygon `src` onto `dst` (e.g. the outline after tabs were inserted)."""
+    if not arcs:
+        return []
+    index = {(round(p[0], 6), round(p[1], 6)): i for i, p in enumerate(dst)}
+    out = []
+    for a in arcs:
+        i, j = index.get(tuple(round(v, 6) for v in src[a['start']])), index.get(tuple(round(v, 6) for v in src[a['end']]))
+        n_src, n_dst = len(src), len(dst)
+        if i is not None and j is not None and (j - i) % n_dst == (a['end'] - a['start']) % n_src:
+            out.append(dict(a, start=i, end=j))
+    return out
+
+
+def path_segments(points, arcs, closed=True):
+    """(start, [('L', p) | ('A', p, center, radius, sweep_rad)]) for a path in output coordinates.
+    Arcs whose end points do not lie on their circle (e.g. a tab cut into a curved edge) fall back to lines."""
+    n = len(points)
+    by_start = {}
+    for a in arcs or []:
+        L = (a['end'] - a['start']) % n
+        r0, r1 = math.dist(points[a['start']], a['center']), math.dist(points[a['end']], a['center'])
+        if L >= 2 and abs(r0 - r1) <= ARC_TOL and (closed or a['end'] > a['start']):
+            by_start[a['start']] = (a, L, r0)
+    s0 = next(iter(by_start)) if closed and by_start else 0
+    total = n if closed else n - 1
+    segs, i, done = [], s0, 0
+    while done < total:
+        if i in by_start and done + by_start[i][1] <= total:
+            a, L, r = by_start[i]
+            j = (i + L) % n
+            sweep = arc_sweep(points[i], points[(i + L // 2) % n], points[j], a['center'])
+            if abs(sweep) > math.pi:          # split so every piece is <= 180 deg (DXF bulge, SVG flags stay simple)
+                m = (i + L // 2) % n
+                segs.append(('A', points[m], a['center'], r, arc_sweep(points[i], points[(i + L // 4) % n], points[m], a['center'])))
+                segs.append(('A', points[j], a['center'], r, arc_sweep(points[m], points[(m + (L - L // 2) // 2) % n], points[j], a['center'])))
+            else:
+                segs.append(('A', points[j], a['center'], r, sweep))
+            i, done = j, done + L
+        else:
+            i = (i + 1) % n
+            segs.append(('L', points[i]))
+            done += 1
+    return points[s0], segs
 
 
 def offset_polygon(poly, d):
@@ -69,11 +120,21 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
                 path.update(shape='circle', center=tf(f['center']), radius=round(f['diameter'] / 2 - half, 4),
                             _local=poly)
             else:
-                path.update(shape='polyline', points=[tf(p) for p in (offset_polygon(poly, -half) if half else poly)],
+                pts, arcs = feature_shape(f)
+                path.update(shape='polyline', points=[tf(p) for p in (offset_polygon(pts, -half) if half else pts)],
                             _local=poly)
+                if arcs:
+                    path['arcs'] = [dict(a, center=tf(a['center'])) for a in arcs]
             inner.append(path)
         outer = {'id': f'{pl.id}/outer', 'part': pl.id, 'type': 'outer', 'closed': True, 'shape': 'polyline',
                  'points': [tf(p) for p in outer_local], '_local': pl.cut}
+        outer_arcs = _map_arcs(comp['outline'], comp.get('arcs'), pl.cut)
+        if outer_arcs:
+            outer['arcs'] = [dict(a, center=tf(a['center'])) for a in outer_arcs]
+        marks = [{'id': f"{pl.id}/{m['id']}", 'part': pl.id, 'type': m['kind'], 'feature': m['id'], 'shape': 'polyline',
+                  'closed': m['closed'], 'depth': m['depth'], 'points': [tf(p) for p in m['points']],
+                  **({'arcs': [dict(a, center=tf(a['center'])) for a in m['arcs']]} if m.get('arcs') else {})}
+                 for m in comp.get('marks', [])]
 
         # Validate this part's paths
         if G.self_intersections(outer_local):
@@ -105,6 +166,10 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
                                                           f"by {drift:.3f} mm."))
 
         order = len(sheet['paths'])
+        for p in marks:                 # engrave / pocket while the part is still held by the sheet
+            p['order'] = order
+            order += 1
+            sheet['paths'].append(p)
         for p in inner:
             if not p.pop('_drop', False):
                 p.pop('_local')
@@ -118,9 +183,12 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             lp, room = label_point(pl)
             size = max(2.0, min(6.0, room * 0.7))
             sheet['labels'].append({'part': pl.id, 'text': pl.id, 'position': tf(lp), 'size': round(size, 2)})
-    return {'kerf_compensation': kerf, 'sheets': sheets, 'issues': issues,
-            'counts': {'outer': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'outer'),
-                       'inner': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'inner')}}
+    counts = {'outer': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'outer'),
+              'inner': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'inner')}
+    marks = sum(1 for s in sheets for p in s['paths'] if p['type'] in ('engrave', 'pocket'))
+    if marks:
+        counts['marks'] = marks
+    return {'kerf_compensation': kerf, 'sheets': sheets, 'issues': issues, 'counts': counts}
 
 
 def _offset_error(orig, off, d):
@@ -153,6 +221,19 @@ def _esc(s):
     return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 
+def _svg_d(p):
+    start, segs = path_segments(p['points'], p.get('arcs'), p.get('closed', True))
+    d = [f'M{_fmt(start[0])},{_fmt(start[1])}']
+    for sg in segs:
+        x, y = sg[1]
+        if sg[0] == 'L':
+            d.append(f'L{_fmt(x)},{_fmt(y)}')
+        else:
+            r, sweep = sg[3], sg[4]
+            d.append(f'A{_fmt(r)},{_fmt(r)} 0 {int(abs(sweep) > math.pi)} {int(sweep > 0)} {_fmt(x)},{_fmt(y)}')
+    return ' '.join(d) + (' Z' if p.get('closed', True) else '')
+
+
 def sheet_svg(design, nesting, cut, index, labels=True):
     from .booklet import sheet_stock_label
     sh = nesting['sheet']
@@ -166,19 +247,23 @@ def sheet_svg(design, nesting, cut, index, labels=True):
            f'viewBox="0 0 {_fmt(w)} {_fmt(h)}">',
            f'  <rect id="sheet-boundary" x="0" y="0" width="{_fmt(w)}" height="{_fmt(h)}" fill="none" '
            f'stroke="#9ca3af" stroke-width="0.2" stroke-dasharray="2 2"/>']
-    for kind in ('inner', 'outer'):
+    for kind in ('engrave', 'pocket', 'inner', 'outer'):
         layer, color, _ = LAYERS[kind]
+        paths = sorted((p for p in sheet['paths'] if p['type'] == kind), key=lambda p: p['order'])
+        if not paths and kind in ('engrave', 'pocket'):
+            continue
         out.append(f'  <g id="{layer}" fill="none" stroke="{color}" stroke-width="0.1">')
-        for p in sorted((p for p in sheet['paths'] if p['type'] == kind), key=lambda p: p['order']):
+        for p in paths:
             attrs = f'id="{_esc(p["id"])}" data-part="{_esc(p["part"])}" data-order="{p["order"]}"'
             if p.get('feature_kind'):
                 attrs += f' data-kind="{p["feature_kind"]}"'
+            if p.get('depth'):
+                attrs += f' data-depth="{_fmt(p["depth"])}"'
             if p['shape'] == 'circle':
                 out.append(f'    <circle {attrs} cx="{_fmt(p["center"][0])}" cy="{_fmt(p["center"][1])}" '
                            f'r="{_fmt(p["radius"])}"/>')
             else:
-                d = 'M' + ' L'.join(f'{_fmt(x)},{_fmt(y)}' for x, y in p['points']) + ' Z'
-                out.append(f'    <path {attrs} d="{d}"/>')
+                out.append(f'    <path {attrs} d="{_svg_d(p)}"/>')
         out.append('  </g>')
     if labels:
         layer, color, _ = LAYERS['label']
@@ -222,9 +307,23 @@ def sheet_dxf(design, nesting, cut, index, labels=True):
             g(0, 'CIRCLE'); g(8, layer); g(10, float(p['center'][0])); g(20, H - p['center'][1]); g(30, 0.0)
             g(40, float(p['radius']))
         else:
-            g(0, 'POLYLINE'); g(8, layer); g(66, 1); g(70, 1); g(10, 0.0); g(20, 0.0); g(30, 0.0)
-            for x, y in p['points']:
-                g(0, 'VERTEX'); g(8, layer); g(10, float(x)); g(20, H - y); g(30, 0.0)
+            closed = p.get('closed', True)
+            # flip to y-up first so arc directions (bulge sign) are computed in DXF space
+            flip = lambda q: [float(q[0]), H - q[1]]
+            pts = [flip(q) for q in p['points']]
+            start, segs = path_segments(pts, [dict(a, center=flip(a['center'])) for a in p.get('arcs', [])], closed)
+            verts = [[start, 0.0]]
+            for sg in segs:
+                if sg[0] == 'A':
+                    verts[-1][1] = math.tan(sg[4] / 4)
+                verts.append([sg[1], 0.0])
+            if closed:
+                verts.pop()               # closing vertex == start; the polyline flag closes it
+            g(0, 'POLYLINE'); g(8, layer); g(66, 1); g(70, 1 if closed else 0); g(10, 0.0); g(20, 0.0); g(30, 0.0)
+            for (x, y), bulge in verts:
+                g(0, 'VERTEX'); g(8, layer); g(10, x); g(20, y); g(30, 0.0)
+                if bulge:
+                    g(42, f'{bulge:.6f}')       # full precision: 3 decimals would bend the arc by ~0.01 mm
             g(0, 'SEQEND'); g(8, layer)
     if labels:
         for lb in sheet['labels']:

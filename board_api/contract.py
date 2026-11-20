@@ -1,12 +1,26 @@
 """Machine-readable API contract and LLM tool definitions served at /api/v1 and /api/v1/tools."""
+from board_engine.model import FEATURE_KINDS, FEATURE_SHAPES, MARK_KINDS, MATERIAL_TYPES
 
 _VEC2 = {'type': 'array', 'items': {'type': 'number'}, 'minItems': 2, 'maxItems': 2}
 _VEC3 = {'type': 'array', 'items': {'type': 'number'}, 'minItems': 3, 'maxItems': 3}
-FEATURE = {'type': 'object', 'required': ['id', 'kind', 'shape', 'center'], 'properties': {
-    'id': {'type': 'string'}, 'kind': {'enum': ['slot', 'hole', 'opening']},
-    'shape': {'enum': ['rect', 'circle']}, 'center': _VEC2, 'width': {'type': 'number'},
-    'height': {'type': 'number'}, 'angle': {'type': 'number', 'description': 'degrees'},
-    'diameter': {'type': 'number'}, 'note': {'type': 'string'}}}
+ARC = {'type': 'object', 'required': ['start', 'end', 'center', 'radius', 'ccw'], 'description':
+       'polygon vertices start..end (consecutive, wrapping) lie on this circular arc; exporters write a true arc',
+       'properties': {'start': {'type': 'integer'}, 'end': {'type': 'integer'}, 'center': _VEC2,
+                      'radius': {'type': 'number'}, 'ccw': {'type': 'boolean'}}}
+FEATURE = {'type': 'object', 'required': ['id', 'kind', 'shape'], 'properties': {
+    'id': {'type': 'string'}, 'kind': {'enum': list(FEATURE_KINDS)},
+    'shape': {'enum': list(FEATURE_SHAPES), 'description': 'rect: center/width/height/angle/corner_radius; '
+              'circle: center/diameter; polygon: points (+ optional arcs), any outline incl. curves'},
+    'center': _VEC2, 'width': {'type': 'number'}, 'height': {'type': 'number'},
+    'angle': {'type': 'number', 'description': 'degrees'}, 'corner_radius': {'type': 'number'},
+    'diameter': {'type': 'number'}, 'points': {'type': 'array', 'items': _VEC2},
+    'arcs': {'type': 'array', 'items': ARC}, 'note': {'type': 'string'}}}
+MARK = {'type': 'object', 'required': ['id', 'kind', 'points'], 'description':
+        'engraving / pocket machined into the +Z face; never cuts through and never counts as a hole',
+        'properties': {'id': {'type': 'string'}, 'kind': {'enum': list(MARK_KINDS)},
+                       'points': {'type': 'array', 'items': _VEC2}, 'closed': {'type': 'boolean',
+                       'description': 'pockets are always closed'}, 'depth': {'type': 'number', 'description': 'mm'},
+                       'arcs': {'type': 'array', 'items': ARC}, 'note': {'type': 'string'}}}
 TAB = {'type': 'object', 'required': ['id', 'edge', 'offset', 'width', 'depth'], 'properties': {
     'id': {'type': 'string'}, 'edge': {'type': 'integer', 'description': 'index into the CCW base outline'},
     'offset': {'type': 'number', 'description': 'mm from edge start to tab centre'},
@@ -17,12 +31,15 @@ COMPONENT = {'type': 'object', 'required': ['id', 'outline'], 'properties': {
     'grain_locked': {'type': 'boolean', 'description': 'nesting may not rotate this part'},
     'grain': {'enum': ['none', 'x', 'y'], 'description': 'grain direction (local axis); nesting aligns it with the sheet'},
     'material': {'type': 'object', 'description': 'override of the design material',
-                 'properties': {'name': {'type': 'string'}, 'type': {'enum': ['plywood', 'mdf', 'particle_board',
-                                'solid_wood', 'hardboard', 'cardboard', 'other']}}},
+                 'properties': {'name': {'type': 'string'}, 'type': {'enum': list(MATERIAL_TYPES)}}},
     'edge_banding': {'type': 'array', 'items': {'type': 'object', 'properties': {
         'edge': {'type': 'integer'}, 'thickness': {'type': 'number'}, 'material': {'type': 'string'}}}},
-    'outline': {'type': 'array', 'items': _VEC2, 'description': 'CCW polygon in local mm (plate lies in local XY)'},
-    'features': {'type': 'array', 'items': FEATURE}, 'tabs': {'type': 'array', 'items': TAB},
+    'outline': {'type': 'array', 'items': _VEC2, 'description': 'CCW polygon in local mm (plate lies in local XY); '
+                'curves are flattened to points (max 0.1 mm chord error) and described by arcs'},
+    'arcs': {'type': 'array', 'items': ARC, 'description': 'curved runs of the outline (dropped when the outline '
+             'is replaced without new arcs)'},
+    'features': {'type': 'array', 'items': FEATURE}, 'marks': {'type': 'array', 'items': MARK},
+    'tabs': {'type': 'array', 'items': TAB},
     'placement': {'type': 'object', 'properties': {'position': _VEC3, 'rotation': {
         **_VEC3, 'description': 'degrees, Euler XYZ (THREE.js order)'}}}}}
 JOINT = {'type': 'object', 'required': ['id', 'type', 'a', 'b'], 'properties': {

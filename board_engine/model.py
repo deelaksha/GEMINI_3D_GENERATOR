@@ -38,9 +38,11 @@ import math
 import re
 
 from . import geometry as G
+from . import shapes as SH
 
 FEATURE_KINDS = ('slot', 'hole', 'opening')
-FEATURE_SHAPES = ('rect', 'circle')
+FEATURE_SHAPES = ('rect', 'circle', 'polygon')
+MARK_KINDS = ('engrave', 'pocket')   # non-through machining: never holes for collision / joint checks
 JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge')
 # Glue-free products (cardboard, friction-fit board) can only use mechanical interlocks.
 JOINERY_MODES = ('interlocking', 'glue_allowed')
@@ -53,7 +55,8 @@ GRAIN = ('none', 'x', 'y')   # grain direction in the component's local frame
 
 LIMITS = {
     'max_components': 300,
-    'max_outline_points': 512,
+    'max_outline_points': 2048,   # curved outlines are flattened (shapes.FLATTEN_TOL)
+    'max_marks': 64,
     'max_features': 64,
     'max_tabs': 32,
     'max_joints': 1000,
@@ -116,6 +119,56 @@ def _text(v, path, maxlen=200, default=''):
     return v[:maxlen]
 
 
+def _points(raw, path, minimum):
+    if not isinstance(raw, list) or not (minimum <= len(raw) <= LIMITS['max_outline_points']):
+        raise SchemaError(f'{path} must have {minimum}..{LIMITS["max_outline_points"]} points', path)
+    return [_vec(p, 2, f'{path}[{i}]') for i, p in enumerate(raw)]
+
+
+def _arcs(raw, n, path):
+    """Arc metadata: polygon vertices start..end lie on a circular arc (used to export true arcs)."""
+    if not isinstance(raw, list):
+        raise SchemaError(f'{path} must be a list', path)
+    out = []
+    for i, a in enumerate(raw):
+        p = f'{path}[{i}]'
+        if not isinstance(a, dict):
+            raise SchemaError(f'{p} must be an object', p)
+        st, en = a.get('start'), a.get('end')
+        if not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v < n for v in (st, en)):
+            raise SchemaError(f'{p}.start/end must be vertex indices', p)
+        out.append({'start': st, 'end': en, 'center': _vec(a.get('center'), 2, p + '.center'),
+                    'radius': _num(a.get('radius'), p + '.radius', 0.001, LIMITS['max_coord']), 'ccw': bool(a.get('ccw'))})
+    return out
+
+
+def _marks(raw, path):
+    if not isinstance(raw, list) or len(raw) > LIMITS['max_marks']:
+        raise SchemaError(f'{path} must be a list of <= {LIMITS["max_marks"]}', path)
+    return [normalize_mark(m, f'{path}[{i}]') for i, m in enumerate(raw)]
+
+
+def normalize_mark(m, path):
+    """Engraving (polyline, open or closed) or pocket (closed, partial depth). Never cuts through the board."""
+    if not isinstance(m, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    kind = m.get('kind')
+    if kind not in MARK_KINDS:
+        raise SchemaError(f'{path}.kind must be one of {MARK_KINDS}', path + '.kind')
+    closed = True if kind == 'pocket' else bool(m.get('closed', False))
+    pts = _points(m.get('points'), path + '.points', 3 if closed else 2)
+    arcs = m.get('arcs') or []
+    if closed and G.signed_area(pts) < 0:
+        pts, arcs = SH.reverse(pts, arcs)
+    out = {'id': check_id(m.get('id'), path + '.id'), 'kind': kind, 'points': pts, 'closed': closed,
+           'depth': _num(m.get('depth', 0.5 if kind == 'engrave' else None), path + '.depth', 0.05, LIMITS['max_thickness'])}
+    if arcs:
+        out['arcs'] = _arcs(arcs, len(pts), path + '.arcs')
+    if m.get('note'):
+        out['note'] = _text(m['note'], path + '.note')
+    return out
+
+
 def normalize_feature(f, path):
     if not isinstance(f, dict):
         raise SchemaError(f'{path} must be an object', path)
@@ -125,13 +178,28 @@ def normalize_feature(f, path):
     shape = f.get('shape', 'rect')
     if shape not in FEATURE_SHAPES:
         raise SchemaError(f'{path}.shape must be one of {FEATURE_SHAPES}', path + '.shape')
-    out = {'id': check_id(f.get('id'), path + '.id'), 'kind': kind, 'shape': shape,
-           'center': _vec(f.get('center'), 2, path + '.center')}
+    if shape == 'polygon':
+        pts = _points(f.get('points'), path + '.points', 3)
+        if G.signed_area(pts) < 0:
+            pts, arcs = SH.reverse(pts, f.get('arcs') or [])
+        else:
+            arcs = f.get('arcs') or []
+        x0, y0, x1, y1 = G.bbox(pts)
+        center = _vec(f['center'], 2, path + '.center') if f.get('center') is not None else [(x0 + x1) / 2, (y0 + y1) / 2]
+        out = {'id': check_id(f.get('id'), path + '.id'), 'kind': kind, 'shape': shape, 'center': center,
+               'points': pts}
+        if arcs:
+            out['arcs'] = _arcs(arcs, len(pts), path + '.arcs')
+    else:
+        out = {'id': check_id(f.get('id'), path + '.id'), 'kind': kind, 'shape': shape,
+               'center': _vec(f.get('center'), 2, path + '.center')}
     if shape == 'rect':
         out['width'] = _num(f.get('width'), path + '.width', 0.05, LIMITS['max_coord'])
         out['height'] = _num(f.get('height'), path + '.height', 0.05, LIMITS['max_coord'])
         out['angle'] = _num(f.get('angle', 0.0), path + '.angle', -360, 360)
-    else:
+        if f.get('corner_radius'):
+            out['corner_radius'] = _num(f['corner_radius'], path + '.corner_radius', 0, min(out['width'], out['height']) / 2)
+    elif shape == 'circle':
         out['diameter'] = _num(f.get('diameter'), path + '.diameter', 0.05, LIMITS['max_coord'])
     if f.get('note'):
         out['note'] = _text(f.get('note'), path + '.note')
@@ -160,8 +228,9 @@ def normalize_component(c, path='component'):
         raise SchemaError(f'{path}.outline must have 3..{LIMITS["max_outline_points"]} points', path + '.outline')
     outline = [_vec(p, 2, f'{path}.outline[{i}]') for i, p in enumerate(outline)]
     notes = []
+    outline_arcs = c.get('arcs') or []
     if G.signed_area(outline) < 0:
-        outline.reverse()
+        outline, outline_arcs = SH.reverse(outline, outline_arcs)
         notes.append('outline was clockwise and has been normalised to counter-clockwise; '
                      'edge indices refer to the stored (CCW) outline')
     features = c.get('features') or []
@@ -180,6 +249,8 @@ def normalize_component(c, path='component'):
         'outline': outline,
         'features': [normalize_feature(f, f'{path}.features[{i}]') for i, f in enumerate(features)],
         'tabs': [normalize_tab(t, f'{path}.tabs[{i}]') for i, t in enumerate(tabs)],
+        **({'arcs': _arcs(outline_arcs, len(outline), path + '.arcs')} if outline_arcs else {}),
+        **({'marks': _marks(c.get('marks'), path + '.marks')} if c.get('marks') else {}),
         'placement': {
             'position': _vec(pl.get('position', [0, 0, 0]), 3, path + '.placement.position'),
             'rotation': _vec(pl.get('rotation', [0, 0, 0]), 3, path + '.placement.rotation', 720),
@@ -380,7 +451,21 @@ def material_of(design, comp):
 def feature_polygon(f):
     if f['shape'] == 'circle':
         return G.circle_polygon(f['center'], f['diameter'])
+    if f['shape'] == 'polygon':
+        return f['points']
+    if f.get('corner_radius'):
+        return feature_shape(f)[0]
     return G.rect_polygon(f['center'], f['width'], f['height'], f.get('angle', 0.0))
+
+
+def feature_shape(f):
+    """(points, arcs) of a cut-out, with arc metadata for true-arc export (circles are exported natively)."""
+    if f['shape'] == 'polygon':
+        return f['points'], f.get('arcs', [])
+    if f['shape'] == 'rect' and f.get('corner_radius'):
+        return SH.shape_polygon({'shape': 'rect', 'center': f['center'], 'width': f['width'], 'height': f['height'],
+                                 'corner_radius': f['corner_radius'], 'angle': f.get('angle', 0.0)})
+    return feature_polygon(f), []
 
 
 def edge_frame(outline, edge_index):

@@ -437,11 +437,14 @@ def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=No
         pg.stroke(LINE, 0.2, dash=[2, 2])
         pg.rect(0.5, 0.5, sw - 1, sh - 1)
         for p in sorted(sheet['paths'], key=lambda p: p['order']):
-            pg.stroke(CUT if p['type'] == 'outer' else INNER, 0.15)
+            if p['type'] in ('engrave', 'pocket'):
+                pg.stroke('#0ea5e9' if p['type'] == 'engrave' else '#16a34a', 0.15, dash=[1.5, 1])
+            else:
+                pg.stroke(CUT if p['type'] == 'outer' else INNER, 0.15)
             if p['shape'] == 'circle':
                 pg.circle(p['center'][0], p['center'][1], p['radius'])
             else:
-                pg.poly(p['points'])
+                pg.poly(p['points'], close=p.get('closed', True))
         for lb in sheet['labels']:
             pg.text(lb['position'][0], lb['position'][1] + lb['size'] * 0.35, lb['text'], lb['size'], 'F2', INK,
                     'center')
@@ -494,7 +497,8 @@ def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=No
                 size = f"Ø {f['diameter']:.2f}"
             else:
                 pg.poly([tf(p) for p in poly], True, 'B')
-                size = f"{f['width']:.2f} x {f['height']:.2f}"
+                bx = G.bbox(poly)
+                size = f"{bx[2] - bx[0]:.2f} x {bx[3] - bx[1]:.2f}"
             cx, cy = tf(f['center'])
             pg.fill(col)
             pg.circle(cx, cy - 2.6, 1.6, 'f')

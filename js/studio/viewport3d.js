@@ -57,6 +57,9 @@ function shapeFromComponent(comp) {
     const hole = new THREE.Path();
     if (f.shape === 'circle') {
       hole.absarc(f.center[0], f.center[1], f.diameter / 2, 0, Math.PI * 2, true);
+    } else if (f.polygon) {
+      f.polygon.forEach(([x, y], i) => (i ? hole.lineTo(x, y) : hole.moveTo(x, y)));
+      hole.closePath();
     } else {
       const a = THREE.MathUtils.degToRad(f.angle || 0), ca = Math.cos(a), sa = Math.sin(a);
       const hw = f.width / 2, hh = f.height / 2;
@@ -69,6 +72,18 @@ function shapeFromComponent(comp) {
     shape.holes.push(hole);
   }
   return shape;
+}
+
+// Engraving / pockets: drawn on the +Z face (they do not cut through, so they are not holes)
+const MARK_COLOR = { engrave: 0x1d4ed8, pocket: 0x15803d };
+function marksFromComponent(comp) {
+  return (comp.marks || []).map((m) => {
+    const z = comp.thickness / 2 + 0.05;
+    const pts = m.points.map(([x, y]) => new THREE.Vector3(x, y, z));
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: MARK_COLOR[m.kind] });
+    return m.closed ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat);
+  });
 }
 
 export class Viewport3D {
@@ -164,6 +179,7 @@ export class Viewport3D {
       it.mesh.material.forEach((m) => { m.map?.dispose(); m.dispose(); });
       it.edges.geometry.dispose();
       it.edges.material.dispose();
+      it.marks?.forEach((m) => { m.geometry.dispose(); m.material.dispose(); });
     }
     this.root.clear();
     this.items.clear();
@@ -182,13 +198,15 @@ export class Viewport3D {
       inner.matrixAutoUpdate = false;
       inner.matrix.fromArray(comp.matrix_world);
       inner.add(mesh, edges);
+      const marks = marksFromComponent(comp);
+      if (marks.length) inner.add(...marks);
       const outer = new THREE.Group();
       outer.add(inner);
       outer.userData.id = comp.id;
       mesh.userData.id = comp.id;
       this.root.add(outer);
       const wc = new THREE.Vector3(...comp.world_bounds.min).add(new THREE.Vector3(...comp.world_bounds.max)).multiplyScalar(0.5);
-      this.items.set(comp.id, { comp, mesh, edges, outer, dir: wc.sub(this.center) });
+      this.items.set(comp.id, { comp, mesh, edges, marks, outer, dir: wc.sub(this.center) });
     }
     this._stage(model.bounds);
     this.setExplode(this.explode);

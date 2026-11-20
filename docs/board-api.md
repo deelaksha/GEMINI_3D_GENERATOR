@@ -87,6 +87,27 @@ server writes there — deploy the repo's `firestore.rules`, which deny browser 
 
 Designs are **data, never code** (the legacy studio evaluates arbitrary JS; the API does not).
 
+### Complex cuts (curves, shaped cut-outs, engraving)
+
+```jsonc
+{"id": "ARCH", "outline": [[-100,-150],[100,-150],[100,50], /* … arc points … */ [-100,50]],
+ "arcs": [{"start": 2, "end": 22, "center": [0, 50], "radius": 100, "ccw": true}],
+ "features": [
+   {"id": "win",   "kind": "opening", "shape": "rect", "center": [0,-20], "width": 80, "height": 40, "corner_radius": 8},
+   {"id": "heart", "kind": "opening", "shape": "polygon", "points": [[0,30],[30,60], /* … */], "arcs": [/* … */]}],
+ "marks": [{"id": "name", "kind": "engrave", "points": [[-60,-130],[60,-130]], "depth": 0.5},
+           {"id": "tray", "kind": "pocket",  "points": [[-30,100],[-10,100],[-10,120],[-30,120]], "depth": 2}]}
+```
+
+* Feature shapes: `rect` (optional `corner_radius`), `circle`, `polygon` (any outline; `points`, optional `arcs`).
+* Curves are stored flattened (chord error ≤ 0.1 mm) so every check works on exact polygons; `arcs` records which
+  vertex runs lie on a circle, and the SVG / DXF exporters write those runs as **true arcs** (SVG `A`, DXF bulge).
+  Replacing an `outline` without new `arcs` drops the old arc data. Generate shapes with `board_engine.shapes`.
+* `marks` are machined into the +Z face and never cut through: they are not holes for joint or collision checks.
+  Validated: inside the board (`MARK_OUTSIDE_BOARD`), engrave ≤ half the thickness (`ENGRAVE_TOO_DEEP`), pockets
+  keep the material's minimum remaining thickness (`POCKET_TOO_DEEP`), warning when over a cut-out (`MARK_OVER_CUTOUT`).
+  A self-crossing polygon cut-out is `FEATURE_SELF_INTERSECTION`.
+
 ### Feature kinds — never interchangeable
 
 | kind | meaning | engine behaviour |
@@ -281,8 +302,9 @@ For LLM function calling, map `GET /api/v1/tools` entries (`name`, `description`
   and notches) and one INNER path per slot/hole/opening; inner paths are ordered before their part's
   outer path. Optional kerf compensation (outer +kerf/2, inner −kerf/2, verified per edge). Checks:
   self-intersection, inner touching outer, overlapping or **duplicate** paths (duplicates dropped).
-* **Exports**: SVG (mm units, layers `CUT_OUTER` red / `CUT_INNER` blue / `ENGRAVE_LABELS`), DXF R12
-  (same layers, `$INSUNITS`=mm), PDF booklet (`board_engine/booklet.py`, dependency-free vector PDF):
+* **Exports**: SVG (mm units, layers `ENGRAVE` / `POCKET` (when present, machined first, `data-depth`) /
+  `CUT_INNER` blue / `CUT_OUTER` red / `ENGRAVE_LABELS`; curves as true arcs), DXF R12 (same layers,
+  `$INSUNITS`=mm, curves as bulges), PDF booklet (`board_engine/booklet.py`, dependency-free vector PDF):
   cover with project info, validation status, nesting stats and component schedule; one **1:1**
   cutting template per sheet (page size = sheet size, 50 mm scale-check bar, `PrintScaling /None`);
   one dimensioned drawing per component (standard scale, datum, feature/tab tables, assembly

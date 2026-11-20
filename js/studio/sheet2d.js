@@ -74,6 +74,11 @@ export class Sheet2D {
           p.shape === 'circle' ? el('circle', { ...attrs, cx: p.center[0], cy: p.center[1], r: p.radius }, pg)
             : el('path', { ...attrs, d: ptsToD(p.points) }, pg);
         }
+        for (const p of paths.filter((q) => q.type === 'engrave' || q.type === 'pocket')) {
+          el('path', { d: 'M' + p.points.map((q) => q.join(',')).join('L') + (p.closed ? 'Z' : ''), fill: 'none',
+            stroke: p.type === 'pocket' ? '#15803d' : '#1d4ed8', 'stroke-width': 0.4, 'stroke-dasharray': '2 1.5',
+            'vector-effect': 'non-scaling-stroke' }, pg);
+        }
         el('path', { d: ptsToD(outer.points), fill: 'none', stroke: 'var(--cut)', 'stroke-width': 1.1,
           'vector-effect': 'non-scaling-stroke', class: 'outline' }, pg);
         const lab = s.labels.find((l) => l.part === part);

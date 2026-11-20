@@ -40,6 +40,11 @@ def _orientation(plate):
     return {'kind': 'inclined', 'normal': _r(n, 3), 'tilt_deg': _r(math.degrees(math.acos(min(1.0, ny))), 2)}
 
 
+def _on_arc(i, arcs, n):
+    """True if outline vertex i lies inside a curved run (its 'corners' are the curve, not notches)."""
+    return any((i - a['start']) % n <= (a['end'] - a['start']) % n for a in arcs or [])
+
+
 def _reflex_vertices(poly):
     n = len(poly)
     out = []
@@ -127,17 +132,24 @@ def board_entry(design, plate, joint_results, drills):
         'straight_edges': sum(1 for e in edges if e['cut'] == 'straight'),
         'angled_cuts': [{'edge': e['index'], 'angle_to_length_deg': e['angle_to_length_deg']}
                         for e in edges if e['cut'] == 'angled'],
-        'notches': [{'vertex': i, 'at': _r(comp['outline'][i], 2)} for i in _reflex_vertices(comp['outline'])],
+        'notches': [{'vertex': i, 'at': _r(comp['outline'][i], 2)} for i in _reflex_vertices(comp['outline'])
+                    if not _on_arc(i, comp.get('arcs'), len(comp['outline']))],
+        'curves': [{'from_vertex': a['start'], 'to_vertex': a['end'], 'radius': _r(a['radius'], 2),
+                    'center': _r(a['center'], 2), 'concave': not a['ccw']} for a in comp.get('arcs', [])],
         'tabs': [{'id': t['id'], 'edge': t['edge'], 'offset': t['offset'], 'width': t['width'], 'depth': t['depth']}
                  for t in comp.get('tabs', [])],
         'through_cuts': [dict({'id': f['id'], 'kind': f['kind'], 'shape': f['shape'], 'center': _r(f['center'], 2)},
                               **({'diameter': f['diameter']} if f['shape'] == 'circle' else
-                                 {'width': f['width'], 'height': f['height'], 'angle': f.get('angle', 0.0)}))
+                                 {'points': len(f['points']), 'curved': bool(f.get('arcs'))} if f['shape'] == 'polygon' else
+                                 {'width': f['width'], 'height': f['height'], 'angle': f.get('angle', 0.0),
+                                  **({'corner_radius': f['corner_radius']} if f.get('corner_radius') else {})}))
                          for f in comp.get('features', [])],
         'bevels': [{'edge': e, **{k: v for k, v in b.items() if k != 'long_point'}} for e, b in sorted(bevels.items())],
         'drilling': [{k: v for k, v in d.items() if k != 'component'} for d in drills if d['component'] == cid],
+        'surface': [{'id': m['id'], 'kind': m['kind'], 'depth': m['depth'], 'closed': m['closed']}
+                    for m in comp.get('marks', [])],
     }
-    process = 'saw' if rectangular and not ops['through_cuts'] and not ops['notches'] else 'cnc'
+    process = 'saw' if rectangular and not ops['through_cuts'] and not ops['notches'] and not ops['surface'] else 'cnc'
     grain = comp.get('grain')
     m = material_of(design, comp)
     entry = {

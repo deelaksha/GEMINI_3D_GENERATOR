@@ -9,12 +9,16 @@ External AIs write a small declarative JSON document (never code; nothing is exe
     "material": {"name", "type", "thickness", "kerf"?, "clearance"?},
     "joinery":  "interlocking" | "glue_allowed",                     (optional; derived from connections)
     "boards": [{"id", "name", "group", "position": [x, y, z], "size": [sx, sy, sz],
-                "thickness"?, "material"?, "grain"?: "x"|"y"|"z", "openings"?: [...], "edge_banding"?: [...]}],
+                "thickness"?, "material"?, "grain"?: "x"|"y"|"z", "openings"?: [...], "edge_banding"?: [...],
+                "profile"?: shape, "engravings"?: [...], "rotate"?: {"axis", "angle", "pivot"?}}],
     "connections": [{"id"?, "type": "tab_slot"|"butt"|"hinge"|"mitre", "board", "into", ...}]
   }
 
 A board is the axis-aligned world box position..position+size (mm, +Y up, X = length, Z = depth/front);
-its thinnest extent is the board thickness. The compiler reuses the existing generator for everything:
+its thinnest extent is the board thickness. Complex cuts: a `profile` (any shape from shapes.py, in face
+coordinates [u, v] from the box's minimum corner) replaces the rectangular outline, openings may use any shape,
+and `engravings` add engrave / pocket marks. A board can be tilted with `rotate` (applied last: profile, openings,
+engravings and edge directions all refer to the unrotated box). The compiler reuses the existing generator for everything:
 furniture.panel() places boards, furniture.edge_facing() finds edges, joining.join() runs every connection
 through the validation / safe-repair pipeline (slots are generated there), validate_design() and the
 production package do the rest. Diagnostics carry the source line and, where possible, code-level fixes.
@@ -28,10 +32,11 @@ from . import geometry as G
 from .examples.furniture import DIRS, edge_facing, panel
 from .joining import join
 from .manufacturing import FASTENERS, MATERIALS
-from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MATERIAL_TYPES, SchemaError,
-                    edge_frame, normalize_design)
+from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES,
+                    SchemaError, edge_frame, normalize_design)
 from .nesting import SHEET_PRESETS
-from .validation import TOL, validate_design
+from .shapes import ShapeError, arc_sweep, shape_polygon
+from .validation import TOL, _edge_line_intervals, validate_design
 
 FORMAT = 'board-design/v1'
 CONNECTION_TYPES = ('tab_slot', 'butt', 'hinge', 'mitre')
@@ -182,6 +187,7 @@ class _Board:
         self.thin_candidates = thin
         self.thin = thin[0] if len(thin) == 1 else None
         self.inplane = [i for i in range(3) if i != self.thin] if self.thin is not None else []
+        self.rot = raw.get('rotate')   # validated in _check_boards
 
 
 def _check_material(m, diags, src, off):
@@ -255,6 +261,14 @@ def _check_boards(data, mat, diags, src, off):
                               board=bid, line=line))
             ok = False
             continue
+        rot = b.get('rotate')
+        if rot is not None and not (isinstance(rot, dict) and rot.get('axis') in ('x', 'y', 'z') and _num(rot.get('angle'))
+                                    and -360 <= rot['angle'] <= 360 and (rot.get('pivot') is None or _vec3(rot['pivot']))):
+            diags.append(diag('error', 'BOARD_ROTATE', f"Board '{bid}': \"rotate\" must be {{\"axis\": \"x\"|\"y\"|\"z\", "
+                              f"\"angle\": degrees, \"pivot\"?: [x, y, z]}} (pivot defaults to the board centre).",
+                              path=p + '.rotate', board=bid, line=line))
+            ok = False
+            continue
         bd = _Board(b, mat['thickness'])
         if bd.thin is None:
             if not bd.thin_candidates:
@@ -289,6 +303,61 @@ def _local_axis_of(comp, world_axis):
     return 0 if abs(vx[world_axis]) > 0.5 else 1
 
 
+def _face_mapper(bd, comp):
+    """Board face coordinates [u, v] (mm from the box's minimum corner along its two in-plane axes, in x, y, z
+    order) -> the component's local 2D frame. Used for profiles, shaped openings and engravings."""
+    f = _frame(comp)
+    iu, iv = bd.inplane
+    mid = (bd.lo[bd.thin] + bd.hi[bd.thin]) / 2
+
+    def to_local(uv):
+        w = [0.0, 0.0, 0.0]
+        w[iu], w[iv], w[bd.thin] = bd.lo[iu] + uv[0], bd.lo[iv] + uv[1], mid
+        q = f.to_local(w)
+        return [round(q[0], 4), round(q[1], 4)]
+    return to_local
+
+
+def _local_shape(spec, to_local, origin, name):
+    """Shape spec in face coordinates (offset by origin) -> (local points, arcs, face points). Raises ShapeError."""
+    pts, arcs = shape_polygon(spec, name)
+    if len(pts) > LIMITS['max_outline_points']:
+        raise ShapeError(f"{name} has {len(pts)} points after flattening curves (max {LIMITS['max_outline_points']})")
+    face = [[origin[0] + x, origin[1] + y] for x, y in pts]
+    loc = [to_local(q) for q in face]
+    out_arcs = []
+    for a in arcs:
+        c = to_local([origin[0] + a['center'][0], origin[1] + a['center'][1]])
+        n = len(loc)
+        mid = loc[(a['start'] + ((a['end'] - a['start']) % n) // 2) % n]
+        out_arcs.append(dict(a, center=c, ccw=arc_sweep(loc[a['start']], mid, loc[a['end']], c) > 0))  # handedness of the mapping
+    return loc, out_arcs, face
+
+
+def _euler_xyz(R):
+    """Inverse of G.rotation_matrix (THREE 'XYZ' order), degrees."""
+    ry = math.asin(max(-1.0, min(1.0, R[0][2])))
+    if abs(R[0][2]) < 0.9999999:
+        rx, rz = math.atan2(-R[1][2], R[2][2]), math.atan2(-R[0][1], R[0][0])
+    else:
+        rx, rz = math.atan2(R[2][1], R[1][1]), 0.0
+    return [round(math.degrees(v), 6) for v in (rx, ry, rz)]
+
+
+def _rotate_matrix(rot):
+    return G.rotation_matrix([rot['angle'] if AXES[i] == rot['axis'] else 0.0 for i in range(3)])
+
+
+def _apply_rotate(comp, rot):
+    """Tilt a finished component by `rot` about its pivot (default: the board centre)."""
+    Rr = _rotate_matrix(rot)
+    c = comp['placement']['position']
+    pivot = rot.get('pivot') or c
+    rel = [c[i] - pivot[i] for i in range(3)]
+    comp['placement'] = {'position': [round(pivot[i] + sum(Rr[i][k] * rel[k] for k in range(3)), 4) for i in range(3)],
+                         'rotation': _euler_xyz(G.mat_mul(Rr, G.rotation_matrix(comp['placement']['rotation'])))}
+
+
 def _component(bd, mat, diags):
     lo, hi = bd.lo, bd.hi
     kw = {}
@@ -297,6 +366,21 @@ def _component(bd, mat, diags):
         kw['material'] = {k: r['material'][k] for k in ('name', 'type') if r['material'].get(k)}
     comp = panel(bd.id, str(r.get('name') or bd.id), str(r.get('group') or 'Boards'), lo, hi, **kw)
     comp['thickness'] = bd.t
+    to_local = _face_mapper(bd, comp)
+    su, sv = bd.size[bd.inplane[0]], bd.size[bd.inplane[1]]
+    if r.get('profile') is not None:
+        p = f"boards[{bd.index}].profile"
+        try:
+            pts, arcs, face = _local_shape(r['profile'], to_local, (0.0, 0.0), 'profile')
+            out = [q for q in face if not (-0.01 <= q[0] <= su + 0.01 and -0.01 <= q[1] <= sv + 0.01)]
+            if out:
+                raise ShapeError(f"the profile leaves the board's box (e.g. point [{out[0][0]:g}, {out[0][1]:g}]); profile "
+                                 f"coordinates are [u, v] from the box corner, within [0..{su:g}] × [0..{sv:g}] mm")
+            comp['outline'] = pts
+            if arcs:
+                comp['arcs'] = arcs
+        except ShapeError as e:
+            diags.append(diag('error', 'PROFILE_INVALID', f"Board '{bd.id}': {e}.", path=p, board=bd.id, line=bd.line))
     if r.get('grain') in ('x', 'y', 'z'):
         g = AXES.index(r['grain'])
         if g == bd.thin:
@@ -319,7 +403,20 @@ def _component(bd, mat, diags):
             continue
         feat = {'id': str(o.get('id') or f'opening-{k + 1}'), 'kind': o.get('kind', 'opening'),
                 'shape': o.get('shape', 'circle' if o.get('diameter') else 'rect'), 'center': [round(c[0], 4), round(c[1], 4)]}
-        if feat['shape'] == 'circle':
+        if feat['shape'] not in ('rect', 'circle'):
+            # any other shape: built in face coordinates around the centre, cut as a polygon (curves kept as arcs)
+            spec = dict(o, center=[0.0, 0.0])
+            sz = o.get('size')
+            if isinstance(sz, list) and len(sz) == 2 and all(_num(v) for v in sz):
+                spec['width'], spec['height'] = sz
+            origin = [o['center'][bd.inplane[0]] - bd.lo[bd.inplane[0]], o['center'][bd.inplane[1]] - bd.lo[bd.inplane[1]]]
+            try:
+                pts, arcs, _face = _local_shape(spec, to_local, origin, p)
+            except ShapeError as e:
+                diags.append(diag('error', 'OPENING_INVALID', f"Board '{bd.id}': {e}.", path=p, board=bd.id, line=bd.line))
+                continue
+            feat.update(shape='polygon', points=pts, **({'arcs': arcs} if arcs else {}))
+        elif feat['shape'] == 'circle':
             feat['diameter'] = o.get('diameter')
         else:
             sz = o.get('size')
@@ -332,6 +429,8 @@ def _component(bd, mat, diags):
             lx_axis = next(i for i in bd.inplane if _local_axis_of(comp, i) == 0)
             ly_axis = next(i for i in bd.inplane if i != lx_axis)
             feat['width'], feat['height'], feat['angle'] = dims[lx_axis], dims[ly_axis], 0
+            if _num(o.get('corner_radius')) and o['corner_radius'] > 0:
+                feat['corner_radius'] = min(o['corner_radius'], min(sz) / 2)
         if o.get('note'):
             feat['note'] = str(o['note'])[:200]
         feats.append(feat)
@@ -344,6 +443,37 @@ def _component(bd, mat, diags):
                             **({'material': e['material']} if e.get('material') else {})})
     if banding:
         comp['edge_banding'] = banding
+    marks = []
+    for k, m in enumerate(r.get('engravings') or []):
+        p = f"boards[{bd.index}].engravings[{k}]"
+        kind = m.get('kind', 'engrave') if isinstance(m, dict) else None
+        if kind not in MARK_KINDS:
+            diags.append(diag('error', 'ENGRAVING_INVALID', f"Board '{bd.id}': {p} must be an object with \"kind\": "
+                              f"{' or '.join(repr(x) for x in MARK_KINDS)}.", path=p, board=bd.id, line=bd.line))
+            continue
+        try:
+            if m.get('shape'):
+                pts, arcs, _f = _local_shape(m, to_local, (0.0, 0.0), p)
+                closed = True
+            else:
+                raw = m.get('points')
+                if not (isinstance(raw, list) and len(raw) >= 2 and all(isinstance(q, list) and len(q) == 2 and all(_num(v) for v in q) for q in raw)):
+                    raise ShapeError(f'{p} needs "points": [[u, v], ...] (face mm) or a "shape"')
+                pts, arcs, closed = [to_local(q) for q in raw], [], bool(m.get('closed', False)) or kind == 'pocket'
+        except ShapeError as e:
+            diags.append(diag('error', 'ENGRAVING_INVALID', f"Board '{bd.id}': {e}.", path=p, board=bd.id, line=bd.line))
+            continue
+        mk = {'id': str(m.get('id') or f'{kind}-{k + 1}'), 'kind': kind, 'points': pts, 'closed': closed,
+              **({'arcs': arcs} if arcs else {})}
+        if m.get('depth') is not None:
+            mk['depth'] = m['depth']
+        elif kind == 'pocket':
+            mk['depth'] = round(bd.t / 2, 3)
+        if m.get('note'):
+            mk['note'] = str(m['note'])[:200]
+        marks.append(mk)
+    if marks:
+        comp['marks'] = marks
     return comp
 
 
@@ -400,27 +530,32 @@ def _resize_fix(bd, axis, sign, amount, title):
 
 
 def _tabs_for(comp, bd_a, bd_b, ct, conn, cid):
-    """Tabs evenly spaced along A's contact edge, inset by A's thickness from the contact ends (world -> A-local)."""
+    """Tabs evenly spaced along A's contact edge, inset by A's thickness from the contact ends (world -> A-local).
+    The contact edge is the straight outline edge lying on A's end face (for a plain board: its whole side; for a
+    profiled board: the longest straight run of the profile on that face)."""
     k, e, m = ct['axis'], ct['sign'], ct['m']
-    lo_m = max(bd_a.lo[m], bd_b.lo[m]) + bd_a.t
-    hi_m = min(bd_a.hi[m], bd_b.hi[m]) - bd_a.t
+    f = _frame(comp)
+    face = bd_a.hi[k] if e > 0 else bd_a.lo[k]
+    out = comp['outline']
+    best = None
+    for i in range(len(out)):
+        w0, w1 = f.to_world([*out[i], 0.0]), f.to_world([*out[(i + 1) % len(out)], 0.0])
+        if abs(w0[k] - face) > 0.01 or abs(w1[k] - face) > 0.01:
+            continue
+        lo_m = max(min(w0[m], w1[m]), bd_b.lo[m]) + bd_a.t
+        hi_m = min(max(w0[m], w1[m]), bd_b.hi[m]) - bd_a.t
+        if best is None or hi_m - lo_m > best[2] - best[1]:
+            best = (i, lo_m, hi_m)
+    if best is None:
+        return None, (f"'{bd_a.id}' has no straight edge on its {_dir(k, e)} side (its profile does not reach that face of "
+                      f"the box), so it cannot sit against '{bd_b.id}' there")
+    edge, lo_m, hi_m = best
     region = hi_m - lo_m
     min_w = max(TOL['min_tab_width'], bd_a.t)
     if region < min_w:
         return None, f"the contact between '{bd_a.id}' and '{bd_b.id}' is only {max(region + 2 * bd_a.t, 0):.1f} mm long — too short for a tab"
-    n = conn.get('tabs')
-    if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 12):
-        n = max(1, min(6, int(region // 250) + 1))
-    pitch = region / n
-    w = conn.get('tab_width')
-    if not _num(w) or w <= 0:
-        w = max(min_w, min(pitch * 0.5, pitch - bd_a.t))
-    w = min(w, pitch)
-    depth = conn.get('tab_depth') if _num(conn.get('tab_depth')) else bd_b.t
-    edge = edge_facing(comp, _dir(k, e))
-    a0, d, _nrm, _L = edge_frame(comp['outline'], edge)
-    f = _frame(comp)
-    face = bd_a.hi[k] if e > 0 else bd_a.lo[k]
+    w, n, pitch, depth = _tab_layout(region, conn, bd_a.t, bd_b.t)
+    a0, d, _nrm, _L = edge_frame(out, edge)
     tabs = []
     for i in range(n):
         wm = lo_m + (i + 0.5) * pitch
@@ -431,6 +566,135 @@ def _tabs_for(comp, bd_a, bd_b, ct, conn, cid):
         tabs.append({'id': f'{cid}-t{i + 1}', 'edge': edge, 'offset': round(off, 4), 'width': round(w, 3),
                      'depth': round(float(depth), 3)})
     return tabs, None
+
+
+def _tab_layout(region, conn, t_a, t_b):
+    """-> (tab width, count, pitch, depth) for a contact region `region` mm long."""
+    min_w = max(TOL['min_tab_width'], t_a)
+    n = conn.get('tabs')
+    if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 12):
+        n = max(1, min(6, int(region // 250) + 1))
+    pitch = region / n
+    w = conn.get('tab_width')
+    if not _num(w) or w <= 0:
+        w = max(min_w, min(pitch * 0.5, pitch - t_a))
+    w = min(w, pitch)
+    depth = conn.get('tab_depth') if _num(conn.get('tab_depth')) else t_b
+    return w, n, pitch, depth
+
+
+def _add_fasteners(j, c, cid, cline, diags):
+    f = c.get('fasteners')
+    if isinstance(f, str):
+        f = {'kind': f}
+    if f is not None:
+        if not isinstance(f, dict) or f.get('kind') not in FASTENER_KINDS:
+            diags.append(diag('error', 'FASTENER_KIND', f"Connection '{cid}': fasteners.kind must be one of "
+                              f"{list(FASTENER_KINDS)}.", connection=cid, line=cline))
+            return False
+        j['fasteners'] = f
+    return True
+
+
+PARALLEL_COS = math.cos(math.radians(0.5))
+
+
+def _contact_tilted(ca, cb, t_a, t_b, only_edge=None):
+    """General contact for tilted boards: a straight edge of A whose end face is parallel to a broad face of B and
+    overlaps it. -> dict(edge, gap, normal, t0, t1, length) with the overlap t0..t1 in mm along the edge, or None.
+    gap > 0 is open space between A's end face and B's face, gap < 0 is penetration."""
+    fa, fb = _frame(ca), _frame(cb)
+    nb = fb.normal
+    out, n = ca['outline'], len(ca['outline'])
+    na = fa.normal
+    best = None
+    for i in (range(n) if only_edge is None else [only_edge]):
+        a0, b0 = out[i], out[(i + 1) % n]
+        L = math.dist(a0, b0)
+        if L < 1.0:
+            continue
+        ne = fa.dir_to_world([(b0[1] - a0[1]) / L, -(b0[0] - a0[0]) / L, 0.0])
+        dp = sum(ne[q] * nb[q] for q in range(3))
+        if abs(dp) < PARALLEL_COS:
+            continue
+        s = 1.0 if dp > 0 else -1.0
+        nal = [nb[q] * s for q in range(3)]
+        p0, p1 = fa.to_world([a0[0], a0[1], 0.0]), fa.to_world([b0[0], b0[1], 0.0])
+        near = [fb.p[q] - nal[q] * t_b / 2 for q in range(3)]           # B's face on A's side
+        gap = sum((near[q] - p0[q]) * nal[q] for q in range(3))
+        if gap < -t_b:                    # A's end is already past B's far face: not touching this face
+            continue
+        # overlap: the edge line and both faces of A (± t_a/2) must run over B's outline
+        edges_b = list(zip(cb['outline'], cb['outline'][1:] + cb['outline'][:1]))
+        lo_t, hi_t = 0.0, 1.0
+        for off in (0.0, t_a / 2, -t_a / 2):
+            q0 = fb.to_local([p0[q] + na[q] * off for q in range(3)])
+            q1 = fb.to_local([p1[q] + na[q] * off for q in range(3)])
+            iv = [(max(r0, 0.0), min(r1, 1.0)) for r0, r1 in _edge_line_intervals(edges_b, q0, [q1[0] - q0[0], q1[1] - q0[1]])]
+            iv = [x for x in iv if x[1] > x[0]]
+            if not iv:
+                lo_t = hi_t = 0.0
+                break
+            r0, r1 = max(iv, key=lambda x: x[1] - x[0])
+            lo_t, hi_t = max(lo_t, r0), min(hi_t, r1)
+        if hi_t - lo_t <= 1e-9:
+            continue
+        cand = {'edge': i, 'gap': gap, 'normal': nal, 't0': lo_t * L, 't1': hi_t * L, 'length': L}
+        if best is None or (abs(gap), -(hi_t - lo_t) * L) < (abs(best['gap']), -(best['t1'] - best['t0'])):
+            best = cand
+    return best
+
+
+def _tilted_move_fix(bd, delta, title):
+    """Fix that moves board `bd` by the world vector `delta` (its position is pre-rotation; with an explicit pivot
+    the tilt would turn the move, so it is un-rotated first)."""
+    if bd.rot and bd.rot.get('pivot') is not None:
+        R = _rotate_matrix(bd.rot)
+        delta = [sum(R[k][q] * delta[k] for k in range(3)) for q in range(3)]
+    pos = [round(bd.raw['position'][q] + delta[q], 4) for q in range(3)]
+    return {'id': f'move-{bd.id}', 'title': title, 'safe': False, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}
+
+
+def _connect_tilted(comps, comps0, A, B, c, cid, cline, ctype, want, joints, diags):
+    """tab_slot / butt where either board is tilted with "rotate" (general orientation)."""
+    a, b = A.id, B.id
+    only = edge_facing(comps0[a], _dir(*want)) if want else None
+    ct = _contact_tilted(comps[a], comps[b], A.t, B.t, only)
+    if ct is None:
+        diags.append(diag('error', 'NO_CONTACT', f"Connection '{cid}': no straight edge of '{a}' sits flat against a face of "
+                          f"'{b}'. With \"rotate\", an edge of '{a}' must be parallel to a broad face of '{b}' and run over it "
+                          f"(e.g. a gable's sloped top edge under a roof panel tilted to the same pitch).",
+                          connection=cid, board=a, line=cline))
+        return
+    gap = ct['gap']
+    if abs(gap) > TOL['contact']:
+        delta = [ct['normal'][q] * gap for q in range(3)]          # moving A by this closes the gap
+        move_a = _tilted_move_fix(A, delta, f"Move '{a}' {abs(gap):.2f} mm to touch '{b}'")
+        move_b = _tilted_move_fix(B, [-v for v in delta], f"Move '{b}' {abs(gap):.2f} mm to touch '{a}'")
+        # prefer moving the tilted board: the other one is usually locked square into the rest of the product
+        fixes = [move_b, move_a] if (B.rot and not A.rot) else [move_a, move_b]
+        fixes[0]['safe'] = abs(gap) <= SAFE_MOVE
+        what = (f"stops {gap:.2f} mm short of" if gap > 0 else f"runs {-gap:.2f} mm into")
+        diags.append(diag('error', 'CONNECTION_GAP' if gap > 0 else 'CONNECTION_OVERLAP',
+                          f"Connection '{cid}': '{a}' {what} '{b}' (measured square to '{b}''s face).",
+                          connection=cid, board=a, line=cline or A.line, gap=round(gap, 3), fixes=fixes))
+        return
+    if ctype == 'butt':
+        j = {'id': cid, 'type': 'edge_butt', 'a': a, 'a_edge': ct['edge'], 'b': b}
+        if _add_fasteners(j, c, cid, cline, diags):
+            joints.append((j, c, cid, cline))
+        return
+    lo, hi = ct['t0'] + A.t, ct['t1'] - A.t
+    if hi - lo < max(TOL['min_tab_width'], A.t):
+        diags.append(diag('error', 'CONTACT_TOO_SHORT', f"Connection '{cid}': the contact between '{a}' and '{b}' is only "
+                          f"{ct['t1'] - ct['t0']:.1f} mm long — too short for a tab.", connection=cid, line=cline))
+        return
+    w, n, pitch, depth = _tab_layout(hi - lo, c, A.t, B.t)
+    tabs = [{'id': f'{cid}-t{i + 1}', 'edge': ct['edge'], 'offset': round(lo + (i + 0.5) * pitch, 4), 'width': round(w, 3),
+             'depth': round(float(depth), 3)} for i in range(n)]
+    comps[a].setdefault('tabs', []).extend(tabs)
+    for t in tabs:
+        joints.append(({'id': t['id'], 'type': 'tab_slot', 'a': a, 'tab': t['id'], 'b': b}, c, cid, cline))
 
 
 def _parse_dir(v):
@@ -513,6 +777,10 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     source_map = {bid: bd.line for bid, bd in boards.items()}
 
     comps = {bid: _component(bd, mat, diags) for bid, bd in boards.items()}
+    comps0 = copy.deepcopy(comps)      # unrotated: edge directions ("+x", ...) always refer to the unrotated box
+    for bid, bd in boards.items():
+        if bd.rot:
+            _apply_rotate(comps[bid], bd.rot)
 
     # Connections
     conns = data.get('connections') or []
@@ -565,7 +833,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                 diags.append(diag('error', 'HINGE_EDGE', f"Hinge '{cid}': add \"edge\": \"+x\"|\"-x\"|... — the side of door '{a}' "
                                   f"that carries the hinges.", connection=cid, line=cline))
                 continue
-            j = {'id': cid, 'type': 'hinge', 'a': a, 'a_edge': edge_facing(comps[a], c['edge']), 'b': b}
+            j = {'id': cid, 'type': 'hinge', 'a': a, 'a_edge': edge_facing(comps0[a], c['edge']), 'b': b}
             for k in ('count', 'gap'):
                 if c.get(k) is not None:
                     j[k] = c[k]
@@ -577,8 +845,8 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                 diags.append(diag('error', 'MITRE_EDGES', f"Mitre '{cid}': give \"edge\" (on '{a}') and \"into_edge\" (on '{b}') as "
                                   f"\"+x\"|\"-x\"|\"+y\"|... directions.", connection=cid, line=cline))
                 continue
-            j = {'id': cid, 'type': 'edge_mitre', 'a': a, 'a_edge': edge_facing(comps[a], c['edge']), 'b': b,
-                 'b_edge': edge_facing(comps[b], c['into_edge'])}
+            j = {'id': cid, 'type': 'edge_mitre', 'a': a, 'a_edge': edge_facing(comps0[a], c['edge']), 'b': b,
+                 'b_edge': edge_facing(comps0[b], c['into_edge'])}
             if c.get('bevel', True):
                 j['bevel'] = True
             if isinstance(c.get('fasteners'), dict):
@@ -586,6 +854,9 @@ def _compile_v1(data, src, off, design_id, result, run_production):
             joints.append((j, c, cid, cline))
             continue
         want = _parse_dir(c.get('edge'))
+        if A.rot or B.rot:
+            _connect_tilted(comps, comps0, A, B, c, cid, cline, ctype, want, joints, diags)
+            continue
         ct = _contact(A, B, want)
         if ct is None:
             diags.append(diag('error', 'NO_CONTACT', f"Connection '{cid}': no end face of '{a}' meets a broad face of '{b}'. For "
@@ -632,17 +903,9 @@ def _compile_v1(data, src, off, design_id, result, run_production):
             for t in tabs:
                 joints.append(({'id': t['id'], 'type': 'tab_slot', 'a': a, 'tab': t['id'], 'b': b}, c, cid, cline))
         else:  # butt
-            j = {'id': cid, 'type': 'edge_butt', 'a': a, 'a_edge': edge_facing(comps[a], _dir(k, e)), 'b': b}
-            f = c.get('fasteners')
-            if isinstance(f, str):
-                f = {'kind': f}
-            if f is not None:
-                if not isinstance(f, dict) or f.get('kind') not in FASTENER_KINDS:
-                    diags.append(diag('error', 'FASTENER_KIND', f"Connection '{cid}': fasteners.kind must be one of "
-                                      f"{list(FASTENER_KINDS)}.", connection=cid, line=cline))
-                    continue
-                j['fasteners'] = f
-            joints.append((j, c, cid, cline))
+            j = {'id': cid, 'type': 'edge_butt', 'a': a, 'a_edge': edge_facing(comps0[a], _dir(k, e)), 'b': b}
+            if _add_fasteners(j, c, cid, cline, diags):
+                joints.append((j, c, cid, cline))
 
     if any(d['severity'] == 'error' for d in diags):
         result['source_map'] = source_map
@@ -677,8 +940,10 @@ def _compile_v1(data, src, off, design_id, result, run_production):
 
     # Overall dimensions (the classic AI mistake: forgetting to subtract board thickness)
     ov = product.get('overall') if isinstance(product.get('overall'), dict) else {}
-    lo = [min(bd.lo[i] for bd in boards.values()) for i in range(3)]
-    hi = [max(bd.hi[i] for bd in boards.values()) for i in range(3)]
+    corners = [_frame(cm).to_world([x, y, z]) for cm in design['components'] for x, y in cm['outline']
+               for z in (-boards[cm['id']].t / 2, boards[cm['id']].t / 2)]
+    lo = [min(q[i] for q in corners) for i in range(3)]
+    hi = [max(q[i] for q in corners) for i in range(3)]
     for name, i in (('length', 0), ('height', 1), ('depth', 2)):
         if _num(ov.get(name)) and abs((hi[i] - lo[i]) - ov[name]) > 0.5:
             diags.append(diag('warning', 'OVERALL_MISMATCH', f"The boards span {hi[i] - lo[i]:.1f} mm in {AXES[i]} ({name}) but "

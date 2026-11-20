@@ -131,7 +131,15 @@ def validate_component(design, comp, tol=TOL):
         fids.add(f['id'])
         poly = feature_polygon(f)
         polys.append((f, poly))
-        size = f['diameter'] if f['shape'] == 'circle' else min(f['width'], f['height'])
+        if f['shape'] == 'polygon':
+            bx = G.bbox(poly)
+            size = min(bx[2] - bx[0], bx[3] - bx[1])
+            if G.self_intersections(poly):
+                out.append(issue('FEATURE_SELF_INTERSECTION', 'error', '2d',
+                                 f"{f['kind'].capitalize()} '{f['id']}' on '{cid}' crosses itself and cannot be cut.",
+                                 [cid], feature=f['id']))
+        else:
+            size = f['diameter'] if f['shape'] == 'circle' else min(f['width'], f['height'])
         if size < tol['min_feature_size']:
             out.append(issue('FEATURE_TOO_SMALL', 'error', 'manufacturing',
                              f"Feature '{f['id']}' on '{cid}' is {size:.2f} mm; the laser cannot cut features "
@@ -165,6 +173,35 @@ def validate_component(design, comp, tol=TOL):
                                      f"Features '{fa['id']}' and '{fb['id']}' on '{cid}' are only {d:.2f} mm apart "
                                      f"(minimum {tol['min_feature_spacing']} mm).",
                                      [cid], feature=fb['id'], other_feature=fa['id']))
+
+    # Engraving / pockets (partial depth: material stays, so they never count as holes elsewhere)
+    if comp.get('marks'):
+        from .manufacturing import MATERIALS
+        from .model import material_of
+        spec = MATERIALS.get(material_of(design, comp).get('type'), {})
+        keep = spec.get('face_remaining') or 0.0
+        for m in comp['marks']:
+            pts = m['points']
+            segs = list(zip(pts, pts[1:] + (pts[:1] if m['closed'] else [])))
+            edges = list(zip(cut, cut[1:] + cut[:1]))
+            inside = all(G.point_in_polygon(q, cut) for q in pts)
+            if not inside or any(G.segments_intersect(a, b, c, d) for a, b in segs for c, d in edges):
+                out.append(issue('MARK_OUTSIDE_BOARD', 'error', '2d',
+                                 f"{m['kind'].capitalize()} '{m['id']}' on '{cid}' runs outside the board.", [cid], feature=m['id']))
+                continue
+            limit = t - keep if m['kind'] == 'pocket' else t * 0.5
+            if m['depth'] > limit + 1e-9 or m['depth'] >= t:
+                what = (f"leaves less than {keep:g} mm of material under it" if m['kind'] == 'pocket' and keep
+                        else f"is deeper than {'the board' if m['kind'] == 'pocket' else 'half the board'}")
+                out.append(issue('POCKET_TOO_DEEP' if m['kind'] == 'pocket' else 'ENGRAVE_TOO_DEEP', 'error', 'manufacturing',
+                                 f"{m['kind'].capitalize()} '{m['id']}' on '{cid}' is {m['depth']:g} mm deep in a {t:g} mm board and "
+                                 f"{what} (max {max(limit, 0):g} mm).", [cid], feature=m['id']))
+            for f, poly in polys:
+                if any(G.point_in_polygon(q, poly) for q in pts) or (m['closed'] and G.polygons_overlap(pts, poly)):
+                    out.append(issue('MARK_OVER_CUTOUT', 'warning', 'manufacturing',
+                                     f"{m['kind'].capitalize()} '{m['id']}' on '{cid}' runs over {f['kind']} '{f['id']}'.",
+                                     [cid], feature=m['id'], other_feature=f['id']))
+                    break
 
     # Sheet fit
     x0, y0, x1, y1 = G.bbox(cut)

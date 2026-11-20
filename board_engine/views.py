@@ -6,7 +6,7 @@ from .booklet import build_booklet
 from .cutlist import cut_list
 from .cutpaths import generate_cut_paths, sheet_dxf, sheet_svg
 from .manufacturing import manufacturing_report
-from .model import Plate, edge_frame, tab_geometry
+from .model import Plate, edge_frame, tab_geometry, feature_polygon
 from .nesting import nest
 from .validation import component_states, validate_design
 
@@ -38,7 +38,9 @@ def component_view(design, comp):
         'id': comp['id'], 'name': comp.get('name'), 'group': comp.get('group'),
         'thickness': pl.t, 'color': comp.get('color'), 'grain_locked': bool(comp.get('grain_locked')),
         'outline': comp['outline'], 'cut_outline': _r([list(p) for p in pl.cut]),
-        'features': comp.get('features', []), 'tabs': tabs, 'edges': edges,
+        'features': [f if f['shape'] == 'circle' else dict(f, polygon=_r(feature_polygon(f)))
+                     for f in comp.get('features', [])],
+        'marks': comp.get('marks', []), 'tabs': tabs, 'edges': edges,
         'placement': comp['placement'], 'matrix_world': _r(pl.frame.matrix4(), 6),
         'world_normal': _r(pl.frame.normal),
         'cut_size': {k: _r(v) for k, v in G.oriented_rect(pl.cut).items() if k in ('length', 'width', 'angle')},
