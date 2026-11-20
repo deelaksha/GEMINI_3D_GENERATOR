@@ -11,15 +11,29 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, payload) {
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: { 'X-Board-Client': 'studio', ...(payload ? { 'Content-Type': 'application/json' } : {}) },
-    body: payload ? JSON.stringify(payload) : undefined
-  });
+const failure = (status, message) => new ApiError(status, { error: { message } });
+
+async function request(method, path, payload, { timeout = 0 } = {}) {
+  const ctl = timeout ? new AbortController() : null;
+  const timer = ctl && setTimeout(() => ctl.abort(), timeout);
+  let res;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method,
+      credentials: 'same-origin',
+      headers: { 'X-Board-Client': 'studio', ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+      body: payload ? JSON.stringify(payload) : undefined,
+      signal: ctl?.signal
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw failure(408, `The server did not answer within ${Math.round(timeout / 1000)} s. Please try again.`);
+    throw failure(0, 'Cannot reach the server — check your connection.');
+  } finally {
+    clearTimeout(timer);
+  }
   const type = res.headers.get('Content-Type') || '';
   if (!type.includes('application/json')) {
+    if ([502, 503, 504].includes(res.status)) throw failure(res.status, 'The server timed out or is restarting (HTTP ' + res.status + '). Please try again in a moment.');
     if (!res.ok) throw new ApiError(res.status, null);
     return res;
   }
@@ -49,7 +63,7 @@ export const Api = {
   storage: () => request('GET', '/storage'),
   canvasSpec: () => request('GET', '/canvas/spec'),
   canvasPrompt: (opts) => request('POST', '/canvas/prompt', opts),
-  canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }),
+  canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }, { timeout: 120000 }),
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
   canvasSave: (source, name, designId) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined }),
   canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),

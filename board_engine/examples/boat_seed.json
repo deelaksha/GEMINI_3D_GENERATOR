@@ -1,0 +1,2144 @@
+{
+ "id": "boat",
+ "name": "Day Sailer (board model)",
+ "description": "Glue-free parametric sailing boat: every part locks in with tabs and slots \u2014 bottom, four hull side panels, transom, two bulkheads, deck with cockpit, keel, rudder, mast and two sails.",
+ "revision": 0,
+ "material": {
+  "name": "Board 3 mm (cardboard / MDF)",
+  "thickness": 3.0,
+  "kerf": 0.15,
+  "clearance": 0.15,
+  "color": "#d9b98b"
+ },
+ "sheet": {
+  "width": 600.0,
+  "height": 400.0,
+  "spacing": 6.0
+ },
+ "components": [
+  {
+   "id": "HULL-BOTTOM",
+   "name": "Hull bottom",
+   "group": "Hull",
+   "outline": [
+    [
+     -156.0,
+     -46.0
+    ],
+    [
+     61.273,
+     -46.0
+    ],
+    [
+     164.773,
+     0.0
+    ],
+    [
+     61.273,
+     46.0
+    ],
+    [
+     -156.0,
+     46.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "slot-J-AFT-PORT-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 0.0,
+     "generated_by": "J-AFT-PORT-b1"
+    },
+    {
+     "id": "slot-J-AFT-PORT-b2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      6.0,
+      40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 0.0,
+     "generated_by": "J-AFT-PORT-b2"
+    },
+    {
+     "id": "slot-J-BOW-PORT-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      103.604,
+      20.621
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": -23.962,
+     "generated_by": "J-BOW-PORT-b1"
+    },
+    {
+     "id": "slot-J-AFT-STBD-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      -40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 0.0,
+     "generated_by": "J-AFT-STBD-b1"
+    },
+    {
+     "id": "slot-J-AFT-STBD-b2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      6.0,
+      -40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 0.0,
+     "generated_by": "J-AFT-STBD-b2"
+    },
+    {
+     "id": "slot-J-BOW-STBD-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      105.145,
+      -19.935
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 23.962,
+     "generated_by": "J-BOW-STBD-b1"
+    },
+    {
+     "id": "slot-J-TRANSOM-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -150.0,
+      0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-TRANSOM-b1"
+    },
+    {
+     "id": "slot-J-BULKHEAD-1-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -60.0,
+      0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-BULKHEAD-1-b1"
+    },
+    {
+     "id": "slot-J-BULKHEAD-2-b1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      21.0,
+      0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-BULKHEAD-2-b1"
+    },
+    {
+     "id": "slot-J-KEEL-1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -9.63,
+      0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-KEEL-1"
+    },
+    {
+     "id": "slot-J-KEEL-2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -75.9,
+      0.0
+     ],
+     "width": 16.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-KEEL-2"
+    }
+   ],
+   "tabs": [],
+   "placement": {
+    "position": [
+     0.0,
+     1.5,
+     0.0
+    ],
+    "rotation": [
+     -90.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "DECK",
+   "name": "Deck",
+   "group": "Deck",
+   "outline": [
+    [
+     -156.0,
+     -46.0
+    ],
+    [
+     61.273,
+     -46.0
+    ],
+    [
+     164.773,
+     0.0
+    ],
+    [
+     61.273,
+     46.0
+    ],
+    [
+     -156.0,
+     46.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "cockpit",
+     "kind": "opening",
+     "shape": "rect",
+     "center": [
+      -105.0,
+      0.0
+     ],
+     "width": 60.0,
+     "height": 48.0,
+     "angle": 0.0,
+     "note": "Cockpit well (intentional opening)"
+    },
+    {
+     "id": "slot-J-AFT-PORT-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      6.0,
+      40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-AFT-PORT-d1"
+    },
+    {
+     "id": "slot-J-AFT-PORT-d2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-AFT-PORT-d2"
+    },
+    {
+     "id": "slot-J-BOW-PORT-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      103.603,
+      20.621
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 156.037,
+     "generated_by": "J-BOW-PORT-d1"
+    },
+    {
+     "id": "slot-J-AFT-STBD-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      6.0,
+      -40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-AFT-STBD-d1"
+    },
+    {
+     "id": "slot-J-AFT-STBD-d2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      -40.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 180.0,
+     "generated_by": "J-AFT-STBD-d2"
+    },
+    {
+     "id": "slot-J-BOW-STBD-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      105.146,
+      -19.935
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": -156.037,
+     "generated_by": "J-BOW-STBD-d1"
+    },
+    {
+     "id": "slot-J-TRANSOM-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -150.0,
+      0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-TRANSOM-d1"
+    },
+    {
+     "id": "slot-J-BULKHEAD-1-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -60.0,
+      -0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-BULKHEAD-1-d1"
+    },
+    {
+     "id": "slot-J-BULKHEAD-2-d1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      21.0,
+      0.0
+     ],
+     "width": 24.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-BULKHEAD-2-d1"
+    },
+    {
+     "id": "slot-J-MAST-STEP",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      39.0,
+      0.0
+     ],
+     "width": 6.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-MAST-STEP"
+    }
+   ],
+   "tabs": [],
+   "placement": {
+    "position": [
+     0.0,
+     54.5,
+     0.0
+    ],
+    "rotation": [
+     -90.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "SIDE-AFT-PORT",
+   "name": "Aft side panel (port)",
+   "group": "Hull",
+   "outline": [
+    [
+     -108.0,
+     -25.0
+    ],
+    [
+     108.0,
+     -25.0
+    ],
+    [
+     108.0,
+     25.0
+    ],
+    [
+     -108.0,
+     25.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "slot-J-TRANSOM-PORT",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-TRANSOM-PORT"
+    },
+    {
+     "id": "slot-J-BULKHEAD-1-PORT",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -12.0,
+      0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-BULKHEAD-1-PORT"
+    },
+    {
+     "id": "slot-J-BULKHEAD-2-PORT",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      69.0,
+      -0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-BULKHEAD-2-PORT"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 54.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "b2",
+     "edge": 0,
+     "offset": 162.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 54.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d2",
+     "edge": 2,
+     "offset": 162.0,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     -48.0,
+     28.0,
+     -40.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "SIDE-AFT-STBD",
+   "name": "Aft side panel (stbd)",
+   "group": "Hull",
+   "outline": [
+    [
+     -108.0,
+     -25.0
+    ],
+    [
+     108.0,
+     -25.0
+    ],
+    [
+     108.0,
+     25.0
+    ],
+    [
+     -108.0,
+     25.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "slot-J-TRANSOM-STBD",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -102.0,
+      -0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-TRANSOM-STBD"
+    },
+    {
+     "id": "slot-J-BULKHEAD-1-STBD",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -12.0,
+      -0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-BULKHEAD-1-STBD"
+    },
+    {
+     "id": "slot-J-BULKHEAD-2-STBD",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      69.0,
+      0.0
+     ],
+     "width": 20.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-BULKHEAD-2-STBD"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 54.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "b2",
+     "edge": 0,
+     "offset": 162.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 54.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d2",
+     "edge": 2,
+     "offset": 162.0,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     -48.0,
+     28.0,
+     40.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "SIDE-BOW-PORT",
+   "name": "Bow side panel (port)",
+   "group": "Hull",
+   "outline": [
+    [
+     -47.39765,
+     -25.0
+    ],
+    [
+     47.39765,
+     -25.0
+    ],
+    [
+     47.39765,
+     25.0
+    ],
+    [
+     -47.39765,
+     25.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 47.398,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 47.398,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     103.6034,
+     28.0,
+     -20.6207
+    ],
+    "rotation": [
+     0.0,
+     -23.9625,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "SIDE-BOW-STBD",
+   "name": "Bow side panel (stbd)",
+   "group": "Hull",
+   "outline": [
+    [
+     -49.08515,
+     -25.0
+    ],
+    [
+     49.08515,
+     -25.0
+    ],
+    [
+     49.08515,
+     25.0
+    ],
+    [
+     -49.08515,
+     25.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 49.085,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 49.085,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     105.1454,
+     28.0,
+     19.9354
+    ],
+    "rotation": [
+     0.0,
+     23.9625,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "TRANSOM",
+   "name": "Transom",
+   "group": "Structure",
+   "outline": [
+    [
+     -38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     25.0
+    ],
+    [
+     -38.5,
+     25.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "slot-J-RUDDER",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      0.0,
+      -1.5
+     ],
+     "width": 16.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-RUDDER"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s1",
+     "edge": 1,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s2",
+     "edge": 3,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     -150.0,
+     28.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     90.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "BULKHEAD-1",
+   "name": "Aft bulkhead",
+   "group": "Structure",
+   "outline": [
+    [
+     -38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     25.0
+    ],
+    [
+     -38.5,
+     25.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "lightening",
+     "kind": "opening",
+     "shape": "circle",
+     "center": [
+      0.0,
+      0.0
+     ],
+     "diameter": 17.5,
+     "note": "Lightening hole (intentional)"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s1",
+     "edge": 1,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s2",
+     "edge": 3,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     -60.0,
+     28.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     90.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "BULKHEAD-2",
+   "name": "Forward bulkhead",
+   "group": "Structure",
+   "outline": [
+    [
+     -38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     -25.0
+    ],
+    [
+     38.5,
+     25.0
+    ],
+    [
+     -38.5,
+     25.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "lightening",
+     "kind": "opening",
+     "shape": "circle",
+     "center": [
+      0.0,
+      0.0
+     ],
+     "diameter": 17.5,
+     "note": "Lightening hole (intentional)"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "b1",
+     "edge": 0,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "d1",
+     "edge": 2,
+     "offset": 38.5,
+     "width": 24.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s1",
+     "edge": 1,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "s2",
+     "edge": 3,
+     "offset": 25.0,
+     "width": 20.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     21.0,
+     28.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     90.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "KEEL",
+   "name": "Keel fin",
+   "group": "Appendages",
+   "outline": [
+    [
+     -60.0,
+     -30.0
+    ],
+    [
+     21.0,
+     -30.0
+    ],
+    [
+     51.0,
+     0.0
+    ],
+    [
+     -90.0,
+     0.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "k1",
+     "edge": 2,
+     "offset": 60.63,
+     "width": 20.0,
+     "depth": 3.0
+    },
+    {
+     "id": "k2",
+     "edge": 2,
+     "offset": 126.9,
+     "width": 16.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "RUDDER",
+   "name": "Rudder",
+   "group": "Appendages",
+   "outline": [
+    [
+     -158.0,
+     -20.0
+    ],
+    [
+     -158.0,
+     8.0
+    ],
+    [
+     -151.5,
+     8.0
+    ],
+    [
+     -151.5,
+     45.0
+    ],
+    [
+     -172.5,
+     45.0
+    ],
+    [
+     -181.5,
+     -20.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "h1",
+     "edge": 2,
+     "offset": 18.5,
+     "width": 16.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "MAST",
+   "name": "Mast",
+   "group": "Rig",
+   "outline": [
+    [
+     -5.0,
+     0.0
+    ],
+    [
+     5.0,
+     0.0
+    ],
+    [
+     5.0,
+     200.0
+    ],
+    [
+     -5.0,
+     200.0
+    ]
+   ],
+   "features": [
+    {
+     "id": "slot-J-SAIL-MAIN-m1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      0.0,
+      52.5
+     ],
+     "width": 14.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-SAIL-MAIN-m1"
+    },
+    {
+     "id": "slot-J-SAIL-MAIN-m2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      0.0,
+      112.0
+     ],
+     "width": 14.15,
+     "height": 3.15,
+     "angle": 90.0,
+     "generated_by": "J-SAIL-MAIN-m2"
+    },
+    {
+     "id": "slot-J-SAIL-JIB-j1",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -0.0,
+      129.6
+     ],
+     "width": 14.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-SAIL-JIB-j1"
+    },
+    {
+     "id": "slot-J-SAIL-JIB-j2",
+     "kind": "slot",
+     "shape": "rect",
+     "center": [
+      -0.0,
+      75.2
+     ],
+     "width": 14.15,
+     "height": 3.15,
+     "angle": -90.0,
+     "generated_by": "J-SAIL-JIB-j2"
+    }
+   ],
+   "tabs": [
+    {
+     "id": "step",
+     "edge": 0,
+     "offset": 5.0,
+     "width": 6.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     39.0,
+     56.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     90.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "id": "SAIL-MAIN",
+   "name": "Mainsail",
+   "group": "Rig",
+   "outline": [
+    [
+     37.5,
+     66.0
+    ],
+    [
+     37.5,
+     236.0
+    ],
+    [
+     -87.0,
+     66.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "m1",
+     "edge": 0,
+     "offset": 42.5,
+     "width": 14.0,
+     "depth": 3.0
+    },
+    {
+     "id": "m2",
+     "edge": 0,
+     "offset": 102.0,
+     "width": 14.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "color": "#f4efe6"
+  },
+  {
+   "id": "SAIL-JIB",
+   "name": "Jib",
+   "group": "Rig",
+   "outline": [
+    [
+     40.5,
+     70.0
+    ],
+    [
+     129.0,
+     70.0
+    ],
+    [
+     40.5,
+     206.0
+    ]
+   ],
+   "features": [],
+   "tabs": [
+    {
+     "id": "j1",
+     "edge": 2,
+     "offset": 20.4,
+     "width": 14.0,
+     "depth": 3.0
+    },
+    {
+     "id": "j2",
+     "edge": 2,
+     "offset": 74.8,
+     "width": 14.0,
+     "depth": 3.0
+    }
+   ],
+   "placement": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "color": "#f4efe6"
+  }
+ ],
+ "joints": [
+  {
+   "id": "J-AFT-PORT-b1",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-PORT",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-AFT-PORT-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-AFT-PORT-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 0.0,
+      "generated_by": "J-AFT-PORT-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-PORT-b2",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-PORT",
+   "b": "HULL-BOTTOM",
+   "tab": "b2",
+   "status": "joined",
+   "slot": "slot-J-AFT-PORT-b2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-AFT-PORT-b2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       6.0,
+       40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 0.0,
+      "generated_by": "J-AFT-PORT-b2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-PORT-d1",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-PORT",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-AFT-PORT-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-AFT-PORT-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       6.0,
+       40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-AFT-PORT-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-PORT-d2",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-PORT",
+   "b": "DECK",
+   "tab": "d2",
+   "status": "joined",
+   "slot": "slot-J-AFT-PORT-d2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-AFT-PORT-d2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-AFT-PORT-d2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BOW-PORT-b1",
+   "type": "tab_slot",
+   "a": "SIDE-BOW-PORT",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-BOW-PORT-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-BOW-PORT-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       103.604,
+       20.621
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": -23.962,
+      "generated_by": "J-BOW-PORT-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BOW-PORT-d1",
+   "type": "tab_slot",
+   "a": "SIDE-BOW-PORT",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-BOW-PORT-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-BOW-PORT-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       103.603,
+       20.621
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 156.037,
+      "generated_by": "J-BOW-PORT-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-STBD-b1",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-STBD",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-AFT-STBD-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-AFT-STBD-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       -40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 0.0,
+      "generated_by": "J-AFT-STBD-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-STBD-b2",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-STBD",
+   "b": "HULL-BOTTOM",
+   "tab": "b2",
+   "status": "joined",
+   "slot": "slot-J-AFT-STBD-b2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-AFT-STBD-b2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       6.0,
+       -40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 0.0,
+      "generated_by": "J-AFT-STBD-b2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-STBD-d1",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-STBD",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-AFT-STBD-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-AFT-STBD-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       6.0,
+       -40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-AFT-STBD-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-AFT-STBD-d2",
+   "type": "tab_slot",
+   "a": "SIDE-AFT-STBD",
+   "b": "DECK",
+   "tab": "d2",
+   "status": "joined",
+   "slot": "slot-J-AFT-STBD-d2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-AFT-STBD-d2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       -40.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-AFT-STBD-d2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BOW-STBD-b1",
+   "type": "tab_slot",
+   "a": "SIDE-BOW-STBD",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-BOW-STBD-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-BOW-STBD-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       105.145,
+       -19.935
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 23.962,
+      "generated_by": "J-BOW-STBD-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BOW-STBD-d1",
+   "type": "tab_slot",
+   "a": "SIDE-BOW-STBD",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-BOW-STBD-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-BOW-STBD-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       105.146,
+       -19.935
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": -156.037,
+      "generated_by": "J-BOW-STBD-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-TRANSOM-b1",
+   "type": "tab_slot",
+   "a": "TRANSOM",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-TRANSOM-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-TRANSOM-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -150.0,
+       0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-TRANSOM-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-TRANSOM-d1",
+   "type": "tab_slot",
+   "a": "TRANSOM",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-TRANSOM-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-TRANSOM-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -150.0,
+       0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-TRANSOM-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-TRANSOM-PORT",
+   "type": "tab_slot",
+   "a": "TRANSOM",
+   "b": "SIDE-AFT-PORT",
+   "tab": "s1",
+   "status": "joined",
+   "slot": "slot-J-TRANSOM-PORT",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-PORT",
+     "feature": {
+      "id": "slot-J-TRANSOM-PORT",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-TRANSOM-PORT"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-TRANSOM-STBD",
+   "type": "tab_slot",
+   "a": "TRANSOM",
+   "b": "SIDE-AFT-STBD",
+   "tab": "s2",
+   "status": "joined",
+   "slot": "slot-J-TRANSOM-STBD",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-STBD",
+     "feature": {
+      "id": "slot-J-TRANSOM-STBD",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -102.0,
+       -0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-TRANSOM-STBD"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-1-b1",
+   "type": "tab_slot",
+   "a": "BULKHEAD-1",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-1-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-BULKHEAD-1-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -60.0,
+       0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-BULKHEAD-1-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-1-d1",
+   "type": "tab_slot",
+   "a": "BULKHEAD-1",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-1-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-BULKHEAD-1-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -60.0,
+       -0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-BULKHEAD-1-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-1-PORT",
+   "type": "tab_slot",
+   "a": "BULKHEAD-1",
+   "b": "SIDE-AFT-PORT",
+   "tab": "s1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-1-PORT",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-PORT",
+     "feature": {
+      "id": "slot-J-BULKHEAD-1-PORT",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -12.0,
+       0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-BULKHEAD-1-PORT"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-1-STBD",
+   "type": "tab_slot",
+   "a": "BULKHEAD-1",
+   "b": "SIDE-AFT-STBD",
+   "tab": "s2",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-1-STBD",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-STBD",
+     "feature": {
+      "id": "slot-J-BULKHEAD-1-STBD",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -12.0,
+       -0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-BULKHEAD-1-STBD"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-2-b1",
+   "type": "tab_slot",
+   "a": "BULKHEAD-2",
+   "b": "HULL-BOTTOM",
+   "tab": "b1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-2-b1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-BULKHEAD-2-b1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       21.0,
+       0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-BULKHEAD-2-b1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-2-d1",
+   "type": "tab_slot",
+   "a": "BULKHEAD-2",
+   "b": "DECK",
+   "tab": "d1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-2-d1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-BULKHEAD-2-d1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       21.0,
+       0.0
+      ],
+      "width": 24.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-BULKHEAD-2-d1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-2-PORT",
+   "type": "tab_slot",
+   "a": "BULKHEAD-2",
+   "b": "SIDE-AFT-PORT",
+   "tab": "s1",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-2-PORT",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-PORT",
+     "feature": {
+      "id": "slot-J-BULKHEAD-2-PORT",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       69.0,
+       -0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-BULKHEAD-2-PORT"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-BULKHEAD-2-STBD",
+   "type": "tab_slot",
+   "a": "BULKHEAD-2",
+   "b": "SIDE-AFT-STBD",
+   "tab": "s2",
+   "status": "joined",
+   "slot": "slot-J-BULKHEAD-2-STBD",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "SIDE-AFT-STBD",
+     "feature": {
+      "id": "slot-J-BULKHEAD-2-STBD",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       69.0,
+       0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-BULKHEAD-2-STBD"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-KEEL-1",
+   "type": "tab_slot",
+   "a": "KEEL",
+   "b": "HULL-BOTTOM",
+   "tab": "k1",
+   "status": "joined",
+   "slot": "slot-J-KEEL-1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-KEEL-1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -9.63,
+       0.0
+      ],
+      "width": 20.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-KEEL-1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-KEEL-2",
+   "type": "tab_slot",
+   "a": "KEEL",
+   "b": "HULL-BOTTOM",
+   "tab": "k2",
+   "status": "joined",
+   "slot": "slot-J-KEEL-2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "HULL-BOTTOM",
+     "feature": {
+      "id": "slot-J-KEEL-2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -75.9,
+       0.0
+      ],
+      "width": 16.15,
+      "height": 3.15,
+      "angle": 180.0,
+      "generated_by": "J-KEEL-2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-RUDDER",
+   "type": "tab_slot",
+   "a": "RUDDER",
+   "b": "TRANSOM",
+   "tab": "h1",
+   "status": "joined",
+   "slot": "slot-J-RUDDER",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "TRANSOM",
+     "feature": {
+      "id": "slot-J-RUDDER",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       0.0,
+       -1.5
+      ],
+      "width": 16.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-RUDDER"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-MAST-STEP",
+   "type": "tab_slot",
+   "a": "MAST",
+   "b": "DECK",
+   "tab": "step",
+   "status": "joined",
+   "slot": "slot-J-MAST-STEP",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "DECK",
+     "feature": {
+      "id": "slot-J-MAST-STEP",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       39.0,
+       0.0
+      ],
+      "width": 6.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-MAST-STEP"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-SAIL-MAIN-m1",
+   "type": "tab_slot",
+   "a": "SAIL-MAIN",
+   "b": "MAST",
+   "tab": "m1",
+   "status": "joined",
+   "slot": "slot-J-SAIL-MAIN-m1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "MAST",
+     "feature": {
+      "id": "slot-J-SAIL-MAIN-m1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       0.0,
+       52.5
+      ],
+      "width": 14.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-SAIL-MAIN-m1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-SAIL-MAIN-m2",
+   "type": "tab_slot",
+   "a": "SAIL-MAIN",
+   "b": "MAST",
+   "tab": "m2",
+   "status": "joined",
+   "slot": "slot-J-SAIL-MAIN-m2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "MAST",
+     "feature": {
+      "id": "slot-J-SAIL-MAIN-m2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       0.0,
+       112.0
+      ],
+      "width": 14.15,
+      "height": 3.15,
+      "angle": 90.0,
+      "generated_by": "J-SAIL-MAIN-m2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-SAIL-JIB-j1",
+   "type": "tab_slot",
+   "a": "SAIL-JIB",
+   "b": "MAST",
+   "tab": "j1",
+   "status": "joined",
+   "slot": "slot-J-SAIL-JIB-j1",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "MAST",
+     "feature": {
+      "id": "slot-J-SAIL-JIB-j1",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -0.0,
+       129.6
+      ],
+      "width": 14.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-SAIL-JIB-j1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "J-SAIL-JIB-j2",
+   "type": "tab_slot",
+   "a": "SAIL-JIB",
+   "b": "MAST",
+   "tab": "j2",
+   "status": "joined",
+   "slot": "slot-J-SAIL-JIB-j2",
+   "repairs": [
+    {
+     "action": "create_slot",
+     "component": "MAST",
+     "feature": {
+      "id": "slot-J-SAIL-JIB-j2",
+      "kind": "slot",
+      "shape": "rect",
+      "center": [
+       -0.0,
+       75.2
+      ],
+      "width": 14.15,
+      "height": 3.15,
+      "angle": -90.0,
+      "generated_by": "J-SAIL-JIB-j2"
+     }
+    }
+   ]
+  }
+ ],
+ "joinery": "interlocking",
+ "created": null,
+ "updated": null
+}

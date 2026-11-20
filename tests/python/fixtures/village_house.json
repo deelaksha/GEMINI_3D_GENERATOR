@@ -1,0 +1,983 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Vintage Village House",
+    "description": "Glue-free 18 mm plywood vintage village cottage with a front veranda, two-storey interior, stepped attic gable, and chimney.",
+    "overall": {
+      "length": 960,
+      "height": 820,
+      "depth": 680
+    }
+  },
+  "material": {
+    "name": "Birch plywood 18 mm",
+    "type": "plywood",
+    "thickness": 18,
+    "clearance": 0.2
+  },
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "BASE",
+      "name": "Ground plinth and veranda deck",
+      "group": "Base",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        960,
+        18,
+        680
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "WALL-L",
+      "name": "Left main wall",
+      "group": "Main Walls",
+      "position": [
+        60,
+        18,
+        40
+      ],
+      "size": [
+        18,
+        462,
+        480
+      ],
+      "grain": "y",
+      "openings": [
+        {
+          "id": "WL-WIN-B",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            69,
+            145,
+            280
+          ],
+          "size": [
+            100,
+            110
+          ]
+        },
+        {
+          "id": "WL-WIN-T",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            69,
+            380,
+            280
+          ],
+          "size": [
+            90,
+            100
+          ]
+        }
+      ]
+    },
+    {
+      "id": "WALL-R",
+      "name": "Right main wall",
+      "group": "Main Walls",
+      "position": [
+        882,
+        18,
+        40
+      ],
+      "size": [
+        18,
+        462,
+        480
+      ],
+      "grain": "y",
+      "openings": [
+        {
+          "id": "WR-WIN-B",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            891,
+            145,
+            280
+          ],
+          "size": [
+            100,
+            110
+          ]
+        },
+        {
+          "id": "WR-WIN-T",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            891,
+            380,
+            280
+          ],
+          "size": [
+            90,
+            100
+          ]
+        }
+      ]
+    },
+    {
+      "id": "WALL-BACK",
+      "name": "Back main wall",
+      "group": "Main Walls",
+      "position": [
+        78,
+        18,
+        80
+      ],
+      "size": [
+        804,
+        462,
+        18
+      ],
+      "grain": "x",
+      "openings": [
+        {
+          "id": "WB-WIN-BL",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            200,
+            145,
+            89
+          ],
+          "size": [
+            110,
+            100
+          ]
+        },
+        {
+          "id": "WB-WIN-BR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            745,
+            145,
+            89
+          ],
+          "size": [
+            110,
+            100
+          ]
+        },
+        {
+          "id": "WB-WIN-TL",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            200,
+            380,
+            89
+          ],
+          "size": [
+            110,
+            90
+          ]
+        },
+        {
+          "id": "WB-WIN-TR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            745,
+            380,
+            89
+          ],
+          "size": [
+            110,
+            90
+          ]
+        }
+      ]
+    },
+    {
+      "id": "WALL-FRONT",
+      "name": "Front cottage facade",
+      "group": "Main Walls",
+      "position": [
+        78,
+        18,
+        462
+      ],
+      "size": [
+        804,
+        462,
+        18
+      ],
+      "grain": "x",
+      "openings": [
+        {
+          "id": "WF-DOOR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            480,
+            125,
+            471
+          ],
+          "size": [
+            130,
+            174
+          ]
+        },
+        {
+          "id": "WF-WIN-BL",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            215,
+            145,
+            471
+          ],
+          "size": [
+            110,
+            100
+          ]
+        },
+        {
+          "id": "WF-WIN-BR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            745,
+            145,
+            471
+          ],
+          "size": [
+            110,
+            100
+          ]
+        },
+        {
+          "id": "WF-WIN-TL",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            215,
+            380,
+            471
+          ],
+          "size": [
+            110,
+            90
+          ]
+        },
+        {
+          "id": "WF-OCULUS",
+          "kind": "opening",
+          "shape": "circle",
+          "center": [
+            480,
+            380,
+            471
+          ],
+          "diameter": 90
+        },
+        {
+          "id": "WF-WIN-TR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            745,
+            380,
+            471
+          ],
+          "size": [
+            110,
+            90
+          ]
+        }
+      ]
+    },
+    {
+      "id": "LOFT-FLOOR",
+      "name": "Upper storey floor",
+      "group": "Interior",
+      "position": [
+        78,
+        268,
+        98
+      ],
+      "size": [
+        804,
+        18,
+        364
+      ],
+      "grain": "x",
+      "openings": [
+        {
+          "id": "STAIRWELL",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            205,
+            277,
+            280
+          ],
+          "size": [
+            120,
+            140
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DIVIDER",
+      "name": "Ground floor room partition",
+      "group": "Interior",
+      "position": [
+        330,
+        18,
+        98
+      ],
+      "size": [
+        18,
+        250,
+        364
+      ],
+      "grain": "z",
+      "openings": [
+        {
+          "id": "INT-DOOR",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [
+            339,
+            130,
+            280
+          ],
+          "size": [
+            160,
+            110
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PORCH-L",
+      "name": "Left veranda pillar",
+      "group": "Veranda",
+      "position": [
+        120,
+        18,
+        520
+      ],
+      "size": [
+        18,
+        212,
+        120
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "PORCH-R",
+      "name": "Right veranda pillar",
+      "group": "Veranda",
+      "position": [
+        822,
+        18,
+        520
+      ],
+      "size": [
+        18,
+        212,
+        120
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "PORCH-ROOF",
+      "name": "Veranda canopy roof",
+      "group": "Veranda",
+      "position": [
+        96,
+        230,
+        480
+      ],
+      "size": [
+        768,
+        18,
+        190
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "ROOF-MAIN",
+      "name": "Lower eaves roof deck",
+      "group": "Roof",
+      "position": [
+        20,
+        480,
+        0
+      ],
+      "size": [
+        920,
+        18,
+        560
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "ATTIC-L",
+      "name": "Left stepped attic wall",
+      "group": "Attic",
+      "position": [
+        180,
+        498,
+        120
+      ],
+      "size": [
+        18,
+        170,
+        320
+      ],
+      "grain": "z"
+    },
+    {
+      "id": "ATTIC-R",
+      "name": "Right stepped attic wall",
+      "group": "Attic",
+      "position": [
+        762,
+        498,
+        120
+      ],
+      "size": [
+        18,
+        170,
+        320
+      ],
+      "grain": "z"
+    },
+    {
+      "id": "ATTIC-BACK",
+      "name": "Back attic gable wall",
+      "group": "Attic",
+      "position": [
+        198,
+        498,
+        150
+      ],
+      "size": [
+        564,
+        170,
+        18
+      ],
+      "grain": "x",
+      "openings": [
+        {
+          "id": "AB-ROUND-WIN",
+          "kind": "opening",
+          "shape": "circle",
+          "center": [
+            480,
+            583,
+            159
+          ],
+          "diameter": 76
+        }
+      ]
+    },
+    {
+      "id": "ATTIC-FRONT",
+      "name": "Front attic gable wall",
+      "group": "Attic",
+      "position": [
+        198,
+        498,
+        392
+      ],
+      "size": [
+        564,
+        170,
+        18
+      ],
+      "grain": "x",
+      "openings": [
+        {
+          "id": "AF-ROUND-WIN",
+          "kind": "opening",
+          "shape": "circle",
+          "center": [
+            480,
+            583,
+            401
+          ],
+          "diameter": 76
+        }
+      ]
+    },
+    {
+      "id": "ROOF-RIDGE",
+      "name": "Upper ridge roof deck",
+      "group": "Roof",
+      "position": [
+        140,
+        668,
+        80
+      ],
+      "size": [
+        680,
+        18,
+        400
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "CHIMNEY-L",
+      "name": "Chimney left wall",
+      "group": "Chimney",
+      "position": [
+        550,
+        686,
+        220
+      ],
+      "size": [
+        18,
+        116,
+        120
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "CHIMNEY-R",
+      "name": "Chimney right wall",
+      "group": "Chimney",
+      "position": [
+        672,
+        686,
+        220
+      ],
+      "size": [
+        18,
+        116,
+        120
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "CHIMNEY-BACK",
+      "name": "Chimney back wall",
+      "group": "Chimney",
+      "position": [
+        568,
+        686,
+        240
+      ],
+      "size": [
+        104,
+        116,
+        18
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "CHIMNEY-FRONT",
+      "name": "Chimney front wall",
+      "group": "Chimney",
+      "position": [
+        568,
+        686,
+        302
+      ],
+      "size": [
+        104,
+        116,
+        18
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "CHIMNEY-CAP",
+      "name": "Chimney crown cap",
+      "group": "Chimney",
+      "position": [
+        520,
+        802,
+        190
+      ],
+      "size": [
+        200,
+        18,
+        180
+      ],
+      "grain": "x"
+    }
+  ],
+  "connections": [
+    {
+      "id": "WALL-L-BASE",
+      "type": "tab_slot",
+      "board": "WALL-L",
+      "into": "BASE",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-R-BASE",
+      "type": "tab_slot",
+      "board": "WALL-R",
+      "into": "BASE",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-BACK-BASE",
+      "type": "tab_slot",
+      "board": "WALL-BACK",
+      "into": "BASE",
+      "tabs": 4
+    },
+    {
+      "id": "WALL-FRONT-BASE",
+      "type": "tab_slot",
+      "board": "WALL-FRONT",
+      "into": "BASE",
+      "tabs": 4
+    },
+    {
+      "id": "WALL-BACK-L",
+      "type": "tab_slot",
+      "board": "WALL-BACK",
+      "into": "WALL-L",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-BACK-R",
+      "type": "tab_slot",
+      "board": "WALL-BACK",
+      "into": "WALL-R",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-FRONT-L",
+      "type": "tab_slot",
+      "board": "WALL-FRONT",
+      "into": "WALL-L",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-FRONT-R",
+      "type": "tab_slot",
+      "board": "WALL-FRONT",
+      "into": "WALL-R",
+      "tabs": 3
+    },
+    {
+      "id": "LOFT-WALL-L",
+      "type": "tab_slot",
+      "board": "LOFT-FLOOR",
+      "into": "WALL-L",
+      "tabs": 2
+    },
+    {
+      "id": "LOFT-WALL-R",
+      "type": "tab_slot",
+      "board": "LOFT-FLOOR",
+      "into": "WALL-R",
+      "tabs": 2
+    },
+    {
+      "id": "LOFT-WALL-BACK",
+      "type": "tab_slot",
+      "board": "LOFT-FLOOR",
+      "into": "WALL-BACK",
+      "tabs": 3
+    },
+    {
+      "id": "LOFT-WALL-FRONT",
+      "type": "tab_slot",
+      "board": "LOFT-FLOOR",
+      "into": "WALL-FRONT",
+      "tabs": 3
+    },
+    {
+      "id": "DIVIDER-BASE",
+      "type": "tab_slot",
+      "board": "DIVIDER",
+      "into": "BASE",
+      "tabs": 2
+    },
+    {
+      "id": "DIVIDER-LOFT",
+      "type": "tab_slot",
+      "board": "DIVIDER",
+      "into": "LOFT-FLOOR",
+      "tabs": 2
+    },
+    {
+      "id": "DIVIDER-BACK",
+      "type": "tab_slot",
+      "board": "DIVIDER",
+      "into": "WALL-BACK",
+      "tabs": 1,
+      "tab_width": 50
+    },
+    {
+      "id": "DIVIDER-FRONT",
+      "type": "tab_slot",
+      "board": "DIVIDER",
+      "into": "WALL-FRONT",
+      "tabs": 1,
+      "tab_width": 50
+    },
+    {
+      "id": "PORCH-L-BASE",
+      "type": "tab_slot",
+      "board": "PORCH-L",
+      "into": "BASE",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "PORCH-R-BASE",
+      "type": "tab_slot",
+      "board": "PORCH-R",
+      "into": "BASE",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "PORCH-L-ROOF",
+      "type": "tab_slot",
+      "board": "PORCH-L",
+      "into": "PORCH-ROOF",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "PORCH-R-ROOF",
+      "type": "tab_slot",
+      "board": "PORCH-R",
+      "into": "PORCH-ROOF",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "PORCH-ROOF-FRONT",
+      "type": "tab_slot",
+      "board": "PORCH-ROOF",
+      "into": "WALL-FRONT",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-L-ROOF",
+      "type": "tab_slot",
+      "board": "WALL-L",
+      "into": "ROOF-MAIN",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-R-ROOF",
+      "type": "tab_slot",
+      "board": "WALL-R",
+      "into": "ROOF-MAIN",
+      "tabs": 3
+    },
+    {
+      "id": "WALL-BACK-ROOF",
+      "type": "tab_slot",
+      "board": "WALL-BACK",
+      "into": "ROOF-MAIN",
+      "tabs": 4
+    },
+    {
+      "id": "WALL-FRONT-ROOF",
+      "type": "tab_slot",
+      "board": "WALL-FRONT",
+      "into": "ROOF-MAIN",
+      "tabs": 4
+    },
+    {
+      "id": "ATTIC-L-ROOF",
+      "type": "tab_slot",
+      "board": "ATTIC-L",
+      "into": "ROOF-MAIN",
+      "tabs": 2
+    },
+    {
+      "id": "ATTIC-R-ROOF",
+      "type": "tab_slot",
+      "board": "ATTIC-R",
+      "into": "ROOF-MAIN",
+      "tabs": 2
+    },
+    {
+      "id": "ATTIC-BACK-ROOF",
+      "type": "tab_slot",
+      "board": "ATTIC-BACK",
+      "into": "ROOF-MAIN",
+      "tabs": 3
+    },
+    {
+      "id": "ATTIC-FRONT-ROOF",
+      "type": "tab_slot",
+      "board": "ATTIC-FRONT",
+      "into": "ROOF-MAIN",
+      "tabs": 3
+    },
+    {
+      "id": "ATTIC-BACK-L",
+      "type": "tab_slot",
+      "board": "ATTIC-BACK",
+      "into": "ATTIC-L",
+      "tabs": 1,
+      "tab_width": 45
+    },
+    {
+      "id": "ATTIC-BACK-R",
+      "type": "tab_slot",
+      "board": "ATTIC-BACK",
+      "into": "ATTIC-R",
+      "tabs": 1,
+      "tab_width": 45
+    },
+    {
+      "id": "ATTIC-FRONT-L",
+      "type": "tab_slot",
+      "board": "ATTIC-FRONT",
+      "into": "ATTIC-L",
+      "tabs": 1,
+      "tab_width": 45
+    },
+    {
+      "id": "ATTIC-FRONT-R",
+      "type": "tab_slot",
+      "board": "ATTIC-FRONT",
+      "into": "ATTIC-R",
+      "tabs": 1,
+      "tab_width": 45
+    },
+    {
+      "id": "ATTIC-L-RIDGE",
+      "type": "tab_slot",
+      "board": "ATTIC-L",
+      "into": "ROOF-RIDGE",
+      "tabs": 2
+    },
+    {
+      "id": "ATTIC-R-RIDGE",
+      "type": "tab_slot",
+      "board": "ATTIC-R",
+      "into": "ROOF-RIDGE",
+      "tabs": 2
+    },
+    {
+      "id": "ATTIC-BACK-RIDGE",
+      "type": "tab_slot",
+      "board": "ATTIC-BACK",
+      "into": "ROOF-RIDGE",
+      "tabs": 3
+    },
+    {
+      "id": "ATTIC-FRONT-RIDGE",
+      "type": "tab_slot",
+      "board": "ATTIC-FRONT",
+      "into": "ROOF-RIDGE",
+      "tabs": 3
+    },
+    {
+      "id": "CHIMNEY-L-RIDGE",
+      "type": "tab_slot",
+      "board": "CHIMNEY-L",
+      "into": "ROOF-RIDGE",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "CHIMNEY-R-RIDGE",
+      "type": "tab_slot",
+      "board": "CHIMNEY-R",
+      "into": "ROOF-RIDGE",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "CHIMNEY-BACK-RIDGE",
+      "type": "tab_slot",
+      "board": "CHIMNEY-BACK",
+      "into": "ROOF-RIDGE",
+      "tabs": 1,
+      "tab_width": 32
+    },
+    {
+      "id": "CHIMNEY-FRONT-RIDGE",
+      "type": "tab_slot",
+      "board": "CHIMNEY-FRONT",
+      "into": "ROOF-RIDGE",
+      "tabs": 1,
+      "tab_width": 32
+    },
+    {
+      "id": "CHIMNEY-BACK-L",
+      "type": "tab_slot",
+      "board": "CHIMNEY-BACK",
+      "into": "CHIMNEY-L",
+      "tabs": 1,
+      "tab_width": 36
+    },
+    {
+      "id": "CHIMNEY-BACK-R",
+      "type": "tab_slot",
+      "board": "CHIMNEY-BACK",
+      "into": "CHIMNEY-R",
+      "tabs": 1,
+      "tab_width": 36
+    },
+    {
+      "id": "CHIMNEY-FRONT-L",
+      "type": "tab_slot",
+      "board": "CHIMNEY-FRONT",
+      "into": "CHIMNEY-L",
+      "tabs": 1,
+      "tab_width": 36
+    },
+    {
+      "id": "CHIMNEY-FRONT-R",
+      "type": "tab_slot",
+      "board": "CHIMNEY-FRONT",
+      "into": "CHIMNEY-R",
+      "tabs": 1,
+      "tab_width": 36
+    },
+    {
+      "id": "CHIMNEY-L-CAP",
+      "type": "tab_slot",
+      "board": "CHIMNEY-L",
+      "into": "CHIMNEY-CAP",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "CHIMNEY-R-CAP",
+      "type": "tab_slot",
+      "board": "CHIMNEY-R",
+      "into": "CHIMNEY-CAP",
+      "tabs": 1,
+      "tab_width": 40
+    },
+    {
+      "id": "CHIMNEY-BACK-CAP",
+      "type": "tab_slot",
+      "board": "CHIMNEY-BACK",
+      "into": "CHIMNEY-CAP",
+      "tabs": 1,
+      "tab_width": 32
+    },
+    {
+      "id": "CHIMNEY-FRONT-CAP",
+      "type": "tab_slot",
+      "board": "CHIMNEY-FRONT",
+      "into": "CHIMNEY-CAP",
+      "tabs": 1,
+      "tab_width": 32
+    }
+  ]
+}

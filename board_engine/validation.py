@@ -814,20 +814,23 @@ def _plate_interference(a, b, tol):
     for P, Q in ((a, b), (b, a)):
         vP = G.v_norm(G.v_cross(P.frame.normal, u))          # in P's plane, perpendicular to the line
         vp_loc, vq_loc = P.frame.dir_to_local(vP), Q.frame.dir_to_local(vP)
+        n_st = int((hi - lo) / step) + 1
         for off in (-P.t / 2.0, 0.0, P.t / 2.0):
             base = G.v_add(p0, G.v_scale(P.frame.normal, off))
-            k = 0
-            while lo + k * step <= hi:
+            # All sampling lines of this pass are parallel, so the stations whose line can touch a given
+            # cut-out form one range: precompute it once instead of box-testing every cut-out per station.
+            act_p = _station_features(P, base, u, vp_loc, lo, step, n_st)
+            act_q = _station_features(Q, base, u, vq_loc, lo, step, n_st)
+            for k in range(n_st):
                 w = G.v_add(base, G.v_scale(u, lo + k * step))
                 pq = Q.frame.to_local(w)
                 ivs = _slab_interval(pq[2], vq_loc[2], Q.t / 2.0 - tol['contact'])   # cheapest test first
                 if ivs:
-                    ivs = _intersect(_material_intervals(P, P.frame.to_local(w), vp_loc, 0.0), ivs)
+                    ivs = _intersect(_material_intervals(P, P.frame.to_local(w), vp_loc, 0.0, act_p[k]), ivs)
                 if ivs:
-                    ivs = _intersect(ivs, _material_intervals(Q, pq, vq_loc, tol['contact']))
+                    ivs = _intersect(ivs, _material_intervals(Q, pq, vq_loc, tol['contact'], act_q[k]))
                 if any(r1 - r0 > 1e-6 for r0, r1 in ivs):
                     hit_idx.add(k)
-                k += 1
     runs, cur = [], None
     for k in sorted(hit_idx):
         if cur and k - cur[1] <= 1:
@@ -852,11 +855,15 @@ def _slab_interval(z0, vz, half):
 
 def _polygon_line_intervals(poly, p, v):
     """r-intervals where the 2D line p + v*r is inside polygon (even-odd)."""
-    rs = []
     n = len(poly)
+    return _edge_line_intervals([(poly[i], poly[(i + 1) % n]) for i in range(n)], p, v)
+
+
+def _edge_line_intervals(edges, p, v):
+    """Even-odd r-intervals from the polygon edges that the line can cross (edges it cannot cross add nothing)."""
+    rs = []
     vv = v[0] * v[0] + v[1] * v[1]
-    for i in range(n):
-        q1, q2 = poly[i], poly[(i + 1) % n]
+    for q1, q2 in edges:
         # Half-open side rule (as in point-in-polygon): a vertex lying exactly on the line is counted on
         # one side only, so crossings always pair up even when stations hit vertices or collinear edges.
         d1 = v[0] * (q1[1] - p[1]) - v[1] * (q1[0] - p[0])
@@ -870,18 +877,56 @@ def _polygon_line_intervals(poly, p, v):
     return [(rs[i], rs[i + 1]) for i in range(0, len(rs) - 1, 2)]
 
 
-def _material_intervals(plate, p, v, shrink):
-    """r-intervals where local point p + v*r is solid material (outline minus cut-outs), shrunk by `shrink` mm."""
+def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
+    """Per station k (line through base + u*(lo + k*step) along v, plate-local), the cut-out polygons whose
+    bounding box that line can cross; None where every station must test all cut-outs (point-crossing case)."""
+    if math.hypot(v_loc[0], v_loc[1]) < 1e-9:
+        return [None] * n
+    p0 = plate.frame.to_local(base_w)
+    uu = plate.frame.dir_to_local(u_w)
+    kk = v_loc[0] * uu[1] - v_loc[1] * uu[0]          # d(point, s) = c(point) - s * kk
+    if abs(kk) < 1e-12:
+        return [None] * n
+
+    def stations(points):
+        cs = [v_loc[0] * (y - p0[1]) - v_loc[1] * (x - p0[0]) for x, y in points]
+        s0, s1 = sorted((min(cs) / kk, max(cs) / kk))
+        return (max(0, int(math.floor((s0 - lo) / step)) - 1), min(n - 1, int(math.ceil((s1 - lo) / step)) + 1))
+
+    act = [([], []) for _ in range(n)]       # (outline edges, cut-out polygons) a station's line can cross
+    cut = plate.cut
+    for i in range(len(cut)):
+        e = (cut[i], cut[(i + 1) % len(cut)])
+        k0, k1 = stations(e)
+        for k in range(k0, k1 + 1):
+            act[k][0].append(e)
+    for (f, poly), (x0, y0, x1, y1) in zip(plate.feature_polys, plate._feature_boxes):
+        k0, k1 = stations(((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
+        for k in range(k0, k1 + 1):
+            act[k][1].append((f, poly))
+    return act
+
+
+def _material_intervals(plate, p, v, shrink, features=None):
+    """r-intervals where local point p + v*r is solid material (outline minus cut-outs), shrunk by `shrink` mm.
+
+    `features`: the cut-outs this line can touch (precomputed by _station_features); None = test them all."""
     vlen = math.hypot(v[0], v[1])
     if vlen < 1e-9:  # the line crosses this board's plane at a single point
         return [(-1e9, 1e9)] if plate.is_material([p[0], p[1]], shrink) else []
     if _line_misses_box(p, v, plate.bbox2d):
         return []
-    ivs = _polygon_line_intervals(plate.cut, p, v)
-    for (_f, poly), box in zip(plate.feature_polys, plate._feature_boxes):
+    if features is None:
+        ivs = _polygon_line_intervals(plate.cut, p, v)
+        candidates = zip(plate.feature_polys, plate._feature_boxes)
+    else:
+        edges, feats = features
+        ivs = _edge_line_intervals(edges, p, v)
+        candidates = ((fp, None) for fp in feats)
+    for (_f, poly), box in candidates:
         if not ivs:
             break
-        if _line_misses_box(p, v, box):
+        if box is not None and _line_misses_box(p, v, box):
             continue
         holes = _polygon_line_intervals(poly, p, v)
         if holes:

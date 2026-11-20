@@ -486,7 +486,7 @@ def _compile_native(data, design_id, result, run_production):
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
     for spec in pending:
-        res = join(design, spec, auto_repair=True)
+        res = join(design, spec, auto_repair=True, whole_design_check=False)
         if res['accepted']:
             design = res['design']
         else:
@@ -656,7 +656,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     design['source'] = {'format': FORMAT, 'code': None}
 
     for j, c, cid, cline in joints:
-        res = join(design, j, auto_repair=True)
+        res = join(design, j, auto_repair=True, whole_design_check=False)
         if res['accepted']:
             design = res['design']
             continue

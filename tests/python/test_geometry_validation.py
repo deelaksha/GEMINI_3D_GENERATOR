@@ -301,3 +301,13 @@ def test_boat_is_fully_interlocking(boat):
     assert len(slots) == len(boat['joints'])                   # exactly one slot per tab, no duplicates
     for c in boat['components']:                               # every part is held by at least one interlock
         assert any(c['id'] in (j['a'], j['b']) for j in boat['joints']), c['id']
+
+
+def test_shipped_boat_seed_matches_a_fresh_build(boat):
+    """Server start-up loads the pre-built boat; it must be exactly what build_design() produces."""
+    from board_engine.examples.boat import load_seed
+    strip = lambda d: [{k: v for k, v in j.items() if k != 'joined_at'} for j in d['joints']]
+    seed = load_seed()
+    assert seed['components'] == boat['components'] and strip(seed) == strip(boat), \
+        'regenerate with board_engine.examples.boat.write_seed()'
+    assert validate_design(seed)['valid']

@@ -215,3 +215,28 @@ def build_design(design_id='boat', params=None):
         else:
             failures.append(res)
     return design, failures
+
+
+SEED_PATH = __import__('os').path.join(__import__('os').path.dirname(__file__), 'boat_seed.json')
+
+
+def load_seed(design_id='boat'):
+    """The example boat as built by build_design(), shipped pre-built so server start-up does not spend seconds
+    re-running ~30 joins. tests/python keeps the file identical to a fresh build (regenerate with write_seed())."""
+    import json
+    from ..model import normalize_design
+    with open(SEED_PATH) as f:
+        d = json.load(f)
+    d['id'] = design_id
+    return normalize_design(d)
+
+
+def write_seed():
+    import json
+    design, failures = build_design('boat')
+    assert not failures, failures
+    for j in design['joints']:
+        j.pop('joined_at', None)
+    with open(SEED_PATH, 'w') as f:
+        json.dump(design, f, indent=1)
+    return design

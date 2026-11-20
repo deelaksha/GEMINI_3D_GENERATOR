@@ -309,3 +309,18 @@ def test_format_docs_match_the_live_specification():
     path = os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'board-design-format.md')
     text = open(path).read()
     assert text.split('\n', 1)[1] == spec_markdown(), 'regenerate docs/board-design-format.md from spec_markdown()'
+
+
+def test_large_user_design_compiles_quickly():
+    """A real AI-generated design (21 boards, 49 connections -> 99 tab joints). It used to take ~146 s because
+    every join re-validated the whole design; the canvas now validates once after all joins."""
+    import os
+    import time
+    src = open(os.path.join(os.path.dirname(__file__), 'fixtures', 'village_house.json')).read()
+    t = time.time()
+    res = compile_source(src, run_production=False)
+    elapsed = time.time() - t
+    assert res['ok'], [d['message'] for d in res['diagnostics'] if d['severity'] == 'error']
+    assert res['summary']['boards'] == 21 and res['summary']['joined'] == res['summary']['joints'] == 99
+    assert res['validation']['valid'] and res['validation']['complete']
+    assert elapsed < 30, f'compile took {elapsed:.1f} s'

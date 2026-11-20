@@ -58,8 +58,12 @@ def check_joint(design, spec, tol=TOL):
             'location': res.get('location')}
 
 
-def join(design, spec, auto_repair=False, tol=TOL):
-    """Attempt to join. Returns {'accepted': bool, 'status', 'design'?, 'joint', 'issues', ...}."""
+def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
+    """Attempt to join. Returns {'accepted': bool, 'status', 'design'?, 'joint', 'issues', ...}.
+
+    whole_design_check=False skips the before/after validation of the entire design (rule 6). Only for
+    callers that join many joints in one go and validate the finished design once afterwards (the AI canvas
+    compiler); the joint itself, its slot repair and the receiver's 2D profile are still fully checked."""
     spec = normalize_joint(spec)
     spec.pop('status', None)
     spec.pop('repairs', None)
@@ -80,8 +84,8 @@ def join(design, spec, auto_repair=False, tol=TOL):
                                         'message': f"'{spec['a']}' is already joined to '{spec['b']}' by '{j['id']}'.",
                                         'components': [spec['a'], spec['b']], 'joint': spec['id']}])
 
-    before = validate_design(design, tol)
-    before_errors = {_issue_key(i) for i in before['issues'] if i['severity'] == 'error'}
+    before = validate_design(design, tol) if whole_design_check else None
+    before_errors = {_issue_key(i) for i in before['issues'] if i['severity'] == 'error'} if before else set()
 
     work = copy.deepcopy(design)
     plates = build_plates(work)
@@ -119,8 +123,8 @@ def join(design, spec, auto_repair=False, tol=TOL):
         spec['repairs'] = applied
     work['joints'].append(spec)
 
-    after = validate_design(work, tol)
-    new_errors = [i for i in after['issues'] if i['severity'] == 'error' and _issue_key(i) not in before_errors]
+    after = validate_design(work, tol) if whole_design_check else None
+    new_errors = [i for i in after['issues'] if i['severity'] == 'error' and _issue_key(i) not in before_errors] if after else []
     if new_errors:
         return reject('rejected_post_validation', new_errors, repairs_attempted=applied)
 

@@ -210,6 +210,15 @@ function setStatus(kind, text) {
   pill.innerHTML = `<span class="dot ${cls}"></span><span class="txt">${esc(t)}</span>`;
 }
 
+function showStatus(r) {
+  const s = r.summary;
+  if (!r.model3d) setStatus('err', `${r.diagnostics.filter((d) => d.severity === 'error').length} error(s) — not compiled`);
+  else if (r.compiled) setStatus(s.warnings ? 'warn' : 'ok', s.warnings ? `Compiled · ${s.warnings} warning(s)` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
+  else setStatus('err', `${s.errors} error(s)`);
+}
+
+/** Two short requests instead of one long one: geometry + validation first (3D and problems appear right
+ *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result. */
 async function compile(production = true) {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
@@ -218,20 +227,29 @@ async function compile(production = true) {
   setStatus('busy');
   $('#btn-compile').disabled = true;
   try {
-    const r = await Api.canvasCompile(source, production);
-    S.result = r;
+    const first = await Api.canvasCompile(source, false);
+    const sameDesign = S.result?.model3d && first.model3d &&
+      S.result.model3d.components.map((c) => c.id).join() === first.model3d.components.map((c) => c.id).join();
+    S.result = first;
     S.compiledSource = source;
-    render();
-    const s = r.summary;
-    if (!r.model3d) setStatus('err', `${r.diagnostics.filter((d) => d.severity === 'error').length} error(s) — not compiled`);
-    else if (r.compiled) setStatus(s.warnings ? 'warn' : 'ok', s.warnings ? `Compiled · ${s.warnings} warning(s)` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
-    else setStatus('err', `${s.errors} error(s)`);
-    if (production && r.model3d && narrow.matches) setPane('preview');
+    render(sameDesign);
+    showStatus(first);
+    if (production && first.model3d && narrow.matches) setPane('preview');
+    if (production && first.model3d) {
+      setStatus(first.compiled ? 'ok' : 'err', `${$('#compile-status').innerText} · preparing cut sheets…`);
+      try {
+        const full = await Api.canvasCompile(source, true);
+        if (cm.getValue() === source) { S.result = full; render(true); showStatus(full); }
+      } catch (e) {
+        showStatus(first);
+        toast(`3D and checks are ready, but the cut sheets could not be prepared: ${e.message}`, true);
+      }
+    }
   } catch (e) { setStatus('err', 'Compile failed'); reportError(e); }
   finally { S.compiling = false; $('#btn-compile').disabled = false; }
 }
 
-function render() {
+function render(keepCamera = false) {
   const r = S.result;
   renderDiagnostics();
   markEditor();
@@ -239,7 +257,7 @@ function render() {
   $('#btn-import').disabled = !r?.model3d;
   $('#pv-empty').hidden = !!r?.model3d;
   if (r?.model3d) {
-    view3d._framed = false;
+    if (!keepCamera) view3d._framed = false;
     view3d.load(r.model3d);
     const s = r.summary;
     $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`;

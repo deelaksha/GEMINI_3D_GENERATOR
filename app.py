@@ -63,8 +63,11 @@ def seed_example_designs():
         old = store.get('boat')
         rebuild = any(j['type'] != 'tab_slot' for j in old['joints'])
     if rebuild:
-        from board_engine.examples.boat import build_design
-        design, failures = build_design('boat')
+        from board_engine.examples.boat import build_design, load_seed
+        try:
+            design, failures = load_seed('boat'), []        # pre-built: no joins at start-up (fast cold start)
+        except (OSError, ValueError):
+            design, failures = build_design('boat')
         store.create(design, actor='seed', overwrite=True)
         if failures:
             logging.getLogger('board_api').warning('boat seed: %d joints rejected', len(failures))
