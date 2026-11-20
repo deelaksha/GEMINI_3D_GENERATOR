@@ -205,7 +205,7 @@ def test_edge_butt_and_face_lap():
          'placement': {'position': [0, 10, 0], 'rotation': [0, 90, 0]}}
     b = {'id': 'B', 'outline': [[-30, -10], [30, -10], [30, 10], [-30, 10]],
          'placement': {'position': [0, 10, -21.5], 'rotation': [0, 0, 0]}}  # A edge 1 (local +x -> -z) on B face
-    d = make(a, b)
+    d = dict(make(a, b), joinery='glue_allowed')
     ok = join(d, {'id': 'E', 'type': 'edge_butt', 'a': 'A', 'a_edge': 1, 'b': 'B'})
     assert ok['accepted'], ok['issues']
     find_component(d, 'B')['placement']['position'][2] = -23.0
@@ -214,7 +214,7 @@ def test_edge_butt_and_face_lap():
 
     c = {'id': 'C', 'outline': [[0, 0], [10, 0], [10, 10], [0, 10]], 'thickness': 1.5,
          'placement': {'position': [-5, 5, -21.5 + 2.25], 'rotation': [0, 0, 0]}}
-    d2 = make(b, c)
+    d2 = dict(make(b, c), joinery='glue_allowed')
     assert join(d2, {'id': 'F', 'type': 'face_lap', 'a': 'C', 'b': 'B'})['accepted']
     find_component(d2, 'C')['placement']['position'][0] = 200
     assert 'NOT_IN_CONTACT' in codes(join(d2, {'id': 'F', 'type': 'face_lap', 'a': 'C', 'b': 'B'})['issues'])
@@ -257,7 +257,7 @@ def test_boat_dimensions_and_thickness(boat):
     bottom = plates['HULL-BOTTOM']
     x0, y0, x1, y1 = bottom.bbox2d
     assert (x1 - x0, y1 - y0) == (pytest.approx(320.77, abs=0.05), pytest.approx(92.0, abs=0.01))
-    assert plates['HULL-BOTTOM'].t == 3.0 and plates['SAIL-MAIN'].t == 1.5
+    assert plates['HULL-BOTTOM'].t == 3.0 and plates['SAIL-MAIN'].t == 3.0   # one board material throughout
     # deck sits on top of the 50 mm sides: deck mid-plane at y = 3 + 50 + 1.5
     assert plates['DECK'].frame.p[1] == pytest.approx(54.5)
     lo, hi = plates['KEEL'].world_aabb()
@@ -274,3 +274,30 @@ def test_boat_openings_preserved_and_slots_generated(boat):
                 assert f['generated_by'] in {j['id'] for j in boat['joints']}
     bh = find_component(boat, 'BULKHEAD-1')
     assert bh['features'][0]['kind'] == 'opening'
+
+
+def test_glue_free_design_rejects_glued_joints():
+    a = {'id': 'A', 'outline': [[-20, -10], [20, -10], [20, 10], [-20, 10]],
+         'placement': {'position': [0, 10, 0], 'rotation': [0, 90, 0]}}
+    b = {'id': 'B', 'outline': [[-30, -10], [30, -10], [30, 10], [-30, 10]],
+         'placement': {'position': [0, 10, -21.5], 'rotation': [0, 0, 0]}}
+    d = make(a, b)
+    assert d['joinery'] == 'interlocking'                      # glue-free is the default
+    for spec in ({'id': 'E', 'type': 'edge_butt', 'a': 'A', 'a_edge': 1, 'b': 'B'},
+                 {'id': 'F', 'type': 'face_lap', 'a': 'A', 'b': 'B'},
+                 {'id': 'G', 'type': 'edge_mitre', 'a': 'A', 'a_edge': 1, 'b': 'B', 'b_edge': 0}):
+        res = join(d, spec, auto_repair=True)
+        assert not res['accepted'] and res['issues'][0]['code'] == 'GLUE_JOINT_NOT_ALLOWED'
+
+
+def test_boat_is_fully_interlocking(boat):
+    """Cardboard, no glue: every connection must be a tab locked through a slot."""
+    assert boat['joinery'] == 'interlocking'
+    assert {j['type'] for j in boat['joints']} == {'tab_slot'}
+    tabs = {(c['id'], t['id']) for c in boat['components'] for t in c['tabs']}
+    joined_tabs = {(j['a'], j['tab']) for j in boat['joints']}
+    assert tabs == joined_tabs                                 # every tab is used, none left dangling
+    slots = [f for c in boat['components'] for f in c['features'] if f['kind'] == 'slot']
+    assert len(slots) == len(boat['joints'])                   # exactly one slot per tab, no duplicates
+    for c in boat['components']:                               # every part is held by at least one interlock
+        assert any(c['id'] in (j['a'], j['b']) for j in boat['joints']), c['id']

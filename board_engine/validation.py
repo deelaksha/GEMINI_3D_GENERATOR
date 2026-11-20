@@ -22,7 +22,7 @@ Issue shape:
 import math
 
 from . import geometry as G
-from .model import (Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
+from .model import (INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
                     find_component, thickness_of)
 
 TOL = {
@@ -211,6 +211,12 @@ def evaluate_joint(design, plates, joint, tol=TOL):
                             f"Joint '{jid}' connects '{a.id}' to itself.", [a.id], joint=jid))
         return {'ok': False, 'issues': issues, 'matched_slot': None, 'location': None}
 
+    if design.get('joinery', 'interlocking') == 'interlocking' and joint['type'] not in INTERLOCKING_JOINTS:
+        issues.append(issue('GLUE_JOINT_NOT_ALLOWED', 'error', 'joint',
+                            f"'{jid}' is a {joint['type'].replace('_', ' ')} joint, which only holds with glue. This design "
+                            f"is glue-free (interlocking): connect '{a.id}' and '{b.id}' with a tab through a slot instead.",
+                            [a.id, b.id], joint=jid))
+        return {'ok': False, 'issues': issues, 'matched_slot': None, 'location': None}
     fn = {'tab_slot': _eval_tab_slot, 'edge_butt': _eval_edge_butt,
           'edge_mitre': _eval_edge_mitre, 'face_lap': _eval_face_lap}[joint['type']]
     res = fn(design, a, b, joint, tol, issues)

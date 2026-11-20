@@ -35,14 +35,20 @@ node tests/joint_fit_suite.mjs              # legacy JS validator suite
 On first start the server seeds the example boat (built through the join pipeline) and, if no
 keys are configured, generates an editor API key in `instance/api_keys.json` (printed to the log).
 
-**Serverless / read-only hosts (Vercel):** if the project directory is not writable, data goes to the
-system temp dir (`/tmp/board-instance`) — per instance and lost on cold start, so edits are not
-durable there (a database-backed store is needed for that). Set these environment variables:
+**Saving designs permanently (Firebase):** set `FIREBASE_SERVICE_ACCOUNT` to the JSON of a Firebase
+service-account key (plain JSON or base64). Designs are then stored in Firestore collection
+`board_designs` (history in a `history` sub-collection) and survive restarts and redeploys. Only the
+server writes there — deploy the repo's `firestore.rules`, which deny browser access to
+`board_designs` so every change goes through validation. `GET /api/v1/storage` shows the active backend.
+
+**Serverless / read-only hosts (Vercel) without Firebase:** data goes to the system temp dir
+(`/tmp/board-instance`) — per instance and lost on cold start. Set these environment variables:
 
 | Variable | Why |
 |---|---|
 | `BOARD_SECRET` | signs studio session cookies so every instance accepts them (a deployment-derived fallback is used if unset) |
 | `BOARD_API_KEYS` | `key:role,...` for AI agents — a generated key would differ per instance and is not retrievable |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase service-account JSON — enables permanent Firestore storage |
 
 ## 2. Coordinate system (single convention everywhere)
 
@@ -89,14 +95,22 @@ Designs are **data, never code** (the legacy studio evaluates arbitrary JS; the 
 | `hole` | functional hole (dowel, line) | never modified; a tab landing in it → `TAB_IN_HOLE` |
 | `opening` | intentional design opening (cockpit, window, lightening hole) | never filled, moved or joined into; a tab landing in it → `TAB_IN_OPENING` |
 
+### Joinery: glue-free by default
+
+Designs carry `"joinery": "interlocking"` (default) or `"glue_allowed"`. Interlocking designs are for
+cardboard / friction-fit board assembled **without glue**: every connection must be a mechanical
+interlock (`tab_slot` — a tab locked through a slot). Glued joint types (`edge_butt`, `edge_mitre`,
+`face_lap`) are refused with `GLUE_JOINT_NOT_ALLOWED`. The example boat is fully interlocking:
+32 tab-and-slot joints, one generated slot per tab, every part held by at least one interlock.
+
 ### Joint types
 
 | type | fields | physical meaning |
 |---|---|---|
-| `tab_slot` | `a` (has tab), `tab`, `b` (receiver), optional `slot` | tenon through a slot |
-| `edge_butt` | `a`, `a_edge`, `b` | edge of A glued against the face of B |
-| `edge_mitre` | `a`, `a_edge`, `b`, `b_edge` | two edges meeting at a corner |
-| `face_lap` | `a`, `b` | parallel boards laminated face to face |
+| `tab_slot` | `a` (has tab), `tab`, `b` (receiver), optional `slot` | tenon locked through a slot (glue-free) |
+| `edge_butt` | `a`, `a_edge`, `b` | edge of A glued against the face of B (`glue_allowed` only) |
+| `edge_mitre` | `a`, `a_edge`, `b`, `b_edge` | two edges meeting at a corner (`glue_allowed` only) |
+| `face_lap` | `a`, `b` | parallel boards laminated face to face (`glue_allowed` only) |
 
 ## 4. Validation rules
 
@@ -189,7 +203,9 @@ validation, 429 rate limit. Every accepted mutation bumps `revision` and is reco
 | `GET /whoami` · `GET /sheet-presets` | viewer · public | principal · presets & tolerances |
 | `GET /designs` · `POST /designs` | viewer · editor | list · create (components via validated add, joints via join pipeline) |
 | `POST /designs/examples/boat` | editor | build the parametric boat (`params`: length, beam, depth, mast_height, thickness, …) |
-| `GET /designs/{id}` · `DELETE /designs/{id}` | viewer · admin | design + summary · delete |
+| `GET /designs/{id}` · `DELETE /designs/{id}` | viewer · editor | design + summary · delete |
+| `PATCH /designs/{id}` · `POST /designs/{id}/duplicate` | editor | rename / describe · copy under a new id |
+| `GET /storage` | viewer | storage backend (`firestore` / `file`), persistence, config errors |
 | `GET /designs/{id}/history` | viewer | audit log (actor, op, revision) |
 | `POST /designs/{id}/validate` | viewer | full report |
 | `GET /designs/{id}/model3d` | viewer | world matrices, cut outlines, features, state per component, bounds |

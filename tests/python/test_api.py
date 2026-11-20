@@ -135,7 +135,7 @@ def test_batch_operations_atomic_via_api(client):
 def test_boat_example_and_production_exports(client):
     r = client.post('/api/v1/designs/examples/boat', headers=ED, json={'id': 'boat-api'})
     assert r.status_code == 201 and r.json['join_failures'] == []
-    assert r.json['validation']['valid'] and r.json['validation']['summary']['joined'] == 33
+    assert r.json['validation']['valid'] and r.json['validation']['summary']['joined'] == 32
     lay = client.get('/api/v1/designs/boat-api/layout2d?preset=A3&kerf=1', headers=VIEW).json
     assert lay['ready_for_production'] and lay['nesting']['sheet_count'] == 2
     pdf = client.get('/api/v1/designs/boat-api/export/pdf?preset=A3', headers=VIEW)

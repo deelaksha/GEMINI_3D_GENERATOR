@@ -48,7 +48,7 @@ def test_seeded_boat_and_studio_page(server):
     req = urllib.request.Request(server + '/api/v1/designs/boat/validate', method='POST',
                                  headers={'Authorization': 'Bearer e2e-agent-key'})
     v = json.load(urllib.request.urlopen(req))['validation']
-    assert v['valid'] and v['complete'] and v['summary']['joined'] == 33
+    assert v['valid'] and v['complete'] and v['summary']['joined'] == 32
 
 
 def test_ai_agent_designs_corrects_and_produces_boat(server, tmp_path):
@@ -60,6 +60,6 @@ def test_ai_agent_designs_corrects_and_produces_boat(server, tmp_path):
     assert f['rejections']['duplicate'] == 'DUPLICATE_COMPONENT'
     assert 'UNINTENDED_GAP' in f['rejections'] and 'TAB_IN_OPENING' in f['rejections']
     assert f['rejections']['invalid_join'] in ('ORIENTATION_MISMATCH', 'NOT_IN_CONTACT')
-    assert f['repairs'] == 21
+    assert f['repairs'] == 32  # one generated slot per tab — every joint is a tab through a slot
     files = sorted(p.name for p in tmp_path.iterdir())
     assert any(n.endswith('booklet.pdf') for n in files) and sum(n.endswith('.dxf') for n in files) == 2

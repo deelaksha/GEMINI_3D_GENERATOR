@@ -57,10 +57,15 @@ app.register_blueprint(board_api_bp)
 def seed_example_designs():
     """Create the example boat through the real join pipeline if it does not exist yet."""
     store = app.config['BOARD_STORE']
-    if not store.exists('boat'):
+    rebuild = not store.exists('boat')
+    if not rebuild:
+        # Upgrade the example if it is an old version that still used glued joints
+        old = store.get('boat')
+        rebuild = any(j['type'] != 'tab_slot' for j in old['joints'])
+    if rebuild:
         from board_engine.examples.boat import build_design
         design, failures = build_design('boat')
-        store.create(design, actor='seed')
+        store.create(design, actor='seed', overwrite=True)
         if failures:
             logging.getLogger('board_api').warning('boat seed: %d joints rejected', len(failures))
 

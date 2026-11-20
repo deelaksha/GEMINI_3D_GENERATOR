@@ -319,7 +319,8 @@ function renderOverview(body) {
         <div class="stat"><b style="color:${v.summary.errors ? 'var(--err)' : 'var(--ok)'}">${v.summary.errors}</b><span>Errors</span></div>
       </div>
       <dl class="kv" style="margin-top:12px"><dt>Assembled size</dt><dd>${size}</dd>
-        <dt>Material</dt><dd>${esc(m.material.name)}</dd><dt>Thickness</dt><dd>${m.material.thickness} mm</dd></dl>
+        <dt>Material</dt><dd>${esc(m.material.name)}</dd><dt>Thickness</dt><dd>${m.material.thickness} mm</dd>
+        <dt>Joinery</dt><dd>${m.joinery === 'glue_allowed' ? 'Glue allowed' : 'Glue-free · tab &amp; slot'}</dd></dl>
     </div>
     ${!m.components.length ? '<div class="callout info">This design is empty. Parts are added through the API (an AI agent or script), or create a parametric boat from <b>My designs</b>.</div>'
       : v.valid ? (v.complete ? '<div class="callout ok">Geometry validated — every part fits and is joined.</div>'

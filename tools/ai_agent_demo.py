@@ -151,9 +151,9 @@ def run(url, key, out_dir=None, design_id='agent-boat'):
                 f"{len(findings['corrections'])} corrections")
 
     # Negative probe: components that must not be joined
-    bad = {'id': 'J-BAD', 'type': 'edge_butt', 'a': 'KEEL', 'a_edge': 0, 'b': 'RUDDER'}
+    bad = {'id': 'J-BAD', 'type': 'tab_slot', 'a': 'RUDDER', 'tab': 'h1', 'b': 'KEEL'}
     st, r = c.call('POST', f'/api/v1/designs/{design_id}/joints', {'joint': bad, 'auto_repair': True})
-    log('probe', f"KEEL edge -> RUDDER face: HTTP {st} {first_error(r).get('code')} (rejected as expected)")
+    log('probe', f"RUDDER tab -> KEEL (boards in the same plane): HTTP {st} {first_error(r).get('code')} (rejected as expected)")
     findings['rejections']['invalid_join'] = first_error(r).get('code')
 
     # 10. final state

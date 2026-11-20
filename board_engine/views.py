@@ -59,6 +59,7 @@ def model3d(design, report=None):
         'id': design['id'], 'name': design['name'], 'revision': design['revision'],
         'units': 'mm', 'up_axis': 'Y', 'euler_order': 'XYZ',
         'material': design['material'],
+        'joinery': design.get('joinery', 'interlocking'),
         'bounds': {'min': _r(lo), 'max': _r(hi), 'center': _r([(lo[i] + hi[i]) / 2 for i in range(3)])},
         'components': comps,
         'joints': design['joints'],

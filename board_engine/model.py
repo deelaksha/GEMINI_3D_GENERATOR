@@ -42,6 +42,9 @@ from . import geometry as G
 FEATURE_KINDS = ('slot', 'hole', 'opening')
 FEATURE_SHAPES = ('rect', 'circle')
 JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap')
+# Glue-free products (cardboard, friction-fit board) can only use mechanical interlocks.
+JOINERY_MODES = ('interlocking', 'glue_allowed')
+INTERLOCKING_JOINTS = ('tab_slot',)
 
 LIMITS = {
     'max_components': 300,
@@ -219,6 +222,13 @@ def normalize_joint(j, path='joint'):
     return out
 
 
+def _joinery(v):
+    v = v or 'interlocking'
+    if v not in JOINERY_MODES:
+        raise SchemaError(f'joinery must be one of {JOINERY_MODES}', 'joinery')
+    return v
+
+
 def normalize_design(d):
     if not isinstance(d, dict):
         raise SchemaError('design must be an object')
@@ -256,6 +266,7 @@ def normalize_design(d):
         },
         'components': comps,
         'joints': [normalize_joint(j, f'joints[{i}]') for i, j in enumerate(joints_in)],
+        'joinery': _joinery(d.get('joinery')),
         'created': d.get('created'),
         'updated': d.get('updated'),
     }
