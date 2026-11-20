@@ -227,11 +227,30 @@ def op_set_material(design, op):
     return {'material': design['material'], 'detached_joints': sorted(set(broken))}
 
 
+def op_apply_fix(design, op):
+    from .autofix import apply_fix
+    work, record = apply_fix(design, op.get('fix_id'))
+    design.clear()
+    design.update(work)
+    return {'fix': record}
+
+
+def op_auto_fix(design, op):
+    from .autofix import auto_fix
+    max_steps = op.get('max_steps', 50)
+    if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not (1 <= max_steps <= 200):
+        raise SchemaError('max_steps must be an integer 1..200', 'max_steps')
+    work, report = auto_fix(design, max_steps)
+    design.clear()
+    design.update(work)
+    return report
+
+
 OPERATIONS = {
     'add_component': op_add_component, 'update_component': op_update_component, 'translate': op_translate,
     'delete_component': op_delete_component, 'add_feature': op_add_feature, 'remove_feature': op_remove_feature,
     'add_tab': op_add_tab, 'remove_tab': op_remove_tab, 'join': op_join, 'unjoin': op_unjoin,
-    'set_material': op_set_material,
+    'set_material': op_set_material, 'apply_fix': op_apply_fix, 'auto_fix': op_auto_fix,
 }
 READ_ONLY_OPS = {'check_joint'}
 

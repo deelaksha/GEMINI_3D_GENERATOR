@@ -249,6 +249,16 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
     root_b = b.frame.to_local(root_w)
     z_root = root_b[2]
     if abs(z_root) > 1e-6 and (z_root > 0) == (dot > 0):
+        if abs(z_root) <= tab['depth'] + b.t:
+            # The shoulder has sunk through the receiver: a penetration with an exact correction
+            need = (-1.0 if dot > 0 else 1.0) * b.t / 2.0
+            move = G.v_scale(nb, need - z_root)
+            issues.append(issue('PENETRATION', 'error', 'joint',
+                                f"'{a.id}' has sunk {abs(z_root) + b.t / 2.0:.2f} mm through '{b.id}' at tab "
+                                f"'{tab['id']}'; the shoulder must sit on the near face.", comps, joint=jid,
+                                location=location, overlap=_r(abs(z_root) + b.t / 2.0),
+                                suggestion={'action': 'translate', 'component': a.id, 'delta': _r(move, 3)}))
+            return {'matched_slot': None, 'location': location}
         issues.append(issue('TAB_POINTS_AWAY', 'error', 'joint',
                             f"Tab '{tab['id']}' on '{a.id}' points away from '{b.id}'.", comps,
                             joint=jid, location=location))
@@ -686,6 +696,10 @@ def validate_design(design, tol=TOL):
             continue
         keys[key] = j['id']
         if j.get('status') != 'joined':
+            issues.append(issue('JOINT_NOT_JOINED', 'warning', 'joint',
+                                f"Connection '{j['id']}' ({j['type']} {j['a']} -> {j['b']}) is {j.get('status') or 'not joined'}"
+                                + (f" ({j['detached_reason']})" if j.get('detached_reason') else '') + '.',
+                                [j['a'], j['b']], joint=j['id']))
             continue
         res = evaluate_joint(design, plates, j, tol)
         joint_results[j['id']] = res
@@ -747,7 +761,8 @@ def validate_design(design, tol=TOL):
     joined = sum(1 for j in design['joints'] if j.get('status') == 'joined')
     return {
         'valid': errors == 0,
-        'complete': errors == 0 and not any(i['code'] in ('FLOATING_COMPONENT', 'UNJOINED_TAB') for i in issues),
+        'complete': errors == 0 and not any(i['code'] in ('FLOATING_COMPONENT', 'UNJOINED_TAB', 'JOINT_NOT_JOINED')
+                                            for i in issues),
         'summary': {'errors': errors, 'warnings': warnings, 'components': len(comps),
                     'joints': len(design['joints']), 'joined': joined},
         'issues': issues,

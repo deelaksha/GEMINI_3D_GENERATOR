@@ -123,9 +123,10 @@ its world location.
 
 ### 4.4 Design level — `validate_design`
 `DUPLICATE_COMPONENT_ID`, `DUPLICATE_COMPONENT` (same profile + placement), `DUPLICATE_JOINT`,
+`JOINT_NOT_JOINED` (a detached connection, warning),
 `JOINT_BROKEN` (a joined connection no longer fits after an edit), `UNUSED_SLOT`, `UNJOINED_TAB`,
 `FLOATING_COMPONENT` (not connected to the main assembly by joined joints), plus all of the above.
-`valid` = no errors; `complete` = valid and nothing floating or unjoined.
+`valid` = no errors; `complete` = valid and nothing floating, unjoined or detached.
 
 ## 5. Joining rules (`board_engine/joining.py`)
 1. Reject structurally bad requests (unknown parts, duplicate id, already joined).
@@ -139,6 +140,25 @@ its world location.
 Edits to joined parts are re-checked: an edit that breaks a joint is refused (`would_break_joints`)
 unless `detach_broken_joints=true`, which marks those joints `detached`. Removing a joint (or a part
 with `cascade`) also removes the slots that joint generated — and only those.
+
+### 5.1 Automatic fixes (deterministic, no AI) — `board_engine/autofix.py`
+Fixes are derived only from intended connections (joints), so the engine never guesses intent:
+
+| Fix kind | When | Action |
+|---|---|---|
+| `translate` | `UNINTENDED_GAP`, `PENETRATION` (incl. a part sunk through its receiver), `SLOT_MISALIGNED`, `EDGES_NOT_COINCIDENT` | move the part by the computed offset, then re-join if detached |
+| `rejoin` | a detached joint that fits again, or only needs a safe slot repair | re-join through the full join pipeline (`auto_repair`) |
+| `repair` | a joined connection lost its slot fit | regenerate / resize the slot |
+
+Guards: the fix runs on a copy; a moved part must not break any of its other joined connections;
+the result is kept only if the design has no more errors than before. Problems without a safe fix
+(`TAB_IN_OPENING`, `ORIENTATION_MISMATCH`, `TAB_OUTSIDE_RECEIVER`, …) are listed as `unfixable`
+("needs a design decision") and never changed. **Auto-fix all** repeats plan → apply until nothing
+applies (max 50 steps); a run that applies nothing does not create a new revision.
+
+Validation responses from the API include `fixes`, `unfixable`, and a `fix_id` on each
+`JOINT_BROKEN` / `JOINT_NOT_JOINED` issue. In the studio these appear as **Apply fix** buttons and an
+**Auto-fix all** button in the Validation tab.
 
 ## 6. REST API (`/api/v1`)
 
@@ -175,6 +195,9 @@ validation, 429 rate limit. Every accepted mutation bumps `revision` and is reco
 | `POST /designs/{id}/joints/check` | viewer | dry run → `fits`, issues, `repairs_available` |
 | `POST /designs/{id}/joints` | editor | `{"joint": {...}, "auto_repair": bool}` → 201 joined / 422 with reasons |
 | `DELETE /designs/{id}/joints/{jid}?keep_slots=0` | editor | unjoin |
+| `GET /designs/{id}/fixes` | viewer | planned fixes + unfixable problems |
+| `POST /designs/{id}/fixes/apply` | editor | `{"fix_id": "J-MAST-STEP:translate"}` (422 if stale or it would make things worse) |
+| `POST /designs/{id}/fixes/auto` | editor | `{"max_steps": 50}` → steps applied, skipped, unfixable |
 | `PUT /designs/{id}/material` | editor | change material; re-checks every joint |
 | `POST /designs/{id}/operations` | editor | atomic batch (`add_component`, `update_component`, `translate`, `delete_component`, `add_feature`, `remove_feature`, `add_tab`, `remove_tab`, `join`, `unjoin`, `set_material`) |
 | `GET /designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1` | viewer | nesting + cutting paths + readiness |

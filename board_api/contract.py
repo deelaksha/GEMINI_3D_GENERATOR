@@ -72,9 +72,18 @@ TOOLS = [
           ['design_id', 'joint_id']),
     _tool('apply_operations', 'Atomic batch of operations (all-or-nothing): add_component, update_component, '
                               'translate, delete_component, add_feature, remove_feature, add_tab, remove_tab, '
-                              'join, unjoin, set_material.', 'POST', '/api/v1/designs/{design_id}/operations',
+                              'join, unjoin, set_material, apply_fix, auto_fix.', 'POST', '/api/v1/designs/{design_id}/operations',
           dict(_D, operations={'type': 'array', 'items': {'type': 'object'}},
                expected_revision={'type': 'integer'}), ['design_id', 'operations']),
+    _tool('list_fixes', 'Deterministic fixes the engine can apply (gap/penetration/misalignment moves, slot '
+                        'repairs, re-joins) and problems that need a design decision.', 'GET',
+          '/api/v1/designs/{design_id}/fixes', _D, ['design_id']),
+    _tool('apply_fix', 'Apply one planned fix by fix_id (re-validated; refused if it would add errors or break '
+                       'other joints).', 'POST', '/api/v1/designs/{design_id}/fixes/apply',
+          dict(_D, fix_id={'type': 'string'}), ['design_id', 'fix_id']),
+    _tool('auto_fix', 'Apply every safely fixable correction repeatedly until none remain; returns steps and '
+                      'what still needs a decision.', 'POST', '/api/v1/designs/{design_id}/fixes/auto',
+          dict(_D, max_steps={'type': 'integer'}), ['design_id']),
     _tool('get_layout2d', 'Nest parts on sheets and return cutting paths + material statistics.', 'GET',
           '/api/v1/designs/{design_id}/layout2d', dict(_D, preset={'type': 'string'}), ['design_id']),
 ]
@@ -114,6 +123,7 @@ CONTRACT = {
         'POST /api/v1/designs/{id}/components/{cid}/tabs', 'DELETE /api/v1/designs/{id}/components/{cid}/tabs/{tid}',
         'GET  /api/v1/designs/{id}/joints', 'POST /api/v1/designs/{id}/joints', 'POST /api/v1/designs/{id}/joints/check',
         'DELETE /api/v1/designs/{id}/joints/{jid}',
+        'GET  /api/v1/designs/{id}/fixes', 'POST /api/v1/designs/{id}/fixes/apply', 'POST /api/v1/designs/{id}/fixes/auto',
         'GET  /api/v1/designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1',
         'GET  /api/v1/designs/{id}/export/pdf|svg|dxf?sheet=1&preset=A3&paper=A4&kerf=1&force=0',
     ],

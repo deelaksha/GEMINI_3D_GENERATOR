@@ -268,22 +268,65 @@ function renderValidation() {
   const box = $('#tab-validation');
   const v = S.validation;
   if (!v) { box.innerHTML = ''; return; }
+  const fixes = v.fixes || [], unfixable = v.unfixable || [];
+  const fixById = Object.fromEntries(fixes.map((f) => [f.id, f]));
   const issues = [...v.issues].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
+  const last = S.lastAutoFix;
   box.innerHTML = `
     <div class="section"><div class="summary-grid">
       <div class="stat"><b style="color:${v.summary.errors ? 'var(--err)' : 'var(--ok)'}">${v.summary.errors}</b><span>Errors</span></div>
       <div class="stat"><b style="color:${v.summary.warnings ? 'var(--warn)' : 'inherit'}">${v.summary.warnings}</b><span>Warnings</span></div>
-      <div class="stat"><b>${v.summary.joined}/${v.summary.joints}</b><span>Joined</span></div></div></div>
+      <div class="stat"><b>${v.summary.joined}/${v.summary.joints}</b><span>Joined</span></div></div>
+      <div class="row-actions" style="justify-content:space-between;align-items:center">
+        <span class="muted" style="font-size:12px">${fixes.length ? `${fixes.length} automatic fix${fixes.length > 1 ? 'es' : ''} available` : 'No automatic fixes needed'}</span>
+        <button class="btn small primary" id="btn-autofix" ${fixes.length ? '' : 'disabled'} title="Apply every safe fix until none remain">Auto-fix all</button>
+      </div></div>
+    ${last ? `<div class="banner ${last.valid ? 'ok' : 'warn'}"><b>Auto-fix:</b> ${last.steps.length} step(s) applied${last.steps.length
+      ? '<br>' + last.steps.map((st) => '• ' + esc(st.description)).join('<br>') : ''}${last.unfixable.length
+      ? `<br><b>${last.unfixable.length} need a design decision:</b><br>` + last.unfixable.map((u) => '• ' + esc(u.joint) + ': ' + esc(u.code)).join('<br>') : ''}</div>` : ''}
     ${v.valid && v.complete ? '<div class="banner ok">All 2D, joint and 3D interference checks pass. Every component is joined into one assembly.</div>' : ''}
-    ${issues.map((i, k) => `<div class="issue" data-k="${k}"><span class="dot ${i.severity === 'error' ? 'err' : i.severity === 'warning' ? 'warn' : ''}"></span>
+    ${unfixable.length ? `<div class="banner warn">${unfixable.length} problem(s) cannot be fixed automatically — they need a design decision:<br>${unfixable
+      .map((u) => `• <b>${esc(u.joint)}</b> ${esc(u.code)}: ${esc(u.message)}`).join('<br>')}</div>` : ''}
+    ${issues.map((i, k) => {
+      const fx = i.fix_id && fixById[i.fix_id];
+      return `<div class="issue" data-k="${k}"><span class="dot ${i.severity === 'error' ? 'err' : i.severity === 'warning' ? 'warn' : ''}"></span>
       <div><div class="code">${esc(i.code)} · ${esc(i.category)}${i.components?.length ? ' · ' + esc(i.components.join(', ')) : ''}</div>
-      <div class="msg">${esc(i.message)}</div>${i.suggestion ? `<div class="code" style="margin-top:3px">suggestion: ${esc(i.suggestion.action)} ${esc(i.suggestion.component)} by [${i.suggestion.delta.join(', ')}]</div>` : ''}</div></div>`).join('')}`;
-  box.querySelectorAll('.issue').forEach((n) => (n.onclick = () => {
+      <div class="msg">${esc(i.message)}</div>${i.suggestion ? `<div class="code" style="margin-top:3px">suggestion: ${esc(i.suggestion.action)} ${esc(i.suggestion.component)} by [${i.suggestion.delta.join(', ')}]</div>` : ''}
+      ${fx ? `<div class="fix-row"><span class="desc">${esc(fx.description)}</span>
+        <button class="btn small primary" data-fix="${esc(fx.id)}">Apply fix</button></div>` : ''}</div></div>`;
+    }).join('')}`;
+  box.querySelectorAll('.issue').forEach((n) => (n.onclick = (ev) => {
+    if (ev.target.closest('[data-fix]')) return;
     const i = issues[+n.dataset.k];
     if (i.components?.[0]) select(i.components[0], 'issue');
     if (i.location) view3d.focusPoint(i.location);
     else if (i.components?.[0]) view3d.focus(i.components[0]);
+    setTab('validation');
   }));
+  box.querySelectorAll('[data-fix]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const r = await Api.applyFix(S.designId, b.dataset.fix);
+      const f = r.result.fix;
+      toast(`Fix applied: ${f.description} (errors ${f.errors_before} → ${f.errors_after})`);
+      S.lastAutoFix = null;
+      await refresh();
+      setTab('validation');
+    } catch (e) { reportError(e); b.disabled = false; }
+  }));
+  const af = $('#btn-autofix');
+  if (af) af.onclick = async () => {
+    af.disabled = true;
+    af.textContent = 'Fixing…';
+    try {
+      const r = await Api.autoFix(S.designId);
+      S.lastAutoFix = r.result;
+      toast(r.result.valid ? `Auto-fix: ${r.result.steps.length} step(s), design is valid`
+        : `Auto-fix: ${r.result.steps.length} step(s); ${r.result.summary.errors} error(s) need attention`, !r.result.valid);
+      await refresh();
+      setTab('validation');
+    } catch (e) { reportError(e); af.disabled = false; af.textContent = 'Auto-fix all'; }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +468,7 @@ $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 $('#design-select').onchange = async (e) => {
   S.designId = e.target.value;
   S.selected = null;
+  S.lastAutoFix = null;
   view3d._framed = false;
   sheet2d._fitted = false;
   await refresh().catch(reportError);

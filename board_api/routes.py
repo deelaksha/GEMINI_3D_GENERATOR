@@ -11,6 +11,7 @@ import logging
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
+from board_engine.autofix import plan_fixes
 from board_engine.examples.boat import build_design as build_boat
 from board_engine.joining import check_joint
 from board_engine.model import SchemaError, check_id, find_component, normalize_design
@@ -44,10 +45,18 @@ def body():
     return data
 
 
-def summarize(report, full=True):
+def summarize(report, full=True, design=None):
     out = {'valid': report['valid'], 'complete': report['complete'], 'summary': report['summary']}
     if full:
         out['issues'] = report['issues']
+        if design is not None:
+            # Attach the deterministic fix (if any) to the issues it resolves
+            plan = plan_fixes(design)
+            by_joint = {f['joint']: f for f in plan['fixes']}
+            out['issues'] = [dict(i, fix_id=by_joint[i['joint']]['id'])
+                             if i.get('joint') in by_joint and i['code'] in ('JOINT_BROKEN', 'JOINT_NOT_JOINED') else i
+                             for i in report['issues']]
+            out['fixes'], out['unfixable'] = plan['fixes'], plan['unfixable']
     return out
 
 
@@ -88,7 +97,7 @@ def mutate(did, fn, op_name, detail=None):
     log.info('%s %s/%s rev=%s errors=%s', g.principal['id'], did, op_name, new['revision'],
              report['summary']['errors'])
     return jsonify({'ok': True, 'revision': new['revision'], 'result': result,
-                    'validation': summarize(report)})
+                    'validation': summarize(report, design=new)})
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +200,7 @@ def history(did):
 @require('viewer')
 def validate(did):
     d = store().get(did)
-    return jsonify({'ok': True, 'revision': d['revision'], 'validation': summarize(validate_design(d))})
+    return jsonify({'ok': True, 'revision': d['revision'], 'validation': summarize(validate_design(d), design=d)})
 
 
 @bp.get('/designs/<did>/model3d')
@@ -334,6 +343,38 @@ def create_joint(did):
 def delete_joint(did, jid):
     return _op_route(did, {'op': 'unjoin', 'joint_id': jid,
                            'keep_generated_slots': request.args.get('keep_slots') in ('1', 'true')}, 'unjoin')
+
+
+# ---------------------------------------------------------------------------
+# Deterministic fixes (no AI): apply one, or auto-fix everything that is safely fixable
+# ---------------------------------------------------------------------------
+
+@bp.get('/designs/<did>/fixes')
+@require('viewer')
+def list_fixes(did):
+    d = store().get(did)
+    return jsonify(dict(plan_fixes(d), ok=True, revision=d['revision']))
+
+
+@bp.post('/designs/<did>/fixes/apply')
+@require('editor')
+def apply_fix_route(did):
+    fix_id = body().get('fix_id')
+    if not isinstance(fix_id, str):
+        raise SchemaError('fix_id is required', 'fix_id')
+    return _op_route(did, {'op': 'apply_fix', 'fix_id': fix_id}, 'apply_fix')
+
+
+@bp.post('/designs/<did>/fixes/auto')
+@require('editor')
+def auto_fix_route(did):
+    data = request.get_json(silent=True) or {}
+    op = {'op': 'auto_fix', 'max_steps': data.get('max_steps', 50)}
+
+    def fn(d):
+        result = apply_operation(d, op)
+        return (d if result['steps'] else None), result  # nothing applied -> no new revision
+    return mutate(did, fn, 'auto_fix')
 
 
 # ---------------------------------------------------------------------------

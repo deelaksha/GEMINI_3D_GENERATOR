@@ -43,6 +43,8 @@ export const Api = {
   checkJoint: (id, joint) => request('POST', `/designs/${enc(id)}/joints/check`, { joint }),
   join: (id, joint, autoRepair) => request('POST', `/designs/${enc(id)}/joints`, { joint, auto_repair: autoRepair }),
   unjoin: (id, jid) => request('DELETE', `/designs/${enc(id)}/joints/${enc(jid)}`),
+  applyFix: (id, fixId) => request('POST', `/designs/${enc(id)}/fixes/apply`, { fix_id: fixId }),
+  autoFix: (id) => request('POST', `/designs/${enc(id)}/fixes/auto`, {}),
   rebuildBoat: (id) => request('POST', '/designs/examples/boat', { id, overwrite: true }),
   exportUrl: (id, fmt, opts) => `/api/v1/designs/${enc(id)}/export/${fmt}?${qs(opts)}`,
   async download(id, fmt, opts) {
