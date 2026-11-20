@@ -216,3 +216,126 @@ def test_finger_and_cross_lap_fit_audit(organiser, title, mutate, about, code):
 def test_finger_and_cross_lap_are_glue_free(organiser):
     rep = validate_design(organiser['design'])
     assert not [i for i in rep['issues'] if i['code'] == 'GLUE_JOINT_NOT_ALLOWED']
+
+
+# ---------------------------------------------------------------------------
+# The AI prompt describes every joint completely and correctly (each claim is checked against the compiler)
+# ---------------------------------------------------------------------------
+
+JOINT_OPTIONS = {          # every option the compiler reads, per connection type
+    'tab_slot': ['tabs', 'tab_width', 'tab_depth', 'edge'],
+    'finger': ['fingers', 'edge'],
+    'cross_lap': [],
+    'butt': ['fasteners', 'kind', 'count', 'diameter', 'length'],
+    'hinge': ['edge', 'count', 'gap'],
+    'mitre': ['edge', 'into_edge', 'bevel', 'fasteners'],
+}
+
+
+def _joint_paragraph(spec, jtype):
+    start = spec.index(f'- `{jtype}` —')
+    nxt = [i for i in (spec.find('\n- ', start + 3), spec.find('\n\n', start)) if i > 0]
+    return spec[start:min(nxt)]
+
+
+def test_prompt_documents_every_option_of_every_joint():
+    from board_engine.canvas import CONNECTION_TYPES
+    from board_engine.canvas_prompt import build_prompt, spec_markdown
+    spec = spec_markdown()
+    assert set(JOINT_OPTIONS) == set(CONNECTION_TYPES)
+    for jtype, opts in JOINT_OPTIONS.items():
+        para = _joint_paragraph(spec, jtype)
+        missing = [o for o in opts if f'"{o}"' not in para]
+        assert not missing, f'{jtype}: document {missing}'
+        assert f'"type": "{jtype}"' in spec, f'{jtype}: add an example line'
+    assert 'tab_slot only' not in spec and 'tab_slot, finger and cross_lap' in spec
+    assert spec in build_prompt('Box')
+
+
+def _compile(d):
+    return compile_source(json.dumps(d), run_production=False)
+
+
+def _errs(r):
+    return [x['code'] for x in r['diagnostics'] if x['severity'] == 'error']
+
+
+def test_prompt_claims_tab_slot_defaults_and_minimum_contact():
+    d = copy.deepcopy(EXAMPLE)
+    for c in d['connections']:
+        c.pop('tabs', None)
+    r = _compile(d)
+    tabs = [t for c in r['design']['components'] if c['id'] == 'MODESTY' for t in c['tabs'] if t['id'].startswith('MOD-TOP')]
+    assert len(tabs) == 5            # 1064 - 2 x 18 = 1028 mm of tab region -> one per ~250 mm
+    from board_engine.validation import TOL
+    t = 18
+    for extra, ok in ((-1, False), (1, True)):
+        d = copy.deepcopy(EXAMPLE)   # an upright strip on the shelf whose contact is 2 x t + max(3, t) + extra long
+        length = 2 * t + max(TOL['min_tab_width'], t) + extra
+        d['boards'].append({'id': 'STRIP', 'name': 'Strip', 'group': 'X', 'position': [500, 168, 200], 'size': [length, 200, 18]})
+        d['connections'].append({'id': 'S', 'type': 'tab_slot', 'board': 'STRIP', 'into': 'SHELF'})
+        codes = _errs(_compile(d))
+        assert ('CONTACT_TOO_SHORT' in codes) != ok, (extra, codes)
+
+
+def _fingers_of(design, a, b):
+    from board_engine.model import build_plates
+    from board_engine.validation import _line_material, _meeting_line
+    plates = build_plates(design)
+    p, c = _meeting_line(plates[a], plates[b])
+    return len(_line_material(plates[a], p, c)), len(_line_material(plates[b], p, c))
+
+
+def test_prompt_claims_finger_rules():
+    d = copy.deepcopy(STRUCTURES_EXAMPLE)
+    r = _compile(d)
+    # default: fingers ~3 x the thicker board (6 mm) long on the 94 mm corner -> round(94 / 18) = 5 -> A keeps 3
+    assert _fingers_of(r['design'], 'LEFT', 'BACK')[0] == 3
+    d['connections'] = [dict(c, fingers=6) if c['id'] == 'left-back' else c for c in d['connections']]
+    r = _compile(d)
+    assert r['ok'] and _fingers_of(r['design'], 'LEFT', 'BACK')[0] == 4     # 6 rounded up to 7: A keeps 4
+    for off, corner in ((0.2, True), (0.3, False)):         # flush within the contact tolerance
+        d = copy.deepcopy(STRUCTURES_EXAMPLE)
+        next(x for x in d['boards'] if x['id'] == 'LEFT')['position'][0] = off
+        d['connections'] = [c for c in d['connections'] if c['id'] == 'left-back']
+        codes = _errs(_compile(d))
+        assert ('NOT_A_CORNER' in codes) != corner, (off, codes)
+
+
+def test_prompt_claims_cross_lap_rules():
+    for overhang, ok in ((2.0, True), (1.0, False)):        # must stick out > min_edge_margin past the other's faces
+        d = copy.deepcopy(STRUCTURES_EXAMPLE)
+        z1 = next(x for x in d['boards'] if x['id'] == 'DIV-Z1')
+        z1['position'][2], z1['size'][2] = 97 - overhang, 6 + 2 * overhang      # barely crossing DIV-X (z 97..103)
+        d['connections'] = [c for c in d['connections'] if c['id'] == 'x-z1']
+        codes = _errs(_compile(d))
+        assert ('NO_CROSSING' in codes) != ok, (overhang, codes)
+
+
+def test_prompt_claims_glue_joint_options():
+    d = copy.deepcopy(EXAMPLE)
+    d['joinery'] = 'glue_allowed'
+    d['connections'] = [dict(c, type='butt', fasteners='screw') if c['id'] == 'SHELF-L' else c for c in d['connections']]
+    r = _compile(d)
+    assert r['ok'] and next(j for j in r['design']['joints'] if j['id'] == 'SHELF-L')['fasteners']['kind'] == 'screw'
+    d['connections'] = [dict(c, fasteners={'kind': 'screw', 'count': 21}) if c['id'] == 'SHELF-L' else c for c in d['connections']]
+    assert _errs(_compile(d))                                       # fastener count is 1..20
+    d = copy.deepcopy(EXAMPLE)
+    d['joinery'] = 'glue_allowed'
+    d['connections'].append({'id': 'M', 'type': 'mitre', 'board': 'LEG-R', 'into': 'TOP', 'edge': '+y', 'into_edge': '+x'})
+    r = _compile(d)
+    mitre = [x for x in r['design']['joints'] if x['id'] == 'M']
+    assert mitre and mitre[0].get('bevel') is True                  # bevel defaults to true
+    d['connections'][-1]['bevel'] = False
+    assert not [x for x in _compile(d)['design']['joints'] if x['id'] == 'M'][0].get('bevel')
+    for bad in ({'count': 9}, {'gap': 6}):                          # hinge count 1..8, gap 0..5 mm
+        d = copy.deepcopy(EXAMPLE)
+        d['joinery'] = 'glue_allowed'
+        d['connections'].append({'id': 'H', 'type': 'hinge', 'board': 'MODESTY', 'into': 'LEG-L', 'edge': '-x', **bad})
+        assert _errs(_compile(d)), bad
+
+
+def test_glue_free_joints_alone_keep_the_design_interlocking():
+    d = copy.deepcopy(STRUCTURES_EXAMPLE)
+    d.pop('joinery', None)
+    assert _compile(d)['design']['joinery'] == 'interlocking'

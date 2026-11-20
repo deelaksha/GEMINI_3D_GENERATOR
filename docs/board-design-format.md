@@ -17,7 +17,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
   "format": "board-design/v1",
   "product":  {"name": str, "description": str, "overall": {"length": mm, "height": mm, "depth": mm}},
   "material": {"name": str, "type": one of ['plywood', 'mdf', 'particle_board', 'solid_wood', 'hardboard', 'cardboard', 'other'], "thickness": mm, "kerf"?: mm, "clearance"?: mm},
-  "joinery":  one of ['interlocking', 'glue_allowed']   (optional; "interlocking" = glue-free, tab_slot only),
+  "joinery":  one of ['interlocking', 'glue_allowed']   (optional; "interlocking" = glue-free: tab_slot, finger and cross_lap
+              only; "glue_allowed" also permits butt, hinge and mitre. Derived from the connections when omitted),
   "sheet"?:   {"width": mm, "height": mm}   (stock sheet; chosen automatically when omitted),
   "boards":   [board, ...],
   "connections": [connection, ...]
@@ -78,24 +79,48 @@ Shapes (used by `profile`, `openings` and `engravings`):
 ```
 {"id": str, "type": one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'], "board": "<board A>", "into": "<board B>", ...}
 ```
-- `tab_slot` (glue-free): an END FACE of board A sits flat against the BROAD FACE of board B. The generator adds tabs on A and
-  cuts matching slots through B. Options: `"tabs"`: 1..12, `"tab_width"`: mm, `"tab_depth"`: mm (default B's thickness,
-  i.e. flush with B's far face; a larger value makes the tab stand proud on purpose), `"edge"`: "+y" etc. to pick A's edge.
-  A must be inset from B's edges by at least B's slot margin (1.5 mm, recommended ≥ 3 mm; use ≥ the
-  board thickness for furniture), and the contact must be longer than 2 × A's thickness plus the tab width.
-- `butt` (needs `"joinery": "glue_allowed"`): A's end face against B's face, held by `"fasteners": {"kind": one of
-  ['screw', 'confirmat', 'dowel'], "count"?: n}`. Catalogue: `screw` (Ø4 × 40 mm), `confirmat` (Ø7 × 50 mm), `dowel` (Ø8 × 35 mm).
-- `hinge` (needs glue_allowed): `"board"` = door, `"into"` = carcass board it hangs on, `"edge"` = the door edge carrying
-  the hinges ("+x"/"-x"/...), optional `"count"`, `"gap"`.
-- `mitre` (needs glue_allowed): `"edge"` on A and `"into_edge"` on B (directions), optional `"bevel": true`.
-- `finger` (glue-free box / finger joint): a **corner** — A's end face sits on B's face **flush with one of B's edges**
-  (e.g. box walls meeting at a corner, a wall standing on the edge of a base). Both boards are cut with alternating
-  fingers along the corner; draw the boards as plain boxes that meet, the generator cuts the fingers. Option
-  `"fingers"`: odd count 3..41 (default ≈ one per 3 × thickness).
-- `cross_lap` (glue-free egg-crate / halving): two perpendicular boards that **pass through each other** (dividers in a
-  grid). Draw them overlapping; each is notched halfway from opposite edges. They must each reach one end of their
-  crossing (e.g. both the same height, or one sitting on top of the other's edge) and stick out ≥
-  1.5 mm past each other's faces. finger / cross_lap boards must be plain (no profile, no rotate).
+Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …) name a side of the board's (unrotated) box.
+
+**Glue-free joints** (allowed with `"joinery": "interlocking"`):
+- `tab_slot` — T-junction: an END FACE of A sits flat on the BROAD FACE of B, **away from B's edges**. The generator adds
+  tabs on A's edge and cuts matching slots through B (slot = A's thickness + `clearance`). Options:
+  `"tabs"`: 1..12 (default one per ~250 mm of contact, max 6), `"tab_width"`: mm (default about half the tab spacing,
+  at least max(3 mm, A's thickness)), `"tab_depth"`: mm (default B's thickness = flush with B's far face; larger
+  makes the tab stand proud on purpose), `"edge"`: which side of A carries the tabs (default: the side touching B).
+  A must be inset from B's edges by ≥ 1.5 mm (recommended ≥ 3 mm; use ≥ the board thickness for furniture).
+  Tabs stay A's thickness away from both ends of the contact, so the contact must be longer than
+  2 × A's thickness + max(3 mm, A's thickness).
+- `finger` — box corner: A's end face sits on B's face **flush with one of B's edges** (within 0.25 mm), e.g. walls
+  meeting at a box corner or a wall standing on the edge of a base. Draw both as plain boxes that just meet (A ends at
+  B's face); the generator cuts alternating fingers into both along the corner: A's fingers are B's thickness deep, B's
+  notches are A's thickness deep and `clearance` wider. Options: `"fingers"`: odd count 3..41 (an even count is rounded up;
+  default: fingers about 3 × the thicker board long, at least 10 mm), `"edge"`: A's side at the corner. Each finger must
+  be at least max(3 mm, half of A's thickness) long, or the corner is too short.
+- `cross_lap` — egg-crate / halving: two perpendicular boards drawn **passing through each other** (dividers in a grid).
+  Each gets a notch half the crossing height deep and the other board's thickness + `clearance` wide, cut from opposite
+  edges. One board must end at the top of the crossing and the other at its bottom (within 0.25 mm), e.g. both the
+  same height; each must stick out > 1.5 mm past the other's faces. The order of the two boards does not matter.
+- `finger` and `cross_lap` boards must be plain rectangles (no `profile`, no `rotate`); tilted or profiled boards use `tab_slot`.
+
+**Joints that need `"joinery": "glue_allowed"`:**
+- `butt` — A's end face against B's face, glued and/or held by `"fasteners"`: `{"kind": one of ['screw', 'confirmat', 'dowel'],
+  "count"?: 1..20, "diameter"?: 2..20 mm, "length"?: 5..200 mm}` or just the kind as a string (`"fasteners": "screw"`).
+  Catalogue: `screw` (Ø4 × 40 mm), `confirmat` (Ø7 × 50 mm), `dowel` (Ø8 × 35 mm).
+- `hinge` — `"board"` = the door, `"into"` = the carcass board it hangs on, `"edge"` (required) = the door side that carries
+  the hinges, optional `"count"`: 1..8 hinges, `"gap"`: 0..5 mm (door clearance).
+- `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required. `"bevel"`
+  defaults to **true** (both edges cut at half the corner angle, saw / CNC only); set `"bevel": false` for a plain corner.
+  Optional `"fasteners"` as for butt.
+
+One valid line per type:
+```
+{"id": "SIDE-TOP",  "type": "tab_slot",  "board": "SIDE-L", "into": "TOP", "tabs": 2}
+{"id": "BOX-CORN",  "type": "finger",    "board": "LEFT",   "into": "BACK", "fingers": 5}
+{"id": "GRID-1",    "type": "cross_lap", "board": "DIV-X",  "into": "DIV-Z1"}
+{"id": "SHELF-FIX", "type": "butt",      "board": "SHELF",  "into": "SIDE-L", "fasteners": {"kind": "confirmat", "count": 2}}
+{"id": "DOOR-HNG",  "type": "hinge",     "board": "DOOR",   "into": "SIDE-R", "edge": "+x", "count": 2, "gap": 2}
+{"id": "FRAME-MT",  "type": "mitre",     "board": "RAIL",   "into": "STILE", "edge": "-x", "into_edge": "+y", "bevel": true}
+```
 - Every board must be connected (directly or through others) to the rest of the product.
 - Choosing the joint: end face on a face away from the edges → `tab_slot`; at the edge (corner) → `finger`; boards
   crossing → `cross_lap`. A `tab_slot` written for a corner or a crossing is converted automatically (with a warning).
@@ -128,7 +153,9 @@ Shapes (used by `profile`, `openings` and `engravings`):
 ## Native engine format (advanced)
 The canvas also accepts the engine's own design JSON (top-level `"components"` + `"joints"` instead of `"boards"`):
 local 2D outlines with `arcs`, features (`rect` / `circle` / `polygon`), `marks`, tabs by edge index and placements with
-Euler XYZ rotation. It is what the Studio and the REST API use; prefer `board-design/v1` for new designs.
+Euler XYZ rotation. It is what the Studio and the REST API use; prefer `board-design/v1` for new designs. Its joint types are `tab_slot`, `finger`,
+`cross_lap`, `edge_butt`, `edge_mitre`, `face_lap` and `hinge` (`a`, `b`, plus `tab` for tab_slot and `a_edge` / `b_edge`
+edge indices for the edge joints).
 
 ## Output format
 Return **one** fenced ```json code block containing only the design object — no comments outside it, no prose inside it.
