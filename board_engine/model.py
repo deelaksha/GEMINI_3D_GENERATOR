@@ -43,10 +43,10 @@ from . import shapes as SH
 FEATURE_KINDS = ('slot', 'hole', 'opening')
 FEATURE_SHAPES = ('rect', 'circle', 'polygon')
 MARK_KINDS = ('engrave', 'pocket')   # non-through machining: never holes for collision / joint checks
-JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge')
+JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge', 'finger', 'cross_lap')
 # Glue-free products (cardboard, friction-fit board) can only use mechanical interlocks.
 JOINERY_MODES = ('interlocking', 'glue_allowed')
-INTERLOCKING_JOINTS = ('tab_slot',)
+INTERLOCKING_JOINTS = ('tab_slot', 'finger', 'cross_lap')   # glue-free: finger = box corner, cross_lap = egg-crate
 # Material families; manufacturing.MATERIALS holds their stock and tolerance data.
 MATERIAL_TYPES = ('plywood', 'mdf', 'particle_board', 'solid_wood', 'hardboard', 'cardboard', 'other')
 # Mechanical fasteners for edge_butt (and coplanar edge_mitre: dowel only); see manufacturing.FASTENERS.
@@ -217,7 +217,8 @@ def normalize_tab(t, path):
     return {'id': check_id(t.get('id'), path + '.id'), 'edge': edge,
             'offset': _num(t.get('offset'), path + '.offset', 0, LIMITS['max_coord']),
             'width': _num(t.get('width'), path + '.width', 0.5, LIMITS['max_coord']),
-            'depth': _num(t.get('depth'), path + '.depth', 0.1, 100.0)}
+            'depth': _num(t.get('depth'), path + '.depth', 0.1, 100.0),
+            **({'protrude': True} if t.get('protrude') else {})}   # stands proud of the receiver on purpose
 
 
 def normalize_component(c, path='component'):

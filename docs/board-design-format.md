@@ -76,11 +76,11 @@ Shapes (used by `profile`, `openings` and `engravings`):
 
 ## connection
 ```
-{"id": str, "type": one of ['tab_slot', 'butt', 'hinge', 'mitre'], "board": "<board A>", "into": "<board B>", ...}
+{"id": str, "type": one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'], "board": "<board A>", "into": "<board B>", ...}
 ```
 - `tab_slot` (glue-free): an END FACE of board A sits flat against the BROAD FACE of board B. The generator adds tabs on A and
   cuts matching slots through B. Options: `"tabs"`: 1..12, `"tab_width"`: mm, `"tab_depth"`: mm (default B's thickness,
-  i.e. flush with B's far face), `"edge"`: "+y" etc. to pick A's edge.
+  i.e. flush with B's far face; a larger value makes the tab stand proud on purpose), `"edge"`: "+y" etc. to pick A's edge.
   A must be inset from B's edges by at least B's slot margin (1.5 mm, recommended ≥ 3 mm; use ≥ the
   board thickness for furniture), and the contact must be longer than 2 × A's thickness plus the tab width.
 - `butt` (needs `"joinery": "glue_allowed"`): A's end face against B's face, held by `"fasteners": {"kind": one of
@@ -88,14 +88,30 @@ Shapes (used by `profile`, `openings` and `engravings`):
 - `hinge` (needs glue_allowed): `"board"` = door, `"into"` = carcass board it hangs on, `"edge"` = the door edge carrying
   the hinges ("+x"/"-x"/...), optional `"count"`, `"gap"`.
 - `mitre` (needs glue_allowed): `"edge"` on A and `"into_edge"` on B (directions), optional `"bevel": true`.
+- `finger` (glue-free box / finger joint): a **corner** — A's end face sits on B's face **flush with one of B's edges**
+  (e.g. box walls meeting at a corner, a wall standing on the edge of a base). Both boards are cut with alternating
+  fingers along the corner; draw the boards as plain boxes that meet, the generator cuts the fingers. Option
+  `"fingers"`: odd count 3..41 (default ≈ one per 3 × thickness).
+- `cross_lap` (glue-free egg-crate / halving): two perpendicular boards that **pass through each other** (dividers in a
+  grid). Draw them overlapping; each is notched halfway from opposite edges. They must each reach one end of their
+  crossing (e.g. both the same height, or one sitting on top of the other's edge) and stick out ≥
+  1.5 mm past each other's faces. finger / cross_lap boards must be plain (no profile, no rotate).
 - Every board must be connected (directly or through others) to the rest of the product.
+- Choosing the joint: end face on a face away from the edges → `tab_slot`; at the edge (corner) → `finger`; boards
+  crossing → `cross_lap`. A `tab_slot` written for a corner or a crossing is converted automatically (with a warning).
+- `"connections": "auto"` (or leaving it out) infers every connection from where boards touch or cross; with a list,
+  `"auto_connect": true` adds the ones you missed. Listing them yourself gives control over tabs and edges.
+- Use the exact keys `"board"` / `"into"`, exact type names and exact board ids: near-misses are accepted but reported.
 
 ## Geometry rules the generator validates (violations are compile errors)
 1. **Touching, not overlapping:** for every connection A's end face must lie exactly on B's face (|gap| ≤ 0.25 mm).
    Account for board thickness: e.g. leg height = overall height − top thickness; a shelf between two sides is
    (inner width) = overall width − 2 × side thickness long.
 2. **No overlaps:** boards may not occupy the same space anywhere (tabs inside their slots are fine).
-3. **No unintended gaps:** a board meant to sit on/against another must touch it.
+3. **No unintended gaps:** a board meant to sit on/against another must touch it. Faces of unconnected boards that
+   come within 2 mm of each other without touching are reported as a likely mistake (NEAR_MISS_GAP).
+   Slots are cut 0.1 mm (material `clearance`) wider than the tab board; more than
+   0.3 mm of extra play is rejected as a rattling joint.
 4. Square to each other: boards are axis aligned unless they use `rotate`; tabs insert perpendicular to the receiving face.
 5. Every board must fit on one stock sheet; standard thicknesses are preferred (table below).
 
@@ -689,6 +705,229 @@ Return **one** fenced ```json code block containing only the design object — n
       "type": "tab_slot",
       "board": "GABLE-F",
       "into": "ROOF-R"
+    }
+  ]
+}
+```
+
+## Complete valid example with several structures (desk organiser: finger corners, egg-crate, tabs)
+```json
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Desk organiser",
+    "description": "Glue-free box with finger-jointed corners and an egg-crate of dividers",
+    "overall": {
+      "length": 300,
+      "height": 100,
+      "depth": 200
+    }
+  },
+  "material": {
+    "name": "Birch plywood 6 mm",
+    "type": "plywood",
+    "thickness": 6
+  },
+  "boards": [
+    {
+      "id": "BASE",
+      "name": "Base",
+      "group": "Box",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        300,
+        6,
+        200
+      ]
+    },
+    {
+      "id": "FRONT",
+      "name": "Front wall",
+      "group": "Box",
+      "position": [
+        0,
+        6,
+        194
+      ],
+      "size": [
+        300,
+        94,
+        6
+      ]
+    },
+    {
+      "id": "BACK",
+      "name": "Back wall",
+      "group": "Box",
+      "position": [
+        0,
+        6,
+        0
+      ],
+      "size": [
+        300,
+        94,
+        6
+      ]
+    },
+    {
+      "id": "LEFT",
+      "name": "Left wall",
+      "group": "Box",
+      "position": [
+        0,
+        6,
+        6
+      ],
+      "size": [
+        6,
+        94,
+        188
+      ]
+    },
+    {
+      "id": "RIGHT",
+      "name": "Right wall",
+      "group": "Box",
+      "position": [
+        294,
+        6,
+        6
+      ],
+      "size": [
+        6,
+        94,
+        188
+      ]
+    },
+    {
+      "id": "DIV-X",
+      "name": "Long divider",
+      "group": "Dividers",
+      "position": [
+        10,
+        6,
+        97
+      ],
+      "size": [
+        280,
+        70,
+        6
+      ]
+    },
+    {
+      "id": "DIV-Z1",
+      "name": "Cross divider 1",
+      "group": "Dividers",
+      "position": [
+        97,
+        6,
+        10
+      ],
+      "size": [
+        6,
+        70,
+        180
+      ]
+    },
+    {
+      "id": "DIV-Z2",
+      "name": "Cross divider 2",
+      "group": "Dividers",
+      "position": [
+        197,
+        6,
+        10
+      ],
+      "size": [
+        6,
+        70,
+        180
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "front-base",
+      "type": "finger",
+      "board": "FRONT",
+      "into": "BASE"
+    },
+    {
+      "id": "back-base",
+      "type": "finger",
+      "board": "BACK",
+      "into": "BASE"
+    },
+    {
+      "id": "left-base",
+      "type": "finger",
+      "board": "LEFT",
+      "into": "BASE"
+    },
+    {
+      "id": "right-base",
+      "type": "finger",
+      "board": "RIGHT",
+      "into": "BASE"
+    },
+    {
+      "id": "left-back",
+      "type": "finger",
+      "board": "LEFT",
+      "into": "BACK"
+    },
+    {
+      "id": "left-front",
+      "type": "finger",
+      "board": "LEFT",
+      "into": "FRONT"
+    },
+    {
+      "id": "right-back",
+      "type": "finger",
+      "board": "RIGHT",
+      "into": "BACK"
+    },
+    {
+      "id": "right-front",
+      "type": "finger",
+      "board": "RIGHT",
+      "into": "FRONT"
+    },
+    {
+      "id": "x-z1",
+      "type": "cross_lap",
+      "board": "DIV-X",
+      "into": "DIV-Z1"
+    },
+    {
+      "id": "x-z2",
+      "type": "cross_lap",
+      "board": "DIV-X",
+      "into": "DIV-Z2"
+    },
+    {
+      "id": "x-base",
+      "type": "tab_slot",
+      "board": "DIV-X",
+      "into": "BASE"
+    },
+    {
+      "id": "z1-base",
+      "type": "tab_slot",
+      "board": "DIV-Z1",
+      "into": "BASE"
+    },
+    {
+      "id": "z2-base",
+      "type": "tab_slot",
+      "board": "DIV-Z2",
+      "into": "BASE"
     }
   ]
 }

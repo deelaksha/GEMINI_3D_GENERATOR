@@ -302,6 +302,10 @@ def _joint_text(j):
         return f"edge {j['a_edge']} of {j['a']} meets edge {j['b_edge']} of {j['b']} ({kind}, {how})"
     if j['type'] == 'hinge':
         return f"hang door {j['a']} on {j['b']} (concealed cup hinges on edge {j['a_edge']})"
+    if j['type'] == 'finger':
+        return f"interleave the corner fingers of {j['a']} and {j['b']} (box joint, no glue)"
+    if j['type'] == 'cross_lap':
+        return f"slot {j['a']} and {j['b']} together at their halving notches (cross-lap, no glue)"
     return f"{j['a']} laminated face-to-face onto {j['b']} (glue)"
 
 

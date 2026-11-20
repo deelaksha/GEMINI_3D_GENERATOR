@@ -30,7 +30,7 @@ TOL = {
     'contact': 0.25,          # mm: allowed gap/penetration at a mating surface
     'slot_position': 0.5,     # mm: slot centre vs tab footprint centre
     'slot_fit': 0.15,         # mm: allowed deviation from expected slot dimension
-    'slot_loose': 0.6,        # mm: beyond expected+this a slot is considered loose
+    'slot_loose': 0.3,        # mm: beyond expected+this a slot is considered loose (glue-free friction fit)
     'angle': 1.0,             # deg
     'parallel': 0.9995,       # |dot| of normals regarded as parallel
     'perpendicular': 0.03,    # |dot| of normals regarded as perpendicular
@@ -43,6 +43,7 @@ TOL = {
     'min_lap_area': 30.0,     # mm^2
     'sample_step': 0.5,
 }
+NEAR_MISS = 2.0               # mm: unjoined parallel faces closer than this (but not touching) are flagged
 
 
 def issue(code, severity, category, message, components=(), **extra):
@@ -253,11 +254,13 @@ def evaluate_joint(design, plates, joint, tol=TOL):
         why = ('needs cabinet hardware' if joint['type'] == 'hinge' else 'only holds with glue')
         issues.append(issue('GLUE_JOINT_NOT_ALLOWED', 'error', 'joint',
                             f"'{jid}' is a {joint['type'].replace('_', ' ')} joint, which {why}. This design "
-                            f"is glue-free (interlocking): connect '{a.id}' and '{b.id}' with a tab through a slot instead.",
+                            f"is glue-free (interlocking): connect '{a.id}' and '{b.id}' with a tab through a slot, finger "
+                            f"joint (corner) or cross-lap (crossing boards) instead.",
                             [a.id, b.id], joint=jid))
         return {'ok': False, 'issues': issues, 'matched_slot': None, 'location': None}
     fn = {'tab_slot': _eval_tab_slot, 'edge_butt': _eval_edge_butt,
-          'edge_mitre': _eval_edge_mitre, 'face_lap': _eval_face_lap, 'hinge': _eval_hinge}[joint['type']]
+          'edge_mitre': _eval_edge_mitre, 'face_lap': _eval_face_lap, 'hinge': _eval_hinge,
+          'finger': _eval_finger, 'cross_lap': _eval_cross_lap}[joint['type']]
     res = fn(design, a, b, joint, tol, issues)
     res['issues'] = issues
     res['ok'] = not any(i['severity'] == 'error' for i in issues)
@@ -351,10 +354,12 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
         issues.append(issue('TAB_NOT_FLUSH', 'warning', 'joint',
                             f"Tab '{tab['id']}' ({tab['depth']:.2f} mm) does not pass through '{b.id}' ({b.t:.2f} mm).",
                             comps, joint=jid))
-    elif tab['depth'] > b.t * 4:
+    elif not tab.get('protrude') and tab['depth'] > b.t / max(abs(dot), 1e-6) + tol['contact']:
+        need = b.t / max(abs(dot), 1e-6)     # depth that ends exactly at the far face (tilted insertion included)
         issues.append(issue('TAB_PROTRUDES', 'warning', 'joint',
-                            f"Tab '{tab['id']}' protrudes {tab['depth'] - b.t:.1f} mm beyond '{b.id}'.",
-                            comps, joint=jid))
+                            f"Tab '{tab['id']}' protrudes {tab['depth'] - need:.2f} mm beyond the far face of '{b.id}' "
+                            f"(it would stick out and stop the part sitting flat). Set its depth to {need:.2f} mm, or mark "
+                            f"the tab \"protrude\": true if it is meant to stand proud.", comps, joint=jid))
 
     # Footprint of the tab on the receiver
     # = the region the tab solid sweeps while crossing the receiver's thickness (receiver-local XY). For a
@@ -480,6 +485,197 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             f"Slot '{slot['id']}' is {s_len - exp_len:.2f} mm longer than tab '{tab['id']}'.",
                             comps, joint=jid, feature=slot['id']))
     return dict(measured, matched_slot=slot['id'], location=location)
+
+
+# ---------------------------------------------------------------------------
+# Finger (box corner) and cross-lap (egg-crate) joints: both boards are cut, nothing is added.
+# Both are measured on the line where the two boards' centre planes meet: for a corner it runs through the
+# corner prism (where the fingers interleave), for a crossing through the middle of the crossing.
+# ---------------------------------------------------------------------------
+
+def _meeting_line(a, b):
+    """(point, unit direction) of the intersection of a's and b's centre planes, or None if they are parallel."""
+    n1, n2 = a.frame.normal, b.frame.normal
+    c = G.v_cross(n1, n2)
+    cc = G.v_dot(c, c)
+    if cc < 1e-9:
+        return None
+    d1, d2 = G.v_dot(n1, a.frame.p), G.v_dot(n2, b.frame.p)
+    p = G.v_scale(G.v_add(G.v_scale(G.v_cross(n2, c), d1), G.v_scale(G.v_cross(c, n1), d2)), 1.0 / cc)
+    return p, G.v_scale(c, 1.0 / math.sqrt(cc))
+
+
+def _subtract_intervals(iv, cuts):
+    out = []
+    for lo, hi in iv:
+        segs = [(lo, hi)]
+        for c0, c1 in cuts:
+            segs = [s for x0, x1 in segs for s in ((x0, min(x1, c0)), (max(x0, c1), x1)) if s[1] - s[0] > 1e-9]
+        out.extend(segs)
+    return out
+
+
+def _line_material(plate, p, d):
+    """Intervals (mm along the unit world direction d from p) where plate has solid material on that line.
+    The line must lie in the plate (it is evaluated in the plate's 2D profile, cut-outs removed)."""
+    q = plate.frame.to_local(p)
+    v = plate.frame.dir_to_local(d)
+    iv = _edge_line_intervals(list(zip(plate.cut, plate.cut[1:] + plate.cut[:1])), q[:2], v[:2])
+    cuts = [r for _f, poly in plate.feature_polys
+            for r in _edge_line_intervals(list(zip(poly, poly[1:] + poly[:1])), q[:2], v[:2])]
+    return _subtract_intervals(iv, cuts)
+
+
+def _gap_around(iv, x):
+    """The material-free interval (g0, g1) containing x (inf where it is open to the outside)."""
+    g0, g1 = -math.inf, math.inf
+    for lo, hi in iv:
+        if lo <= x <= hi:
+            return None
+        if hi < x:
+            g0 = max(g0, hi)
+        if lo > x:
+            g1 = min(g1, lo)
+    return g0, g1
+
+
+def _perpendicular_pair(a, b, joint, kind, tol, issues):
+    if abs(G.v_dot(a.frame.normal, b.frame.normal)) > tol['perpendicular']:
+        issues.append(issue('ORIENTATION_MISMATCH', 'error', 'joint',
+                            f"A {kind} joins boards square to each other; '{a.id}' and '{b.id}' are not perpendicular.",
+                            [a.id, b.id], joint=joint['id']))
+        return None
+    return _meeting_line(a, b)
+
+
+def _check_notch(design, holder, other, p, d, centre, jid, what, tol, issues, location):
+    """Width / centring of the notch in `holder` that receives `other` (measured along d, through p)."""
+    clearance = design['material']['clearance']
+    g = _gap_around(_line_material(holder, p, d), centre)
+    if g is None:
+        return            # material through the other board: reported as a collision / overlap elsewhere
+    w = g[1] - g[0]
+    exp = other.t + clearance
+    mid = (g[0] + g[1]) / 2 - centre
+    if w < exp - tol['slot_fit']:
+        issues.append(issue('NOTCH_TOO_TIGHT', 'error', 'joint',
+                            f"The {what} notch in '{holder.id}' is {w:.2f} mm wide; '{other.id}' ({other.t:g} mm) needs "
+                            f"{exp:.2f} mm (+{clearance:g} mm clearance).", [holder.id, other.id], joint=jid,
+                            location=location, width=_r(w)))
+    elif w > exp + tol['slot_loose']:
+        issues.append(issue('NOTCH_TOO_LOOSE', 'error', 'joint',
+                            f"The {what} notch in '{holder.id}' is {w:.2f} mm wide for the {other.t:g} mm board "
+                            f"'{other.id}' — the joint would rattle.", [holder.id, other.id], joint=jid,
+                            location=location, width=_r(w)))
+    elif abs(mid) > tol['slot_position']:
+        issues.append(issue('NOTCH_MISALIGNED', 'error', 'joint',
+                            f"The {what} notch in '{holder.id}' is {abs(mid):.2f} mm off the centre of '{other.id}'.",
+                            [holder.id, other.id], joint=jid, location=location))
+
+
+def _eval_cross_lap(design, a, b, joint, tol, issues):
+    """Egg-crate halving: each board is notched halfway from opposite edges and they slot together."""
+    jid = joint['id']
+    line = _perpendicular_pair(a, b, joint, 'cross-lap', tol, issues)
+    if line is None:
+        return {'matched_slot': None, 'location': None}
+    p, c = line
+    ia, ib = _line_material(a, p, c), _line_material(b, p, c)
+    overlap = max((min(x1, y1) - max(x0, y0) for x0, x1 in ia for y0, y1 in ib), default=-math.inf)
+    meets = [(x1, y0) for x0, x1 in ia for y0, y1 in ib if abs(x1 - y0) <= tol['contact']] + \
+            [(y1, x0) for x0, x1 in ia for y0, y1 in ib if abs(y1 - x0) <= tol['contact']]
+    loc = _r(p)
+    if overlap > tol['contact']:
+        issues.append(issue('PENETRATION', 'error', 'joint',
+                            f"'{a.id}' and '{b.id}' cross without halving notches ({overlap:.2f} mm of solid overlap "
+                            f"along the crossing): each needs a notch of half the crossing height.", [a.id, b.id],
+                            joint=jid, location=loc, overlap=_r(overlap)))
+        return {'matched_slot': None, 'location': loc}
+    if not meets:
+        gaps = [abs(y0 - x1) for x0, x1 in ia for y0, y1 in ib] + [abs(x0 - y1) for x0, x1 in ia for y0, y1 in ib]
+        g = min(gaps, default=math.inf)
+        issues.append(issue('NOT_INTERLOCKED', 'error', 'joint',
+                            f"'{a.id}' and '{b.id}' do not interlock at their crossing"
+                            + (f": their notches leave a {g:.2f} mm gap." if g < math.inf else ": they do not cross."),
+                            [a.id, b.id], joint=jid, location=loc, gap=_r(g) if g < math.inf else None))
+        return {'matched_slot': None, 'location': loc}
+    meet = meets[0][0]
+    for holder, other, side in ((a, b, ib), (b, a, ia)):
+        # a few mm into the other board's half of the crossing, holder must leave a notch the other fits into
+        seg = next(((y0, y1) for y0, y1 in side if y0 - tol['contact'] <= meet <= y1 + tol['contact']), None)
+        if not seg:
+            continue
+        into = 1.0 if (seg[0] + seg[1]) / 2 > meet else -1.0
+        q = G.v_add(p, G.v_scale(c, meet + into * min(5.0, (seg[1] - seg[0]) / 2)))
+        _check_notch(design, holder, other, q, other.frame.normal, 0.0, jid, 'cross-lap', tol, issues, loc)
+    return {'matched_slot': None, 'location': loc, 'relation': 'X'}
+
+
+def cross_lap_exit(a, b):
+    """Direction in which board a slides out of its halving notch (towards b's half of the crossing), or None."""
+    line = _meeting_line(a, b)
+    if line is None:
+        return None
+    p, c = line
+    ia, ib = _line_material(a, p, c), _line_material(b, p, c)
+    for x0, x1 in ia:
+        for y0, y1 in ib:
+            if abs(x1 - y0) <= TOL['contact']:
+                return c                       # b's material lies beyond a's end: a leaves along +c
+            if abs(y1 - x0) <= TOL['contact']:
+                return G.v_scale(c, -1.0)
+    return None
+
+
+def _eval_finger(design, a, b, joint, tol, issues):
+    """Finger (box) joint at a corner: the two boards' fingers alternate along the corner and fill it."""
+    jid = joint['id']
+    line = _perpendicular_pair(a, b, joint, 'finger joint', tol, issues)
+    if line is None:
+        return {'matched_slot': None, 'location': None}
+    p, c = line
+    ia, ib = _line_material(a, p, c), _line_material(b, p, c)
+    loc = _r(p)
+    overlap = max((min(x1, y1) - max(x0, y0) for x0, x1 in ia for y0, y1 in ib), default=-math.inf)
+    if overlap > tol['contact']:
+        issues.append(issue('PENETRATION', 'error', 'joint',
+                            f"Fingers of '{a.id}' and '{b.id}' overlap by {overlap:.2f} mm at the corner.",
+                            [a.id, b.id], joint=jid, location=loc, overlap=_r(overlap)))
+        return {'matched_slot': None, 'location': loc}
+    seq = sorted([(x0, x1, 'a') for x0, x1 in ia] + [(y0, y1, 'b') for y0, y1 in ib])
+    # keep the part of the corner where both boards are present
+    lo = max(min((x[0] for x in seq if x[2] == 'a'), default=math.inf), min((x[0] for x in seq if x[2] == 'b'), default=math.inf))
+    hi = min(max((x[1] for x in seq if x[2] == 'a'), default=-math.inf), max((x[1] for x in seq if x[2] == 'b'), default=-math.inf))
+    seq = [x for x in seq if x[1] > lo - tol['contact'] and x[0] < hi + tol['contact']]
+    switches = sum(1 for u, v in zip(seq, seq[1:]) if u[2] != v[2])
+    if switches < 2:
+        issues.append(issue('NOT_INTERLOCKED', 'error', 'joint',
+                            f"'{a.id}' and '{b.id}' have no interleaving fingers at their corner: cut alternating "
+                            f"fingers along the corner (or use a tab_slot if one board sits inside the other).",
+                            [a.id, b.id], joint=jid, location=loc))
+        return {'matched_slot': None, 'location': loc}
+    clearance = design['material']['clearance']
+    worst = max((v[0] - u[1] for u, v in zip(seq, seq[1:]) if u[2] != v[2]), default=0.0)
+    if worst > clearance + tol['slot_loose']:
+        issues.append(issue('FINGER_GAP', 'error', 'joint',
+                            f"Fingers of '{a.id}' and '{b.id}' leave a {worst:.2f} mm gap along the corner (max "
+                            f"{clearance + tol['slot_loose']:.2f} mm) — the joint would rattle.", [a.id, b.id],
+                            joint=jid, location=loc, gap=_r(worst)))
+    # every finger must reach the far face of the other board (flush corner)
+    for holder, other, own in ((a, b, ia), (b, a, ib)):
+        x0, x1 = max(own, key=lambda s: s[1] - s[0])
+        q = G.v_add(p, G.v_scale(c, (x0 + x1) / 2))
+        d = other.frame.normal
+        body = 1.0 if G.v_dot(G.v_sub(holder.world_centre(), q), d) > 0 else -1.0
+        seg = next(((s0, s1) for s0, s1 in _line_material(holder, q, d) if s0 <= 0.0 <= s1), None)
+        if seg is None:
+            continue
+        reach = -seg[0] if body > 0 else seg[1]          # how far the finger goes past the meeting line
+        if abs(reach - other.t / 2) > tol['contact']:
+            issues.append(issue('FINGER_NOT_FLUSH', 'warning', 'joint',
+                                f"Fingers of '{holder.id}' end {reach - other.t / 2:+.2f} mm from the outer face of "
+                                f"'{other.id}' (they should be flush).", [holder.id, other.id], joint=jid, location=loc))
+    return {'matched_slot': None, 'location': loc, 'relation': 'L'}
 
 
 def _edge_world(plate, edge_index):
@@ -1014,6 +1210,98 @@ def _dist_point_segment3(p, a, b):
     return G.v_len(G.v_sub(p, G.v_add(a, G.v_scale(ab, t))))
 
 
+def find_near_misses(design, plates, tol=TOL, near=NEAR_MISS):
+    """Faces that almost touch where no joint was declared: an end face of one board, or a broad face, parallel to a
+    broad face of another, overlapping it, and more than the contact tolerance but at most `near` mm away. Usually a
+    measurement slip (a board meant to touch that stops short); never an error, because a gap can be intentional.
+    Hinged doors are skipped: they are moving parts and need running clearance to everything they swing past."""
+    declared = {frozenset((j['a'], j['b'])) for j in design['joints']}
+    doors = {j['a'] for j in design['joints'] if j['type'] == 'hinge'}
+    ids = sorted(plates)
+    boxes = {i: plates[i].world_aabb() for i in ids}
+    out = []
+    for x in range(len(ids)):
+        for y in range(x + 1, len(ids)):
+            p, q = plates[ids[x]], plates[ids[y]]
+            if frozenset((p.id, q.id)) in declared or p.id in doors or q.id in doors:
+                continue
+            (lo1, hi1), (lo2, hi2) = boxes[p.id], boxes[q.id]
+            if any(lo1[k] > hi2[k] + near or lo2[k] > hi1[k] + near for k in range(3)):
+                continue
+            best = None
+            for a, b in ((p, q), (q, p)):
+                hit = _end_face_near(a, b, tol, near)
+                if hit and (best is None or hit[0] < best[0]):
+                    best = hit + (a, b)
+            hit = _broad_face_near(p, q, tol, near)
+            if hit and (best is None or hit[0] < best[0]):
+                best = hit + (p, q)
+            if best:
+                gap, where, a, b = best
+                out.append(issue('NEAR_MISS_GAP', 'warning', 'assembly',
+                                 f"'{a.id}' is {gap:.2f} mm from '{b.id}' with no joint between them. If they are meant "
+                                 f"to touch, close the gap and connect them; if the gap is intentional, ignore this.",
+                                 [a.id, b.id], gap=_r(gap), location=_r(where)))
+    return out
+
+
+def _end_face_near(a, b, tol, near):
+    """Smallest near-miss gap between an end face of `a` (straight outline edge x thickness) and a broad face of `b`."""
+    nb = b.frame.normal
+    na = a.frame.normal
+    pts = a.outline
+    edges_b = list(zip(b.outline, b.outline[1:] + b.outline[:1]))
+    best = None
+    for i in range(len(pts)):
+        a0, a1 = pts[i], pts[(i + 1) % len(pts)]
+        L = math.dist(a0, a1)
+        if L < tol['min_contact_length']:
+            continue
+        ne = a.frame.dir_to_world([(a1[1] - a0[1]) / L, -(a1[0] - a0[0]) / L, 0.0])
+        dp = G.v_dot(ne, nb)
+        if abs(dp) < tol['parallel']:
+            continue
+        nal = G.v_scale(nb, 1.0 if dp > 0 else -1.0)
+        w0, w1 = a.frame.to_world([a0[0], a0[1], 0.0]), a.frame.to_world([a1[0], a1[1], 0.0])
+        face = G.v_sub(b.frame.p, G.v_scale(nal, b.t / 2))           # b's face on a's side
+        gap = min(G.v_dot(G.v_sub(face, w), nal) for w in (w0, w1))
+        if not (tol['contact'] < gap <= near) or (best and gap >= best[0]):
+            continue
+        lo, hi = 0.0, 1.0                                          # overlap of the whole end face with b
+        for off in (0.0, a.t / 2, -a.t / 2):
+            q0 = b.frame.to_local(G.v_add(w0, G.v_scale(na, off)))
+            q1 = b.frame.to_local(G.v_add(w1, G.v_scale(na, off)))
+            iv = [(max(r0, 0.0), min(r1, 1.0)) for r0, r1 in _edge_line_intervals(edges_b, q0, [q1[0] - q0[0], q1[1] - q0[1]])]
+            iv = [s for s in iv if s[1] > s[0]]
+            if not iv:
+                lo = hi = 0.0
+                break
+            r0, r1 = max(iv, key=lambda s: s[1] - s[0])
+            lo, hi = max(lo, r0), min(hi, r1)
+        if (hi - lo) * L >= tol['min_contact_length']:
+            mid = (lo + hi) / 2
+            best = (gap, [w0[k] + (w1[k] - w0[k]) * mid for k in range(3)])
+    return best
+
+
+def _broad_face_near(p, q, tol, near):
+    """Near-miss gap between two parallel broad faces (one board lying on / beside another) that overlap."""
+    na = p.frame.normal
+    if abs(G.v_dot(na, q.frame.normal)) < tol['parallel']:
+        return None
+    gap = abs(G.v_dot(G.v_sub(q.frame.p, p.frame.p), na)) - (p.t + q.t) / 2
+    if not (tol['contact'] < gap <= near):
+        return None
+    proj = [p.frame.to_local(q.frame.to_world([x, y, 0.0]))[:2] for x, y in q.outline]
+    if G.signed_area(proj) < 0:
+        proj.reverse()
+    if not G.polygons_overlap(p.outline, proj):
+        return None
+    cx = sum(v[0] for v in proj) / len(proj)
+    cy = sum(v[1] for v in proj) / len(proj)
+    return gap, p.frame.to_world([cx, cy, 0.0])
+
+
 def find_collisions(design, plates, only=None, tol=TOL):
     ids = list(plates)
     out = []
@@ -1165,6 +1453,7 @@ def validate_design(design, tol=TOL):
                                     [cid]))
 
     issues.extend(find_collisions(design, plates, tol=tol))
+    issues.extend(find_near_misses(design, plates, tol=tol))
 
     errors = sum(1 for i in issues if i['severity'] == 'error')
     warnings = sum(1 for i in issues if i['severity'] == 'warning')

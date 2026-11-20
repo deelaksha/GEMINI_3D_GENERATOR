@@ -24,7 +24,9 @@ MARK = {'type': 'object', 'required': ['id', 'kind', 'points'], 'description':
 TAB = {'type': 'object', 'required': ['id', 'edge', 'offset', 'width', 'depth'], 'properties': {
     'id': {'type': 'string'}, 'edge': {'type': 'integer', 'description': 'index into the CCW base outline'},
     'offset': {'type': 'number', 'description': 'mm from edge start to tab centre'},
-    'width': {'type': 'number'}, 'depth': {'type': 'number', 'description': 'usually the receiver thickness'}}}
+    'width': {'type': 'number'}, 'depth': {'type': 'number', 'description': 'usually the receiver thickness'},
+    'protrude': {'type': 'boolean', 'description': 'true if the tab is meant to stand proud of the receiver '
+                 '(otherwise a tab deeper than the receiver is flagged TAB_PROTRUDES)'}}}
 COMPONENT = {'type': 'object', 'required': ['id', 'outline'], 'properties': {
     'id': {'type': 'string'}, 'name': {'type': 'string'}, 'group': {'type': 'string'},
     'thickness': {'type': 'number'}, 'color': {'type': 'string'},

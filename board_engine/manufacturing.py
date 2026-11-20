@@ -608,7 +608,8 @@ def analyse_connections(design, plates, joint_results):
             else:
                 rel = 'T'
         else:
-            rel = res.get('relation') or {'face_lap': 'face', 'edge_mitre': 'mitre', 'hinge': 'hinge'}[j['type']]
+            rel = res.get('relation') or {'face_lap': 'face', 'edge_mitre': 'mitre', 'hinge': 'hinge',
+                                          'finger': 'L', 'cross_lap': 'X'}[j['type']]
         c = {'joint': j['id'], 'type': j['type'], 'a': j['a'], 'b': j['b'], 'relation': rel,
              'fasteners': (j.get('fasteners') or {}).get('kind'), 'status': j.get('status')}
         if j['type'] in ('edge_butt', 'edge_mitre') and design.get('joinery') == 'glue_allowed':
@@ -651,6 +652,17 @@ def _constraints(design, plates, contacts):
         elif j['type'] == 'face_lap':
             n = G.v_scale(a.frame.normal, 1.0 if G.v_dot(G.v_sub(a.frame.p, b.frame.p), a.frame.normal) > 0 else -1.0)
             cons.append((a.id, b.id, 'contact', n, j['id']))
+        elif j['type'] in ('finger', 'cross_lap'):
+            # A leaves B away from B's face (finger) / out of its halving notch along the crossing (cross-lap)
+            if j['type'] == 'finger':
+                n = b.frame.normal
+                away = G.v_scale(n, 1.0 if G.v_dot(G.v_sub(a.world_centre(), b.world_centre()), n) > 0 else -1.0)
+            else:
+                from .validation import cross_lap_exit
+                away = cross_lap_exit(a, b)
+                if away is None:
+                    continue
+            cons.append((a.id, b.id, 'slide', away, j['id']))
     for c in contacts:
         if c['gap'] <= TOL['contact']:
             n = c['normal']   # points from b towards a

@@ -153,10 +153,18 @@ def test_small_misplacement_has_safe_fix():
 def test_board_at_receiver_edge_needs_inset():
     bad = copy.deepcopy(EXAMPLE)
     # across the leg's thickness (x) the slot needs material of TOP on both sides; along the leg (z) tabs are inset
-    bad['boards'][1]['position'][0] = 0            # LEG-L flush with the left edge of TOP
+    bad['boards'][1]['position'][0] = 1            # LEG-L 1 mm from the left edge of TOP: too little for a slot
     res = compile_source(json.dumps(bad))
     d = next(d for d in res['diagnostics'] if d['code'] == 'SLOT_AT_EDGE')
     assert d['board'] == 'LEG-L' and str(TOL['min_edge_margin']) in d['message']
+
+
+def test_board_flush_with_receiver_edge_becomes_a_finger_joint():
+    corner = copy.deepcopy(EXAMPLE)
+    corner['boards'][1]['position'][0] = 0         # LEG-L flush with the left edge of TOP: a box corner
+    res = compile_source(json.dumps(corner))
+    assert any(d['code'] == 'CONNECTION_TYPE_CHANGED' and 'LEG-L-TOP → finger' in d['message'] for d in res['diagnostics'])
+    assert not any(d['code'] == 'SLOT_AT_EDGE' for d in res['diagnostics'])
 
 
 @pytest.mark.parametrize('mutate, code', [

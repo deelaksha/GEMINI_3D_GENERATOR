@@ -24,6 +24,7 @@ through the validation / safe-repair pipeline (slots are generated there), valid
 production package do the rest. Diagnostics carry the source line and, where possible, code-level fixes.
 """
 import copy
+import difflib
 import json
 import math
 import re
@@ -39,7 +40,22 @@ from .shapes import ShapeError, arc_sweep, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
 
 FORMAT = 'board-design/v1'
-CONNECTION_TYPES = ('tab_slot', 'butt', 'hinge', 'mitre')
+CONNECTION_TYPES = ('tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre')
+GLUE_FREE_TYPES = {'tab_slot', 'finger', 'cross_lap'}
+# Spellings external AIs commonly use; read as the canonical type with a warning (so the AI learns the real name)
+TYPE_ALIASES = {
+    'tab_slot': ('tab_and_slot', 'tabslot', 'tab', 'slot', 'slot_tab', 'interlock', 'interlocking', 'mortise',
+                 'tenon', 'mortise_tenon', 'mortise_and_tenon', 'through_tenon', 'tab_slot_joint'),
+    'finger': ('finger_joint', 'box_joint', 'box', 'comb', 'comb_joint', 'fingers', 'castellated', 'corner',
+               'corner_joint', 'dovetail'),
+    'cross_lap': ('crosslap', 'cross', 'halving', 'half_lap', 'cross_halving', 'egg_crate', 'eggcrate', 'notch',
+                  'slot_together', 'lap', 'bridle'),
+    'butt': ('butt_joint', 'screw', 'screwed', 'dowel', 'dowelled'),
+    'hinge': ('hinged', 'door_hinge'),
+    'mitre': ('miter', 'mitre_joint', 'miter_joint', 'mitred', 'mitered'),
+}
+BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_board')
+INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
 AXES = 'xyz'
 MAX_SOURCE = 1_000_000
 SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambiguous (auto-fixable)
@@ -564,8 +580,13 @@ def _tabs_for(comp, bd_a, bd_b, ct, conn, cid):
         loc = f.to_local(pt)
         off = (loc[0] - a0[0]) * d[0] + (loc[1] - a0[1]) * d[1]
         tabs.append({'id': f'{cid}-t{i + 1}', 'edge': edge, 'offset': round(off, 4), 'width': round(w, 3),
-                     'depth': round(float(depth), 3)})
+                     'depth': round(float(depth), 3), **_proud(depth, bd_b.t)})
     return tabs, None
+
+
+def _proud(depth, t_b):
+    """An explicit tab_depth beyond the receiver's thickness is intentional: mark the tab so it is not flagged."""
+    return {'protrude': True} if depth > t_b + TOL['contact'] else {}
 
 
 def _tab_layout(region, conn, t_a, t_b):
@@ -660,6 +681,12 @@ def _connect_tilted(comps, comps0, A, B, c, cid, cline, ctype, want, joints, dia
     a, b = A.id, B.id
     only = edge_facing(comps0[a], _dir(*want)) if want else None
     ct = _contact_tilted(comps[a], comps[b], A.t, B.t, only)
+    if ct is None and not want:
+        rev = _contact_tilted(comps[b], comps[a], B.t, A.t)
+        if rev is not None:            # board / into written the wrong way round
+            diags.append(diag('warning', 'CONNECTION_REVERSED', f"Connection '{cid}': '{b}' is the board whose edge sits on "
+                              f"'{a}', so \"board\" and \"into\" were swapped.", connection=cid, line=cline))
+            A, B, a, b, ct = B, A, b, a, rev
     if ct is None:
         diags.append(diag('error', 'NO_CONTACT', f"Connection '{cid}': no straight edge of '{a}' sits flat against a face of "
                           f"'{b}'. With \"rotate\", an edge of '{a}' must be parallel to a broad face of '{b}' and run over it "
@@ -691,7 +718,7 @@ def _connect_tilted(comps, comps0, A, B, c, cid, cline, ctype, want, joints, dia
         return
     w, n, pitch, depth = _tab_layout(hi - lo, c, A.t, B.t)
     tabs = [{'id': f'{cid}-t{i + 1}', 'edge': ct['edge'], 'offset': round(lo + (i + 0.5) * pitch, 4), 'width': round(w, 3),
-             'depth': round(float(depth), 3)} for i in range(n)]
+             'depth': round(float(depth), 3), **_proud(depth, B.t)} for i in range(n)]
     comps[a].setdefault('tabs', []).extend(tabs)
     for t in tabs:
         joints.append(({'id': t['id'], 'type': 'tab_slot', 'a': a, 'tab': t['id'], 'b': b}, c, cid, cline))
@@ -701,6 +728,298 @@ def _parse_dir(v):
     if isinstance(v, str) and v in DIRS:
         return AXES.index(v[1]), (1 if v[0] == '+' else -1)
     return None
+
+
+# ---------------------------------------------------------------------------
+# 4b. Forgiving connection resolution, inference and geometric classification
+# ---------------------------------------------------------------------------
+
+def _canonical_type(t):
+    k = re.sub(r'[\s\-/&]+', '_', str(t).strip().lower()).strip('_')
+    for canon, aliases in TYPE_ALIASES.items():
+        if k == canon or k in aliases:
+            return canon
+    return None
+
+
+def _resolve_board(ref, boards):
+    """-> (board id, how) where how is None (exact), 'case' or 'name'; (None, None) if unknown/ambiguous."""
+    if isinstance(ref, str) and ref in boards:
+        return ref, None
+    if not isinstance(ref, str) or not ref.strip():
+        return None, None
+    by_case = [b for b in boards if b.lower() == ref.strip().lower()]
+    if len(by_case) == 1:
+        return by_case[0], 'case'
+    by_name = [b for b, bd in boards.items() if str(bd.raw.get('name', '')).strip().lower() == ref.strip().lower()]
+    if len(by_name) == 1:
+        return by_name[0], 'name'
+    return None, None
+
+
+def _resolve_connections(conns, boards, diags, src, off):
+    """Normalise what an external AI wrote: type spellings, key names, board references, duplicates. Each kind of
+    correction is reported once (with the connections it touched) so the AI can learn the exact format."""
+    out, seen, notes = [], {}, {}
+
+    def note(kind, text):
+        notes.setdefault(kind, []).append(text)
+    for i, c in enumerate(conns):
+        p = f'connections[{i}]'
+        if not isinstance(c, dict):
+            diags.append(diag('error', 'CONNECTION_INVALID', f'{p} must be an object.', path=p))
+            continue
+        cline = _id_line(src, c['id'], off) if isinstance(c.get('id'), str) else None
+        label = c.get('id') if isinstance(c.get('id'), str) else p
+        raw_t = c.get('type', 'tab_slot')
+        t = _canonical_type(raw_t)
+        if t is None:
+            diags.append(diag('error', 'CONNECTION_TYPE', f"{label}: type {raw_t!r} is not known; use one of "
+                              f"{list(CONNECTION_TYPES)}.", path=p + '.type', connection=label, line=cline))
+            continue
+        if t != raw_t:
+            note('type', f"{label}: {raw_t!r} → \"{t}\"")
+        ka = next((k for k in BOARD_KEYS if c.get(k) is not None), None)
+        kb = next((k for k in INTO_KEYS if c.get(k) is not None), None)
+        if (ka, kb) != ('board', 'into') and ka and kb:
+            note('keys', f"{label}: \"{ka}\"/\"{kb}\"")
+        refs = [c.get(ka) if ka else None, c.get(kb) if kb else None]
+        ids = []
+        for ref in refs:
+            bid, how = _resolve_board(ref, boards)
+            if how:
+                note('ref', f"{label}: {ref!r} → \"{bid}\"")
+            ids.append(bid)
+        if None in ids:
+            bad = [r for r, x in zip(refs, ids) if x is None]
+            hints = [m for r in bad if isinstance(r, str) for m in difflib.get_close_matches(r, list(boards), 1, 0.5)]
+            what = ('"board" (the board with the tab / end face) and "into" (the receiving board)'
+                    if not (ka and kb) else f"unknown board(s) {bad}")
+            diags.append(diag('error', 'UNKNOWN_BOARD', f"Connection '{label}' needs {what}."
+                              + (f" Did you mean {', '.join(repr(h) for h in hints)}?" if hints else ''),
+                              path=p, connection=label, line=cline))
+            continue
+        key = (frozenset(ids), t)
+        if key in seen:
+            note('dup', f"{label} repeats {seen[key]}")
+            continue
+        seen[key] = label
+        out.append(dict(c, type=t, board=ids[0], into=ids[1], _i=i))
+    texts = {'type': ('CONNECTION_TYPE_NORMALISED', 'Connection types read with their exact names'),
+             'keys': ('CONNECTION_KEYS_NORMALISED', 'Connections should use "board" (tab / end-face board) and "into" '
+                      '(receiving board); read'),
+             'ref': ('BOARD_REFERENCE_NORMALISED', 'Boards should be referenced by their exact "id"; resolved'),
+             'dup': ('DUPLICATE_CONNECTION', 'Each pair of boards needs one connection; ignored duplicates')}
+    for kind, items in notes.items():
+        code, lead = texts[kind]
+        diags.append(diag('warning', code, f"{lead}: " + '; '.join(items[:8]) + (f" (+{len(items) - 8} more)" if len(items) > 8 else '') + '.',
+                          line=_key_line(src, 'connections', off)))
+    return out
+
+
+def _crossing(A, B):
+    """Two perpendicular boards that pass through each other (egg-crate). -> dict(c, c0, c1) or None."""
+    if A.rot or B.rot or A.thin == B.thin:
+        return None
+    c = 3 - A.thin - B.thin
+    eps = TOL['min_edge_margin']
+    if not (B.lo[A.thin] < A.lo[A.thin] - eps and B.hi[A.thin] > A.hi[A.thin] + eps and
+            A.lo[B.thin] < B.lo[B.thin] - eps and A.hi[B.thin] > B.hi[B.thin] + eps):
+        return None
+    c0, c1 = max(A.lo[c], B.lo[c]), min(A.hi[c], B.hi[c])
+    return {'c': c, 'c0': c0, 'c1': c1} if c1 - c0 > 2 * eps else None
+
+
+def _corner(A, B, ct):
+    """For a touching end-face contact: +1 / -1 if A is flush with B's edge on the hi / lo side (a box corner)."""
+    n = ct['n']
+    if abs(A.hi[n] - B.hi[n]) <= TOL['contact']:
+        return 1
+    if abs(A.lo[n] - B.lo[n]) <= TOL['contact']:
+        return -1
+    return 0
+
+
+def _infer_connections(boards, comps):
+    """Connections implied by the geometry: end face on a face (tab_slot, or finger at a flush corner), crossing
+    boards (cross_lap) and tilted boards resting on an edge (tab_slot)."""
+    out, ids = [], sorted(boards)
+    for x in range(len(ids)):
+        for y in range(x + 1, len(ids)):
+            P, Q = boards[ids[x]], boards[ids[y]]
+            found = None
+            if P.rot or Q.rot:
+                for A, B in ((P, Q), (Q, P)):
+                    ct = _contact_tilted(comps[A.id], comps[B.id], A.t, B.t)
+                    if ct and abs(ct['gap']) <= TOL['contact'] and ct['t1'] - ct['t0'] > 2 * A.t + TOL['min_tab_width']:
+                        found = ('tab_slot', A, B)
+                        break
+            else:
+                for A, B in ((P, Q), (Q, P)):
+                    ct = _contact(A, B)
+                    if ct and abs(ct['gap']) <= TOL['contact']:
+                        found = ('finger' if _corner(A, B, ct) else 'tab_slot', A, B)
+                        break
+                if not found and _crossing(P, Q):
+                    found = ('cross_lap', P, Q)
+            if found:
+                t, A, B = found
+                out.append({'id': f'auto-{A.id}-{B.id}', 'type': t, 'board': A.id, 'into': B.id, '_i': None, '_auto': True})
+    return out
+
+
+def _classify_connections(norm, boards, diags):
+    """Fix what the geometry makes unambiguous: reversed board/into, a tab_slot drawn at a flush corner (finger)
+    or between crossing boards (cross_lap). Every change is reported."""
+    rev, conv = [], []
+    for c in norm:
+        if c['type'] not in ('tab_slot', 'butt', 'finger') or c['board'] == c['into']:
+            continue
+        A, B = boards[c['board']], boards[c['into']]
+        if A.rot or B.rot:
+            continue
+        want = _parse_dir(c.get('edge'))
+        ct = _contact(A, B, want)
+        if ct is None and _contact(B, A) is not None and _crossing(A, B) is None:
+            c['board'], c['into'] = B.id, A.id
+            c.pop('edge', None)
+            A, B = B, A
+            ct = _contact(A, B)
+            rev.append(c.get('id') or f"connections[{c['_i']}]")
+        label = c.get('id') or f"connections[{c['_i']}]"
+        if c['type'] in ('tab_slot', 'finger') and _crossing(A, B):      # crossing boards can only be halved
+            c['type'] = 'cross_lap'
+            conv.append(f"{label} → cross_lap (the boards cross)")
+        elif c['type'] == 'tab_slot' and ct and abs(ct['gap']) <= TOL['contact'] and _corner(A, B, ct):
+            c['type'] = 'finger'
+            conv.append(f"{label} → finger (flush corner)")
+    if rev:
+        diags.append(diag('warning', 'CONNECTION_REVERSED', "\"board\" must be the board whose end face sits on the "
+                          "other's face, \"into\" the receiving board; swapped: " + ', '.join(rev[:10]) + '.'))
+    if conv:
+        diags.append(diag('warning', 'CONNECTION_TYPE_CHANGED', "The geometry needs a different glue-free joint; "
+                          "changed: " + '; '.join(conv[:10]) + '.'))
+
+
+def _face_side(bd, axis, sign):
+    """Face-coordinate side name ('u0', 'u1', 'v0', 'v1') of board `bd` at its `sign` end of world `axis`."""
+    return ('u' if bd.inplane[0] == axis else 'v') + ('1' if sign > 0 else '0')
+
+
+def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map):
+    """Finger / cross-lap: compute the edge cuts on both boards (face coordinates) and record the engine joint."""
+    a, b = c['board'], c['into']
+    label = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else f"C{(c['_i'] or 0) + 1}-{a}-{b}"
+    if c.get('_auto'):
+        label = c['id']
+    cline = _id_line(src, c['id'], off) if isinstance(c.get('id'), str) and not c.get('_auto') else None
+    source_map[label] = cline
+    A, B = boards[a], boards[b]
+    clr = mat['clearance']
+
+    def fail(code, msg):
+        diags.append(diag('error', code, f"Connection '{label}': {msg}", connection=label, board=a, line=cline or A.line))
+    if a == b:
+        return fail('SELF_CONNECTION', f"connects '{a}' to itself.")
+    for bd in (A, B):
+        if bd.rot or bd.raw.get('profile') is not None:
+            return fail('JOINT_NEEDS_PLAIN_BOARD', f"{c['type']} joints are cut into plain (rectangular, unrotated) boards; "
+                        f"'{bd.id}' has a {'rotate' if bd.rot else 'profile'}. Use tab_slot for it.")
+    if c['type'] == 'cross_lap':
+        x = _crossing(A, B)
+        if x is None:
+            return fail('NO_CROSSING', f"'{a}' and '{b}' do not cross each other. A cross_lap needs two perpendicular boards "
+                        f"that pass through each other (each extending at least {TOL['min_edge_margin']:g} mm past the other's faces).")
+        k, c0, c1 = x['c'], x['c0'], x['c1']
+        if abs(A.hi[k] - c1) <= TOL['contact'] and abs(B.lo[k] - c0) <= TOL['contact']:
+            sa, sb = 1, -1
+        elif abs(A.lo[k] - c0) <= TOL['contact'] and abs(B.hi[k] - c1) <= TOL['contact']:
+            sa, sb = -1, 1
+        else:
+            return fail('CROSS_LAP_EDGES', f"to slot together, '{a}' and '{b}' must each reach one end of their crossing along "
+                        f"{AXES[k]} ({c0:g}..{c1:g} mm) so the halving notches can open to opposite edges.")
+        half = (c1 - c0) / 2
+        for bd, other, sgn in ((A, B, sa), (B, A, sb)):
+            w = other.thin
+            cuts.setdefault(bd.id, []).append((_face_side(bd, k, sgn), other.lo[w] - clr / 2 - bd.lo[w],
+                                               other.hi[w] + clr / 2 - bd.lo[w], -half))
+        joints.append(({'id': label, 'type': 'cross_lap', 'a': a, 'b': b}, c, label, cline))
+        return
+    # finger: A's end face on B's face, A flush with one of B's edges
+    ct = _contact(A, B, _parse_dir(c.get('edge')))
+    if ct is None or abs(ct['gap']) > TOL['contact']:
+        what = (f"'{a}' stops {ct['gap']:.2f} mm short of '{b}'" if ct and ct['gap'] > 0 else
+                f"'{a}' runs {-ct['gap']:.2f} mm into '{b}'" if ct else f"no end face of '{a}' meets a face of '{b}'")
+        return fail('NO_CONTACT' if ct is None else ('CONNECTION_GAP' if ct['gap'] > 0 else 'CONNECTION_OVERLAP'),
+                    f"{what}. A finger joint is a corner where the end of '{a}' sits on '{b}' flush with its edge.")
+    side = _corner(A, B, ct)
+    if not side:
+        return fail('NOT_A_CORNER', f"'{a}' is not flush with an edge of '{b}', so this is a T-junction: use tab_slot.")
+    k, e, m, n = ct['axis'], ct['sign'], ct['m'], ct['n']
+    m0, m1 = max(A.lo[m], B.lo[m]), min(A.hi[m], B.hi[m])
+    span = m1 - m0
+    nf = c.get('fingers')
+    if not (isinstance(nf, int) and not isinstance(nf, bool) and 3 <= nf <= 41):
+        nf = max(3, int(round(span / max(3 * max(A.t, B.t), 10.0))))
+    nf = min(nf if nf % 2 else nf + 1, 41)
+    s = span / nf
+    if s < max(TOL['min_tab_width'], A.t / 2):
+        return fail('CONTACT_TOO_SHORT', f"the corner is only {span:.1f} mm long — too short for {nf} fingers.")
+    for i in range(0, nf, 2):          # A keeps the even fingers, B keeps the odd ones
+        f0, f1 = m0 + i * s, m0 + (i + 1) * s
+        cuts.setdefault(a, []).append((_face_side(A, k, e), f0 - A.lo[m], f1 - A.lo[m], B.t))
+        cuts.setdefault(b, []).append((_face_side(B, n, side), f0 - clr / 2 - B.lo[m], f1 + clr / 2 - B.lo[m], -A.t))
+    joints.append(({'id': label, 'type': 'finger', 'a': a, 'b': b}, c, label, cline))
+
+
+def _cut_outline(su, sv, cuts):
+    """Rectangle [0..su] x [0..sv] (face coordinates) with edge cuts (side, s0, s1, depth): depth > 0 adds material
+    beyond that side (fingers), depth < 0 removes it (notches). All pieces are axis-aligned rectangles, so the result
+    is computed exactly on the grid of their edges (overlapping cuts at a shared corner are handled) and traced as one
+    CCW outline. Raises ShapeError if the cuts split the board or leave a hole."""
+    adds, subs = [(0.0, su, 0.0, sv)], []
+    for side, s0, s1, d in cuts:
+        L = su if side[0] == 'u' else sv
+        hi_end = side[1] == '1'
+        lo, hi = ((L, L + d) if hi_end else (-d, 0.0)) if d > 0 else ((L + d, L) if hi_end else (0.0, -d))
+        (adds if d > 0 else subs).append((lo, hi, s0, s1) if side[0] == 'u' else (s0, s1, lo, hi))
+    xs = sorted({round(v, 6) for r in adds + subs for v in r[:2]})
+    ys = sorted({round(v, 6) for r in adds + subs for v in r[2:]})
+    inside = lambda r, x, y: r[0] < x < r[1] and r[2] < y < r[3]
+
+    def solid(i, j):
+        if not (0 <= i < len(xs) - 1 and 0 <= j < len(ys) - 1):
+            return False
+        x, y = (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2
+        return any(inside(r, x, y) for r in adds) and not any(inside(r, x, y) for r in subs)
+    nxt = {}
+    for i in range(len(xs) - 1):
+        for j in range(len(ys) - 1):
+            if not solid(i, j):
+                continue
+            for di, dj, e in ((0, -1, ((i, j), (i + 1, j))), (1, 0, ((i + 1, j), (i + 1, j + 1))),
+                              (0, 1, ((i + 1, j + 1), (i, j + 1))), (-1, 0, ((i, j + 1), (i, j)))):
+                if not solid(i + di, j + dj):
+                    nxt.setdefault(e[0], []).append(e[1])
+    loops = []
+    while nxt:
+        v0 = min(nxt)
+        loop, v = [v0], v0
+        while True:
+            w = nxt[v].pop()
+            if not nxt[v]:
+                del nxt[v]
+            if w == v0:
+                break
+            loop.append(w)
+            v = w
+        loops.append(loop)
+    if len(loops) != 1:
+        raise ShapeError('the joint cuts split the board or leave a hole in it')
+    pts = [[xs[i], ys[j]] for i, j in loops[0]]
+    out = [q for k, q in enumerate(pts)            # drop vertices in the middle of straight runs
+           if (pts[k - 1][0] - q[0]) * (pts[(k + 1) % len(pts)][1] - q[1]) != (pts[k - 1][1] - q[1]) * (pts[(k + 1) % len(pts)][0] - q[0])]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -782,29 +1101,65 @@ def _compile_v1(data, src, off, design_id, result, run_production):
         if bd.rot:
             _apply_rotate(comps[bid], bd.rot)
 
-    # Connections
-    conns = data.get('connections') or []
-    if not isinstance(conns, list):
-        diags.append(diag('error', 'CONNECTIONS_INVALID', '"connections" must be an array.', line=_key_line(src, 'connections', off)))
+    # Connections: resolve forgivingly, infer when asked, classify by geometry
+    raw_conns = data.get('connections')
+    auto = raw_conns is None or raw_conns == 'auto'
+    if not auto and not isinstance(raw_conns, list):
+        diags.append(diag('error', 'CONNECTIONS_INVALID', '"connections" must be an array (or "auto" to infer them from '
+                          'the geometry).', line=_key_line(src, 'connections', off)))
         return result
-    types = {c.get('type', 'tab_slot') for c in conns if isinstance(c, dict)} & set(CONNECTION_TYPES)
-    joinery = data.get('joinery') or ('interlocking' if types <= {'tab_slot'} else 'glue_allowed')
+    norm = [] if auto else _resolve_connections(raw_conns, boards, diags, src, off)
+    if auto or data.get('auto_connect'):
+        have = {frozenset((c['board'], c['into'])) for c in norm}
+        inferred = [c for c in _infer_connections(boards, comps) if frozenset((c['board'], c['into'])) not in have]
+        if inferred:
+            counts = {}
+            for c in inferred:
+                counts[c['type']] = counts.get(c['type'], 0) + 1
+            diags.append(diag('info', 'CONNECTIONS_INFERRED',
+                              f"{len(inferred)} connection(s) inferred from where boards touch or cross ("
+                              + ', '.join(f'{n} {t}' for t, n in sorted(counts.items())) + ')'
+                              + ('.' if not auto else '; list them under "connections" to control tabs and joint types.'),
+                              line=_key_line(src, 'connections', off)))
+        norm += inferred
+    _classify_connections(norm, boards, diags)
+    types = {c['type'] for c in norm}
+    joinery = data.get('joinery') or ('interlocking' if types <= GLUE_FREE_TYPES else 'glue_allowed')
     if joinery not in JOINERY_MODES:
         diags.append(diag('error', 'JOINERY', f'"joinery" must be one of {list(JOINERY_MODES)}.', line=_key_line(src, 'joinery', off)))
         return result
-    if joinery == 'interlocking' and not types <= {'tab_slot'}:
-        diags.append(diag('error', 'GLUE_JOINT_IN_INTERLOCKING', f"Connections of type {sorted(types - {'tab_slot'})} need glue or "
-                          f"hardware, but \"joinery\" is \"interlocking\" (glue-free). Use tab_slot or set \"joinery\": \"glue_allowed\".",
+    if joinery == 'interlocking' and not types <= GLUE_FREE_TYPES:
+        diags.append(diag('error', 'GLUE_JOINT_IN_INTERLOCKING', f"Connections of type {sorted(types - GLUE_FREE_TYPES)} need glue or "
+                          f"hardware, but \"joinery\" is \"interlocking\" (glue-free). Use tab_slot / finger / cross_lap or set "
+                          f"\"joinery\": \"glue_allowed\".",
                           line=_key_line(src, 'joinery', off),
                           fixes=[{'id': 'joinery-glue', 'title': 'Set "joinery": "glue_allowed"', 'safe': False,
                                   'edits': [{'field': 'joinery', 'value': 'glue_allowed'}]}]))
         return result
     joints, seen = [], set()
-    for i, c in enumerate(conns):
-        p = f'connections[{i}]'
-        if not isinstance(c, dict):
-            diags.append(diag('error', 'CONNECTION_INVALID', f'{p} must be an object.', path=p))
+    # Pass 1: finger and cross-lap joints cut both boards' outlines (before any tab is placed on them)
+    cuts = {}
+    for c in norm:
+        if c['type'] in ('finger', 'cross_lap'):
+            _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map)
+    for bid, bc in cuts.items():
+        bd = boards[bid]
+        su, sv = bd.size[bd.inplane[0]], bd.size[bd.inplane[1]]
+        to_local = _face_mapper(bd, comps0[bid])
+        try:
+            outline = [to_local(q) for q in _cut_outline(su, sv, bc)]
+        except ShapeError as e:
+            diags.append(diag('error', 'JOINT_CUTS_INVALID', f"Board '{bid}': {e} — check its finger / cross_lap connections.",
+                              board=bid, line=bd.line))
             continue
+        if G.signed_area(outline) < 0:
+            outline.reverse()
+        comps[bid]['outline'] = comps0[bid]['outline'] = outline
+    for c in norm:
+        if c['type'] in ('finger', 'cross_lap'):
+            continue
+        i = c['_i']
+        p = f'connections[{i}]'
         ctype = c.get('type', 'tab_slot')
         a, b = c.get('board'), c.get('into')
         cid = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else f"C{i + 1}-{a}-{b}"
@@ -861,7 +1216,8 @@ def _compile_v1(data, src, off, design_id, result, run_production):
         if ct is None:
             diags.append(diag('error', 'NO_CONTACT', f"Connection '{cid}': no end face of '{a}' meets a broad face of '{b}'. For "
                               f"{ctype}, an edge of '{a}' must sit against the flat face of '{b}' (they must overlap side-on, "
-                              f"and '{b}''s thickness axis must point at '{a}').", connection=cid, board=a, line=cline))
+                              f"and '{b}''s thickness axis must point at '{a}').", connection=cid, board=a, line=cline,
+                              fixes=_remove_fix(raw_conns, i, cid)))
             continue
         k, e, gap = ct['axis'], ct['sign'], ct['gap']
         axis_name = AXES[k]
@@ -950,10 +1306,17 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                               f"product.overall.{name} is {ov[name]:g} mm.", path=f'product.overall.{name}',
                               line=_key_line(src, name, off)))
     result['source_map'] = source_map
-    return _finish(design, result, boards, run_production)
+    return _finish(design, result, boards, run_production, raw_conns if isinstance(raw_conns, list) else None)
 
 
-def _finish(design, result, boards, run_production):
+def _remove_fix(raw_conns, i, cid):
+    if not isinstance(raw_conns, list) or i is None:
+        return None
+    return [{'id': f'remove-{cid}', 'title': f"Remove connection '{cid}' (these boards do not touch)", 'safe': False,
+             'edits': [{'field': 'connections', 'value': [x for k, x in enumerate(raw_conns) if k != i]}]}]
+
+
+def _finish(design, result, boards, run_production, raw_conns=None):
     from .views import model3d, production_package
     diags = result['diagnostics']
     report = validate_design(design)
@@ -970,6 +1333,14 @@ def _finish(design, result, boards, run_production):
             mag = math.sqrt(sum(v * v for v in sug['delta']))
             fixes = [{'id': f"move-{bd.id}", 'title': f"Move '{bd.id}' by [{', '.join(f'{v:g}' for v in sug['delta'])}] mm",
                       'safe': mag <= SAFE_MOVE, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}]
+        pair = [c for c in i.get('components', []) if c in boards]
+        if i['code'] == 'COLLISION' and raw_conns is not None and len(pair) == 2 and _crossing(boards[pair[0]], boards[pair[1]]) \
+                and not any(j['a'] in pair and j['b'] in pair for j in design['joints']):
+            # boards drawn crossing each other can only both exist with halving notches: the fix is unambiguous
+            i = dict(i, message=i['message'] + f" They cross each other: connect them with a cross_lap (egg-crate notches).")
+            fixes = [{'id': f'cross-lap-{pair[0]}-{pair[1]}', 'title': f"Add a cross_lap connection {pair[0]} × {pair[1]}",
+                      'safe': True, 'edits': [{'field': 'connections', 'value': raw_conns + [
+                          {'id': f'{pair[0]}-x-{pair[1]}', 'type': 'cross_lap', 'board': pair[0], 'into': pair[1]}]}]}]
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp,
                           line=boards[comp].line if comp in boards else None, components=i.get('components'),
                           location=i.get('location'), fixes=fixes))
