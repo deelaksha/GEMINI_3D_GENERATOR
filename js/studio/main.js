@@ -145,7 +145,8 @@ function renderStageTitle() {
 // ---------------------------------------------------------------------------
 function layoutOpts() {
   const p = S.prod;
-  if (S.step !== 'produce') return { preset: 'board-800x600', margin: 10, spacing: 8, rotation: 'orthogonal' };
+  // flat-parts view: nest on the design's own sheet (furniture from the AI canvas uses full-size boards)
+  if (S.step !== 'produce') return { margin: 10, spacing: 8, rotation: 'orthogonal' };
   const base = { margin: p.margin, spacing: p.spacing, rotation: p.rotation, kerf: p.kerf ? 1 : 0 };
   return p.preset === 'custom' ? { ...base, width: p.width, height: p.height } : { ...base, preset: p.preset };
 }

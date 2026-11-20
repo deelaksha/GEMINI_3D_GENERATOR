@@ -317,3 +317,27 @@ drawing, and uses the validated assembly plan.
 Not modelled yet: housing joints (dado / rabbet / groove), cam locks, biscuits, pocket screws, blind pockets,
 CNC tool radius in inside corners, sweep paths for the assembly planner (it reasons from contacts only),
 pre-mill allowance on edge banders.
+
+
+## 9. AI Design Canvas (`/canvas`)
+
+Design new products with any external AI (ChatGPT, Gemini, Claude) and compile the result with this generator.
+
+1. **Describe** the product (title, requirements, material, thickness, joinery).
+2. **Prompt**: `POST /api/v1/canvas/prompt` builds a self-contained prompt. It embeds the full format specification
+   (`docs/board-design-format.md`, generated from the engine's own constants: tolerances, limits, id rules, material
+   and fastener catalogues) and a complete valid example. Copy it into the AI.
+3. **Code**: paste the AI's reply into the editor (CodeMirror). Code fences, prose around the JSON, `//` / `/* */`
+   comments and trailing commas are tolerated. The source is **data only** — it is parsed as JSON and never executed.
+4. **Compile** (`POST /api/v1/canvas/compile`, read-only): `board-design/v1` boards (axis-aligned world boxes) become
+   engine components via `furniture.panel()`; each connection finds A's end face against B's broad face, places tabs
+   and runs `joining.join()` (slots generated, gaps / overlaps / margins validated); then `validate_design()`, the
+   3D model, nesting, cut paths, cut list and manufacturing summary. Diagnostics carry the board id, the source line
+   and code-level **fixes**: *safe* ones (placement off by ≤ 2 mm) can be auto-applied; dimension changes are
+   confirmed by the user. The envelope is `{"ok": true, "compiled": bool, ...}`.
+5. **Preview / edit**: the studio's 3D and 2D engines render the result; selecting a board highlights its JSON and
+   putting the cursor in a board selects it in 3D; position / size edits are written back into the code.
+6. **Save** (`POST /api/v1/canvas/save`) always creates a **new project** (the code is stored in `design.source`);
+   updating is only allowed for a project that was itself created by the canvas. **Import** (`POST
+   /api/v1/canvas/import`) adds selected boards and their connections to an existing project through the normal
+   validated operations (clashing ids get an `AI-` prefix). Native engine JSON (`components` / `joints`) is also accepted.

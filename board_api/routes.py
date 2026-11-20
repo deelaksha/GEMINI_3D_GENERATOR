@@ -505,3 +505,133 @@ def export_file(did, fmt):
     disp = 'inline' if request.args.get('inline') in ('1', 'true') else 'attachment'
     resp.headers['Content-Disposition'] = f'{disp}; filename="{name}"'
     return resp
+
+
+# ---------------------------------------------------------------------------
+# AI Design Canvas: project-aware prompt -> external AI -> paste JSON -> compile / save / import
+# ---------------------------------------------------------------------------
+
+def _canvas_slug(name):
+    import re
+    import secrets
+    base = re.sub(r'[^a-z0-9]+', '-', (name or 'ai-design').lower()).strip('-')[:40] or 'ai-design'
+    return f'{base}-{secrets.token_hex(2)}'
+
+
+@bp.get('/canvas/spec')
+def canvas_spec():
+    from board_engine.canvas import CONNECTION_TYPES, FORMAT, pretty_json
+    from board_engine.canvas_prompt import EXAMPLE, spec_markdown
+    from board_engine.manufacturing import MATERIALS
+    # example_source keeps the authored key order (jsonify sorts object keys)
+    return jsonify({'ok': True, 'format': FORMAT, 'markdown': spec_markdown(), 'example': EXAMPLE,
+                    'example_source': pretty_json(EXAMPLE),
+                    'connection_types': list(CONNECTION_TYPES),
+                    'materials': {k: {'thicknesses': v['thicknesses'], 'kerf': v['kerf']} for k, v in MATERIALS.items()}})
+
+
+@bp.post('/canvas/prompt')
+@require('viewer')
+def canvas_prompt():
+    from board_engine.canvas_prompt import build_prompt
+    data = body()
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip():
+        raise SchemaError('title is required', 'title')
+    th = data.get('thickness')
+    if th not in (None, '') and (isinstance(th, bool) or not isinstance(th, (int, float)) or not 0.5 <= th <= 50):
+        raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
+    return jsonify({'ok': True, 'prompt': build_prompt(title[:200], str(data.get('requirements') or '')[:4000],
+                                                        data.get('material') or None, th or None,
+                                                        data.get('joinery') or None)})
+
+
+@bp.post('/canvas/compile')
+@require('viewer')
+def canvas_compile():
+    from board_engine.canvas import compile_source
+    data = body()
+    res = compile_source(data.get('source'), run_production=bool(data.get('production', True)))
+    if not data.get('include_design'):
+        res.pop('design', None)
+    # envelope 'ok' = the request worked; 'compiled' = the design compiled without errors
+    return jsonify(dict(res, ok=True, compiled=res['ok']))
+
+
+@bp.post('/canvas/fix')
+@require('viewer')
+def canvas_fix():
+    from board_engine.canvas import CompileError, apply_code_fix
+    data = body()
+    fix = data.get('fix')
+    if not isinstance(fix, dict) or not isinstance(fix.get('edits'), list):
+        raise SchemaError('fix with edits is required', 'fix')
+    try:
+        return jsonify({'ok': True, 'source': apply_code_fix(data.get('source'), fix)})
+    except (CompileError, KeyError) as e:
+        return fail(422, 'fix_not_applicable', f'the fix no longer matches the code: {e}')
+
+
+@bp.post('/canvas/save')
+@require('editor')
+def canvas_save():
+    """Save the compiled design as a NEW project. Updating is only allowed for a design created by the canvas."""
+    from board_engine.canvas import compile_source
+    data = body()
+    src = data.get('source')
+    res = compile_source(src, run_production=False)
+    if res.get('design') is None:
+        return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
+    design = res['design']
+    if data.get('name'):
+        design['name'] = str(data['name'])[:200]
+    design['source'] = {'format': res['format'], 'code': src}
+    target = data.get('design_id')
+    if target:
+        check_id(target, 'design_id')
+        existing = store().get(target)
+        if not existing.get('source'):
+            return fail(409, 'not_a_canvas_design',
+                        f"'{target}' was not created by the AI Design Canvas; save as a new project instead")
+        design['id'] = target
+        saved = store().create(design, actor=g.principal['id'], overwrite=True)
+    else:
+        design['id'] = _canvas_slug(design['name'])
+        saved = store().create(design, actor=g.principal['id'])
+    return jsonify({'ok': True, 'design_id': saved['id'], 'revision': saved['revision'],
+                    'summary': res['summary'], 'diagnostics': res['diagnostics']}), 201
+
+
+@bp.post('/canvas/import')
+@require('editor')
+def canvas_import():
+    """Import selected boards (and the connections among them) into an existing design via validated operations."""
+    from board_engine.canvas import compile_source
+    data = body()
+    target = check_id(data.get('target'), 'target')
+    res = compile_source(data.get('source'), run_production=False)
+    if res.get('design') is None:
+        return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
+    src_design = res['design']
+    wanted = data.get('boards') or [c['id'] for c in src_design['components']]
+    if not isinstance(wanted, list):
+        raise SchemaError('boards must be a list of board ids', 'boards')
+    wanted = set(wanted)
+    existing = {c['id'] for c in store().get(target)['components']}
+    rename = {cid: (f'AI-{cid}' if cid in existing else cid) for cid in wanted}
+    keep_joints = [j for j in src_design['joints'] if j.get('status') == 'joined' and j['a'] in wanted and j['b'] in wanted]
+    ops = []
+    for c in src_design['components']:
+        if c['id'] not in wanted:
+            continue
+        # keep the board's own openings / holes; slots are regenerated by the joins below
+        c = dict(c, id=rename[c['id']], features=[f for f in c.get('features', []) if f.get('generated_by') is None])
+        ops.append({'op': 'add_component', 'component': c})
+    for j in keep_joints:
+        spec = {k: v for k, v in j.items() if k not in ('status', 'repairs', 'joined_at', 'slot')}
+        spec.update(a=rename[j['a']], b=rename[j['b']], id=f"AI-{j['id']}")
+        ops.append({'op': 'join', 'joint': spec, 'auto_repair': True})
+    if not ops:
+        raise SchemaError('no boards selected', 'boards')
+    return mutate(target, lambda d: apply_batch(d, ops), 'canvas_import',
+                  detail={'boards': sorted(rename.values()), 'joints': len(keep_joints)})

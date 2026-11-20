@@ -47,6 +47,12 @@ export const Api = {
   autoFix: (id) => request('POST', `/designs/${enc(id)}/fixes/auto`, {}),
   rebuildBoat: (id) => request('POST', '/designs/examples/boat', { id, overwrite: true }),
   storage: () => request('GET', '/storage'),
+  canvasSpec: () => request('GET', '/canvas/spec'),
+  canvasPrompt: (opts) => request('POST', '/canvas/prompt', opts),
+  canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }),
+  canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
+  canvasSave: (source, name, designId) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined }),
+  canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),
   createBoat: (id, name, params) => request('POST', '/designs/examples/boat', { id, params }).then(async (r) => {
     if (name) await request('PATCH', `/designs/${enc(id)}`, { name });
     return r;

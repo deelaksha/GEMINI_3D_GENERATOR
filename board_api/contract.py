@@ -98,6 +98,9 @@ TOOLS = [
     _tool('auto_fix', 'Apply every safely fixable correction repeatedly until none remain; returns steps and '
                       'what still needs a decision.', 'POST', '/api/v1/designs/{design_id}/fixes/auto',
           dict(_D, max_steps={'type': 'integer'}), ['design_id']),
+    _tool('compile_board_design', 'Compile a board-design/v1 JSON document (see GET /api/v1/canvas/spec) without saving: '
+                                  'returns diagnostics with board ids, line numbers and code fixes, the 3D model and cut sheets.',
+          'POST', '/api/v1/canvas/compile', {'source': {'type': 'string'}}, ['source']),
     _tool('get_layout2d', 'Nest parts on sheets and return cutting paths + material statistics.', 'GET',
           '/api/v1/designs/{design_id}/layout2d', dict(_D, preset={'type': 'string'}), ['design_id']),
     _tool('get_manufacturing', 'Can it be made and assembled? Fastener layout and drilling, fastener collisions, '
@@ -147,6 +150,8 @@ CONTRACT = {
         'POST /api/v1/designs/{id}/components/{cid}/tabs', 'DELETE /api/v1/designs/{id}/components/{cid}/tabs/{tid}',
         'GET  /api/v1/designs/{id}/joints', 'POST /api/v1/designs/{id}/joints', 'POST /api/v1/designs/{id}/joints/check',
         'DELETE /api/v1/designs/{id}/joints/{jid}',
+        'GET  /api/v1/canvas/spec', 'POST /api/v1/canvas/prompt', 'POST /api/v1/canvas/compile',
+        'POST /api/v1/canvas/fix', 'POST /api/v1/canvas/save', 'POST /api/v1/canvas/import',
         'GET  /api/v1/designs/{id}/fixes', 'POST /api/v1/designs/{id}/fixes/apply', 'POST /api/v1/designs/{id}/fixes/auto',
         'GET  /api/v1/designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1',
         'GET  /api/v1/designs/{id}/export/pdf|svg|dxf?sheet=1&preset=A3&paper=A4&kerf=1&force=0',

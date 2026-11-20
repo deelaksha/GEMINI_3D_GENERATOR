@@ -203,7 +203,7 @@ export class Viewport3D {
     this.ground.scale.set(r * 8, r * 8, 1);
     this.ground.position.set(b.center[0], floor, b.center[2]);
     if (this.grid) this.scene.remove(this.grid);
-    const step = 10, n = Math.ceil((r * 3) / step / 2) * 2;
+    const step = r > 1500 ? 100 : r > 500 ? 50 : 10, n = Math.ceil((r * 3) / step / 2) * 2;   // keep the grid readable at furniture scale
     this.grid = new THREE.GridHelper(n * step, n, 0x56606e, 0x2e3540);
     this.grid.material.transparent = true;
     this.grid.material.opacity = 0.35;

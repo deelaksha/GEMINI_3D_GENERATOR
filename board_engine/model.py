@@ -298,6 +298,16 @@ def normalize_joint(j, path='joint'):
     return out
 
 
+def _source(v):
+    """Optional AI Design Canvas source ({format, code}) kept with a design so it can be reopened in the editor."""
+    if not isinstance(v, dict) or not v.get('format'):
+        return {}
+    code = v.get('code')
+    if code is not None and (not isinstance(code, str) or len(code) > 1_000_000):
+        raise SchemaError('source.code must be a string of at most 1,000,000 characters', 'source.code')
+    return {'source': {'format': _text(v['format'], 'source.format', 40), 'code': code}}
+
+
 def _joinery(v):
     v = v or 'interlocking'
     if v not in JOINERY_MODES:
@@ -345,6 +355,7 @@ def normalize_design(d):
         'components': comps,
         'joints': [normalize_joint(j, f'joints[{i}]') for i, j in enumerate(joints_in)],
         'joinery': _joinery(d.get('joinery')),
+        **_source(d.get('source')),
         'created': d.get('created'),
         'updated': d.get('updated'),
     }

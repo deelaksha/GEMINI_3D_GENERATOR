@@ -106,6 +106,18 @@ def page_studio():
     return response
 
 
+@app.route('/canvas')
+@app.route('/canvas.html')
+def page_canvas():
+    """AI Design Canvas: project-aware prompt -> external AI -> paste JSON -> compile with the existing generator."""
+    response = send_from_directory(BASE_DIR, 'canvas.html', mimetype='text/html')
+    ring = app.config['BOARD_KEYRING']
+    if not ring.session_valid(request.cookies.get(SESSION_COOKIE, '')):
+        response.set_cookie(SESSION_COOKIE, ring.new_session(), max_age=SESSION_TTL, httponly=True,
+                            samesite='Strict', secure=request.is_secure)
+    return response
+
+
 @app.route('/docs/<path:filename>')
 def serve_docs(filename):
     return send_from_directory(BASE_DIR / 'docs', filename, mimetype='text/plain; charset=utf-8')

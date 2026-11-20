@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AI Design Canvas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="css/studio.css" />
+  <link rel="stylesheet" href="css/canvas.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+</head>
+<body class="canvas-page" data-pane="code">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m15 4 5 5L9 20l-5-5zM14 3l1-1M20 9l1-1"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-format" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <a class="icon-btn" href="/" title="Back to Board Studio" aria-label="Back to Board Studio"><svg><use href="#i-back"/></svg></a>
+    <div class="brand"><span class="brand-mark"></span><span class="brand-name">AI Design Canvas</span></div>
+    <nav class="steps canvas-steps" aria-label="Canvas steps">
+      <button data-pane="describe"><span class="num">1</span>Describe</button>
+      <button data-pane="prompt"><span class="num">2</span>Prompt</button>
+      <button data-pane="code" class="on"><span class="num">3</span>Code</button>
+      <button data-pane="preview"><span class="num">4</span>Preview</button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="status-pill" id="compile-status"><span class="dot"></span><span class="txt">Not compiled</span></span>
+    <button class="btn" id="btn-save" disabled title="Save as a new project (never overwrites existing projects)">Save as project</button>
+  </header>
+
+  <main class="canvas-grid">
+    <!-- 1 + 2: describe and prompt -->
+    <aside class="cv-col cv-left">
+      <section class="cv-pane" data-pane-id="describe">
+        <div class="cv-head"><span class="cv-step">1</span><div><h2>Describe the product</h2><p>What should the AI design?</p></div></div>
+        <div class="cv-body form">
+          <label class="full">Product title
+            <input class="input" id="in-title" list="title-examples" placeholder="e.g. Modern Wooden Study Table" maxlength="200" />
+            <datalist id="title-examples">
+              <option>Modern Wooden Study Table</option><option>Three-Door Wardrobe</option><option>Modular Kitchen Cabinet</option>
+              <option>Floating Bookshelf</option><option>L-Shaped Computer Desk</option><option>Wooden Bed Frame</option>
+              <option>Multi-Level Storage Rack</option>
+            </datalist>
+          </label>
+          <label class="full">Requirements
+            <textarea class="input textarea" id="in-req" rows="6" placeholder="Overall dimensions, number of shelves, style, special joining needs…
+e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole in the left leg."></textarea>
+          </label>
+          <label>Material<select class="input" id="in-material"></select></label>
+          <label>Board thickness<select class="input" id="in-thickness"></select></label>
+          <label class="full">Joining
+            <select class="input" id="in-joinery">
+              <option value="interlocking">Glue-free · tab &amp; slot only</option>
+              <option value="glue_allowed">Screws, dowels, hinges allowed</option>
+            </select>
+          </label>
+          <button class="btn primary full" id="btn-gen-prompt">Generate AI prompt</button>
+        </div>
+      </section>
+      <section class="cv-pane" data-pane-id="prompt">
+        <div class="cv-head"><span class="cv-step">2</span><div><h2>Prompt for the AI</h2><p>Paste into ChatGPT, Gemini or Claude</p></div>
+          <button class="btn small primary" id="btn-copy-prompt" disabled><svg><use href="#i-copy"/></svg>Copy</button></div>
+        <div class="cv-body cv-prompt-body">
+          <textarea class="input textarea mono" id="out-prompt" readonly placeholder="Fill in step 1 and click “Generate AI prompt”. The prompt contains this project’s exact design format, coordinate system, joining rules and tolerances, so any AI can produce code this website compiles."></textarea>
+          <p class="hint" id="prompt-meta">Then paste the AI’s JSON reply into the editor and click <b>Compile</b>.</p>
+        </div>
+      </section>
+    </aside>
+
+    <!-- 3: code editor -->
+    <section class="cv-col cv-center cv-pane" data-pane-id="code">
+      <div class="cv-toolbar">
+        <div class="cv-tb-group">
+          <select class="input small" id="sel-example" title="Load an example design">
+            <option value="">Load example…</option><option value="spec">Study table (from the prompt)</option>
+          </select>
+          <button class="tool" id="btn-format" title="Format code (Shift+Alt+F)"><svg><use href="#i-format"/></svg><span>Format</span></button>
+          <button class="tool" id="btn-undo" title="Undo (Ctrl+Z)"><svg><use href="#i-undo"/></svg></button>
+          <button class="tool" id="btn-redo" title="Redo (Ctrl+Y)"><svg><use href="#i-redo"/></svg></button>
+          <button class="tool" id="btn-copy-code" title="Copy code"><svg><use href="#i-copy"/></svg></button>
+          <button class="tool" id="btn-export" title="Download as .json"><svg><use href="#i-download"/></svg></button>
+          <button class="tool" id="btn-reset" title="Back to the last compiled code">Reset</button>
+          <button class="tool" id="btn-clear" title="Clear the editor">Clear</button>
+        </div>
+        <span class="spacer"></span>
+        <label class="check small" title="Recompile automatically while you type"><input type="checkbox" id="chk-live" /> Live preview</label>
+        <button class="btn primary" id="btn-compile" title="Compile (Ctrl+Enter)"><svg><use href="#i-play"/></svg>Compile</button>
+      </div>
+      <div class="cv-editor" id="editor"></div>
+      <div class="cv-diag">
+        <div class="cv-diag-head">
+          <span id="diag-title">Problems</span><span class="badge" id="diag-count">0</span>
+          <span class="spacer"></span>
+          <button class="btn small" id="btn-autofix" disabled title="Apply only corrections that cannot change the intended design"><svg><use href="#i-wand"/></svg>Auto-fix safe issues</button>
+        </div>
+        <div class="cv-diag-list" id="diag-list"><div class="empty">Paste the AI’s code above and click Compile.</div></div>
+      </div>
+    </section>
+
+    <!-- 4: preview -->
+    <section class="cv-col cv-right cv-pane" data-pane-id="preview">
+      <div class="cv-toolbar">
+        <div class="seg" id="pv-seg">
+          <button data-pv="3d" class="on">3D</button><button data-pv="2d">Cut sheets</button><button data-pv="board">Board</button>
+        </div>
+        <span class="spacer"></span>
+        <span class="muted small" id="pv-summary"></span>
+      </div>
+      <div class="cv-preview">
+        <div class="view view-3d pv" data-pv-id="3d">
+          <div class="view-tools">
+            <div class="seg tiny"><button data-cam="iso">Iso</button><button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="top">Top</button></div>
+            <button class="tool" id="btn-fit-3d" title="Fit"><svg><use href="#i-fit"/></svg></button>
+          </div>
+          <div id="canvas3d"></div>
+          <div class="explode-ctl"><span>Explode</span><input type="range" id="explode" min="0" max="100" value="0" aria-label="Explode" /></div>
+          <div class="empty-note" id="pv-empty">Compile to see the product in 3D.</div>
+          <div class="tooltip" id="tip-3d"></div>
+        </div>
+        <div class="view view-2d pv" data-pv-id="2d" hidden>
+          <div class="view-tools"><button class="tool" id="btn-fit-2d"><svg><use href="#i-fit"/></svg></button></div>
+          <svg id="svg2d" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="legend"><span><i class="swatch" style="background:var(--cut)"></i>Outer cut</span><span><i class="swatch" style="background:var(--slot)"></i>Slot</span><span><i class="swatch" style="background:var(--opening)"></i>Opening</span><span><i class="swatch" style="background:var(--hole)"></i>Hole</span></div>
+          <div class="scalebar" id="scalebar-2d"></div>
+          <div class="tooltip" id="tip-2d"></div>
+        </div>
+        <div class="pv cv-board" data-pv-id="board" hidden id="board-panel"><div class="empty">Click a board in 3D (or put the cursor inside its definition) to inspect it.</div></div>
+      </div>
+      <div class="cv-actions" id="cv-actions">
+        <button class="btn" id="btn-open-studio" disabled>Open in Studio</button>
+        <button class="btn" id="btn-update" hidden>Update saved project</button>
+        <button class="btn" id="btn-import" disabled title="Add selected boards to an existing project">Import into project…</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar canvas-tabbar" aria-label="Canvas steps">
+    <button data-pane="describe">1 Describe</button><button data-pane="prompt">2 Prompt</button>
+    <button data-pane="code" class="on">3 Code</button><button data-pane="preview">4 Preview</button>
+  </nav>
+
+  <dialog id="dlg-fix" class="dialog"><div class="dlg-head"><h3 id="fix-title">Apply correction?</h3>
+    <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="dlg-body" id="fix-body"></div></dialog>
+  <dialog id="dlg-import" class="dialog"><div class="dlg-head"><h3>Import boards into a project</h3>
+    <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="dlg-body" id="import-body"></div></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="js/canvas/main.js"></script>
+</body>
+</html>
