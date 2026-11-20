@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import tempfile
 import mimetypes
 from pathlib import Path
 from flask import Flask, send_from_directory, jsonify, render_template_string, request
@@ -24,7 +25,26 @@ app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # bounded API payloads
 
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'), format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 
-INSTANCE_DIR = Path(os.environ.get('BOARD_INSTANCE_DIR', BASE_DIR / 'instance'))
+def _writable_instance_dir():
+    """BOARD_INSTANCE_DIR, else ./instance, else the system temp dir (read-only hosts such as Vercel)."""
+    if os.environ.get('BOARD_INSTANCE_DIR'):
+        return Path(os.environ['BOARD_INSTANCE_DIR'])
+    for candidate in (BASE_DIR / 'instance', Path(tempfile.gettempdir()) / 'board-instance'):
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / '.write-test'
+            probe.write_text('ok')
+            probe.unlink()
+            if candidate != BASE_DIR / 'instance':
+                logging.getLogger('board_api').warning(
+                    'Project directory is read-only; using %s (data is per-instance and not persistent)', candidate)
+            return candidate
+        except OSError:
+            continue
+    raise RuntimeError('no writable directory for design storage; set BOARD_INSTANCE_DIR')
+
+
+INSTANCE_DIR = _writable_instance_dir()
 app.config['BOARD_STORE'] = DesignStore(INSTANCE_DIR / 'designs')
 app.config['BOARD_KEYRING'] = KeyRing(str(INSTANCE_DIR))
 app.config['BOARD_RATE_LIMIT'] = int(os.environ.get('BOARD_RATE_LIMIT', 600))
@@ -43,7 +63,10 @@ def seed_example_designs():
 
 
 if os.environ.get('BOARD_SKIP_SEED') != '1':
-    seed_example_designs()
+    try:
+        seed_example_designs()
+    except Exception:  # a failed seed must never take the whole site down
+        logging.getLogger('board_api').exception('could not seed example designs')
 
 
 @app.after_request

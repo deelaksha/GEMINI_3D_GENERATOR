@@ -16,6 +16,8 @@ Roles (cumulative): viewer < editor < admin
   admin : + delete designs
 """
 import functools
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -32,10 +34,38 @@ SESSION_COOKIE = 'board_session'
 SESSION_TTL = 12 * 3600
 
 
+def _session_secret(instance_dir):
+    """HMAC secret for stateless session tokens, identical on every server instance.
+
+    BOARD_SECRET should be set in production. Without it, serverless hosts (Vercel) fall back to a
+    value derived from the deployment's own environment so all instances agree; locally a random
+    secret is kept in the instance directory.
+    """
+    if os.environ.get('BOARD_SECRET'):
+        return os.environ['BOARD_SECRET'].encode()
+    stable = [os.environ.get(k, '') for k in ('VERCEL_PROJECT_ID', 'VERCEL_URL', 'VERCEL_GIT_COMMIT_SHA', 'VERCEL_ENV')]
+    if any(stable):
+        log.warning('BOARD_SECRET is not set; deriving the session secret from the deployment environment')
+        return hashlib.sha256(('board-session:' + '|'.join(stable)).encode()).digest()
+    path = os.path.join(instance_dir, 'session_secret')
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        secret = secrets.token_bytes(32)
+        try:
+            with open(path, 'wb') as f:
+                f.write(secret)
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return secret
+
+
 class KeyRing:
     def __init__(self, instance_dir):
         self.keys = {}
-        self.sessions = {}
+        self._secret = _session_secret(instance_dir)
         self._lock = threading.Lock()
         self._hits = {}
         env = os.environ.get('BOARD_API_KEYS', '').strip()
@@ -52,25 +82,31 @@ class KeyRing:
                         self.keys[k['key']] = {'role': k['role'], 'name': k.get('name', 'key')}
         else:
             key = 'bsk_' + secrets.token_urlsafe(24)
-            os.makedirs(instance_dir, exist_ok=True)
-            with open(path, 'w') as f:
-                json.dump({'keys': [{'key': key, 'role': 'editor', 'name': 'default-agent'}]}, f, indent=1)
-            os.chmod(path, 0o600)
             self.keys[key] = {'role': 'editor', 'name': 'default-agent'}
-            log.warning('Generated API key for AI agents (editor): %s  (stored in %s)', key, path)
+            try:
+                os.makedirs(instance_dir, exist_ok=True)
+                with open(path, 'w') as f:
+                    json.dump({'keys': [{'key': key, 'role': 'editor', 'name': 'default-agent'}]}, f, indent=1)
+                os.chmod(path, 0o600)
+                log.warning('Generated API key for AI agents (editor): %s  (stored in %s)', key, path)
+            except OSError:
+                log.warning('Generated a temporary API key (instance dir not writable); set BOARD_API_KEYS for agents')
         self.generated_path = path
 
+    # Stateless signed sessions: "<expiry>.<nonce>.<hmac>" — valid on any instance sharing the secret
+    def _sign(self, payload):
+        return hmac.new(self._secret, payload.encode(), hashlib.sha256).hexdigest()
+
     def new_session(self):
-        token = secrets.token_urlsafe(32)
-        with self._lock:
-            now = time.time()
-            self.sessions = {k: v for k, v in self.sessions.items() if v > now}
-            self.sessions[token] = now + SESSION_TTL
-        return token
+        payload = f'{int(time.time() + SESSION_TTL)}.{secrets.token_urlsafe(16)}'
+        return f'{payload}.{self._sign(payload)}'
 
     def session_valid(self, token):
-        exp = self.sessions.get(token)
-        return bool(exp and exp > time.time())
+        try:
+            exp, nonce, sig = (token or '').split('.')
+            return hmac.compare_digest(sig, self._sign(f'{exp}.{nonce}')) and int(exp) > time.time()
+        except ValueError:
+            return False
 
     def rate_ok(self, principal, limit, window=60.0):
         now = time.time()
@@ -101,7 +137,7 @@ def identify():
     if token and ring.session_valid(token):
         if request.headers.get('X-Board-Client') != 'studio':
             return None, 'cookie-authenticated requests must send X-Board-Client: studio'
-        return {'kind': 'session', 'name': 'studio', 'role': 'editor', 'id': 'session:' + token[:8]}, None
+        return {'kind': 'session', 'name': 'studio', 'role': 'editor', 'id': 'session:' + token.split('.')[1][:8]}, None
     return None, 'authentication required (Bearer API key or studio session)'
 
 

@@ -35,6 +35,15 @@ node tests/joint_fit_suite.mjs              # legacy JS validator suite
 On first start the server seeds the example boat (built through the join pipeline) and, if no
 keys are configured, generates an editor API key in `instance/api_keys.json` (printed to the log).
 
+**Serverless / read-only hosts (Vercel):** if the project directory is not writable, data goes to the
+system temp dir (`/tmp/board-instance`) — per instance and lost on cold start, so edits are not
+durable there (a database-backed store is needed for that). Set these environment variables:
+
+| Variable | Why |
+|---|---|
+| `BOARD_SECRET` | signs studio session cookies so every instance accepts them (a deployment-derived fallback is used if unset) |
+| `BOARD_API_KEYS` | `key:role,...` for AI agents — a generated key would differ per instance and is not retrievable |
+
 ## 2. Coordinate system (single convention everywhere)
 
 | Item | Convention |
