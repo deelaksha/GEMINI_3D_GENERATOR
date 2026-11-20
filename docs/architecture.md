@@ -1,5 +1,9 @@
 # PuzzleCore Architecture & Technical Overview
 
+> The board-design platform (Board Studio at `/`, authoritative Python geometry/validation engine,
+> AI-agent REST API at `/api/v1`, nesting and production booklet) is documented in
+> [board-api.md](board-api.md). This file describes the legacy JS workbench (now at `/assembly`).
+
 ## 1. System Vision & Paradigm Shift
 
 PuzzleCore has transitioned from a static file-bound CAD viewer into a **Dynamic, Data-Driven 3D Physical Construction Platform**. 

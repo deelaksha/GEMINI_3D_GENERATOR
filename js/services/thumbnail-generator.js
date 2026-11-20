@@ -197,8 +197,8 @@ class ThumbnailGeneratorService {
       group.add(wireframe);
     } catch (e) {}
 
-    const pos = Array.isArray(part.assembledPos) ? part.assembledPos : [0, 0, 0];
-    const rot = Array.isArray(part.assembledRot) ? part.assembledRot : [0, 0, 0];
+    const pos = part.getAssembledPos ? part.getAssembledPos(3.0) : (Array.isArray(part.assembledPos) ? part.assembledPos : [0, 0, 0]);
+    const rot = part.getAssembledRot ? part.getAssembledRot(3.0) : (Array.isArray(part.assembledRot) ? part.assembledRot : [0, 0, 0]);
     group.position.set(...pos);
     group.rotation.set(...rot);
 

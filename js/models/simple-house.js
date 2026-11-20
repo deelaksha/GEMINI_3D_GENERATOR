@@ -287,7 +287,7 @@ export const SimpleHouseModelData = {
       sheet: 1,
       fileSizeKB: '1.5 KB',
       assembledPos: (t = 3.0) => [-20 - (t / 2) * 0.6586, 67.5 + t / 2 + (t / 2) * 0.7525, 0],
-      assembledRot: [-Math.PI / 2, 0, Math.PI / 4.37],
+      assembledRot: [-Math.PI / 2, -Math.PI / 4.37, 0], // THREE Euler XYZ: lay flat, then pitch the slope
       explodeVec: [-35, 35, 0],
       generate2D: (t, kerf, clr) => ({
         outline: [[-28, -45], [28, -45], [28, 45], [-28, 45]],
@@ -312,7 +312,7 @@ export const SimpleHouseModelData = {
       sheet: 1,
       fileSizeKB: '1.6 KB',
       assembledPos: (t = 3.0) => [20 + (t / 2) * 0.6586, 67.5 + t / 2 + (t / 2) * 0.7525, 0],
-      assembledRot: [-Math.PI / 2, 0, -Math.PI / 4.37],
+      assembledRot: [-Math.PI / 2, Math.PI / 4.37, 0], // THREE Euler XYZ: lay flat, then pitch the slope
       explodeVec: [35, 35, 0],
       generate2D: (t, kerf, clr) => ({
         outline: [[-28, -45], [28, -45], [28, 45], [-28, 45]],

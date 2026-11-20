@@ -36,17 +36,19 @@ export const ConnectorStandards = {
 
   /**
    * Transforms a 3D vector by Euler XYZ radians. Standalone math (no Three.js dependency needed).
+   * Matches THREE.Euler order 'XYZ' (matrix R = Rx * Ry * Rz, so Rz is applied to the vector first),
+   * which is how Engine3D renders part.assembledRot.
    */
   rotateVector(vec, eulerRot) {
     if (!eulerRot || eulerRot.length < 3) return [...vec];
     const [rx, ry, rz] = eulerRot;
     const [x, y, z] = vec;
 
-    // Rx
-    const cx = Math.cos(rx), sx = Math.sin(rx);
-    const x1 = x;
-    const y1 = y * cx - z * sx;
-    const z1 = y * sx + z * cx;
+    // Rz
+    const cz = Math.cos(rz), sz = Math.sin(rz);
+    const x1 = x * cz - y * sz;
+    const y1 = x * sz + y * cz;
+    const z1 = z;
 
     // Ry
     const cy = Math.cos(ry), sy = Math.sin(ry);
@@ -54,11 +56,11 @@ export const ConnectorStandards = {
     const y2 = y1;
     const z2 = -x1 * sy + z1 * cy;
 
-    // Rz
-    const cz = Math.cos(rz), sz = Math.sin(rz);
-    const x3 = x2 * cz - y2 * sz;
-    const y3 = x2 * sz + y2 * cz;
-    const z3 = z2;
+    // Rx
+    const cx = Math.cos(rx), sx = Math.sin(rx);
+    const x3 = x2;
+    const y3 = y2 * cx - z2 * sx;
+    const z3 = y2 * sx + z2 * cx;
 
     return [x3, y3, z3];
   },

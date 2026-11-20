@@ -1,0 +1,386 @@
+"""
+Board design data model.
+
+A design is plain JSON (never executable code):
+
+  design = {
+    id, name, description, revision,
+    material: {name, thickness, kerf, clearance, color},
+    sheet:    {width, height, spacing},
+    components: [component, ...],
+    joints:     [joint, ...]
+  }
+
+  component = {
+    id, name, group,
+    thickness?            # overrides material.thickness
+    color?                # optional finish tint
+    outline: [[x, y], ...]      # base outline, CCW, local mm
+    features: [                 # interior cut-outs
+      {id, kind: 'slot' | 'hole' | 'opening', shape: 'rect' | 'circle',
+       center: [x, y], width, height, angle, diameter, note?}
+    ],
+    tabs: [                     # tenons protruding from an outline edge
+      {id, edge: <base outline edge index>, offset: <mm from edge start to tab centre>,
+       width, depth}
+    ],
+    placement: {position: [x, y, z], rotation: [rx, ry, rz]}   # degrees, Euler XYZ
+  }
+
+Feature kinds have distinct meaning and are never interchangeable:
+  slot    - receiver for a tab; must be referenced by a joint (else UNUSED_SLOT warning)
+  hole    - functional hole (pivot, dowel, line hole); kept as-is
+  opening - intentional design opening (cockpit, window, lightening hole); the
+            engine never fills, moves or places joints inside it
+"""
+import copy
+import math
+import re
+
+from . import geometry as G
+
+FEATURE_KINDS = ('slot', 'hole', 'opening')
+FEATURE_SHAPES = ('rect', 'circle')
+JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap')
+
+LIMITS = {
+    'max_components': 300,
+    'max_outline_points': 512,
+    'max_features': 64,
+    'max_tabs': 32,
+    'max_joints': 1000,
+    'max_coord': 5000.0,
+    'min_thickness': 0.5,
+    'max_thickness': 25.0,
+}
+
+DEFAULT_MATERIAL = {'name': 'Birch plywood 3 mm', 'thickness': 3.0, 'kerf': 0.15,
+                    'clearance': 0.10, 'color': '#d9b98b'}
+DEFAULT_SHEET = {'width': 600.0, 'height': 400.0, 'spacing': 6.0}
+
+ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$')
+
+
+class SchemaError(ValueError):
+    """Raised when client-supplied data is structurally invalid."""
+
+    def __init__(self, message, path=None):
+        super().__init__(message)
+        self.path = path
+
+    def to_dict(self):
+        return {'code': 'SCHEMA_ERROR', 'message': str(self), 'path': self.path}
+
+
+# ---------------------------------------------------------------------------
+# Input normalisation (structural validation only; geometry rules live in validation.py)
+# ---------------------------------------------------------------------------
+
+def _num(v, path, lo=None, hi=None):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise SchemaError(f'{path} must be a finite number', path)
+    v = float(v)
+    if lo is not None and v < lo:
+        raise SchemaError(f'{path} must be >= {lo}', path)
+    if hi is not None and v > hi:
+        raise SchemaError(f'{path} must be <= {hi}', path)
+    return v
+
+
+def _vec(v, n, path, lim=LIMITS['max_coord']):
+    if not isinstance(v, (list, tuple)) or len(v) != n:
+        raise SchemaError(f'{path} must be an array of {n} numbers', path)
+    return [_num(c, f'{path}[{i}]', -lim, lim) for i, c in enumerate(v)]
+
+
+def check_id(value, path):
+    if not isinstance(value, str) or not ID_RE.match(value):
+        raise SchemaError(f'{path} must match {ID_RE.pattern}', path)
+    return value
+
+
+def _text(v, path, maxlen=200, default=''):
+    if v is None:
+        return default
+    if not isinstance(v, str):
+        raise SchemaError(f'{path} must be a string', path)
+    return v[:maxlen]
+
+
+def normalize_feature(f, path):
+    if not isinstance(f, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    kind = f.get('kind')
+    if kind not in FEATURE_KINDS:
+        raise SchemaError(f'{path}.kind must be one of {FEATURE_KINDS}', path + '.kind')
+    shape = f.get('shape', 'rect')
+    if shape not in FEATURE_SHAPES:
+        raise SchemaError(f'{path}.shape must be one of {FEATURE_SHAPES}', path + '.shape')
+    out = {'id': check_id(f.get('id'), path + '.id'), 'kind': kind, 'shape': shape,
+           'center': _vec(f.get('center'), 2, path + '.center')}
+    if shape == 'rect':
+        out['width'] = _num(f.get('width'), path + '.width', 0.05, LIMITS['max_coord'])
+        out['height'] = _num(f.get('height'), path + '.height', 0.05, LIMITS['max_coord'])
+        out['angle'] = _num(f.get('angle', 0.0), path + '.angle', -360, 360)
+    else:
+        out['diameter'] = _num(f.get('diameter'), path + '.diameter', 0.05, LIMITS['max_coord'])
+    if f.get('note'):
+        out['note'] = _text(f.get('note'), path + '.note')
+    if f.get('generated_by'):
+        out['generated_by'] = _text(f.get('generated_by'), path + '.generated_by', 64)
+    return out
+
+
+def normalize_tab(t, path):
+    if not isinstance(t, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    edge = t.get('edge')
+    if isinstance(edge, bool) or not isinstance(edge, int) or edge < 0:
+        raise SchemaError(f'{path}.edge must be a non-negative integer', path + '.edge')
+    return {'id': check_id(t.get('id'), path + '.id'), 'edge': edge,
+            'offset': _num(t.get('offset'), path + '.offset', 0, LIMITS['max_coord']),
+            'width': _num(t.get('width'), path + '.width', 0.5, LIMITS['max_coord']),
+            'depth': _num(t.get('depth'), path + '.depth', 0.1, 100.0)}
+
+
+def normalize_component(c, path='component'):
+    if not isinstance(c, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    outline = c.get('outline')
+    if not isinstance(outline, list) or not (3 <= len(outline) <= LIMITS['max_outline_points']):
+        raise SchemaError(f'{path}.outline must have 3..{LIMITS["max_outline_points"]} points', path + '.outline')
+    outline = [_vec(p, 2, f'{path}.outline[{i}]') for i, p in enumerate(outline)]
+    notes = []
+    if G.signed_area(outline) < 0:
+        outline.reverse()
+        notes.append('outline was clockwise and has been normalised to counter-clockwise; '
+                     'edge indices refer to the stored (CCW) outline')
+    features = c.get('features') or []
+    tabs = c.get('tabs') or []
+    if not isinstance(features, list) or len(features) > LIMITS['max_features']:
+        raise SchemaError(f'{path}.features must be a list of <= {LIMITS["max_features"]}', path + '.features')
+    if not isinstance(tabs, list) or len(tabs) > LIMITS['max_tabs']:
+        raise SchemaError(f'{path}.tabs must be a list of <= {LIMITS["max_tabs"]}', path + '.tabs')
+    pl = c.get('placement') or {}
+    if not isinstance(pl, dict):
+        raise SchemaError(f'{path}.placement must be an object', path + '.placement')
+    out = {
+        'id': check_id(c.get('id'), path + '.id'),
+        'name': _text(c.get('name'), path + '.name', default=c.get('id')),
+        'group': _text(c.get('group'), path + '.group', 64, default='General'),
+        'outline': outline,
+        'features': [normalize_feature(f, f'{path}.features[{i}]') for i, f in enumerate(features)],
+        'tabs': [normalize_tab(t, f'{path}.tabs[{i}]') for i, t in enumerate(tabs)],
+        'placement': {
+            'position': _vec(pl.get('position', [0, 0, 0]), 3, path + '.placement.position'),
+            'rotation': _vec(pl.get('rotation', [0, 0, 0]), 3, path + '.placement.rotation', 720),
+        },
+    }
+    if c.get('thickness') is not None:
+        out['thickness'] = _num(c['thickness'], path + '.thickness',
+                                LIMITS['min_thickness'], LIMITS['max_thickness'])
+    if c.get('color') is not None:
+        col = _text(c.get('color'), path + '.color', 16)
+        if not re.match(r'^#[0-9a-fA-F]{6}$', col):
+            raise SchemaError(f'{path}.color must be #rrggbb', path + '.color')
+        out['color'] = col
+    if c.get('description'):
+        out['description'] = _text(c.get('description'), path + '.description', 500)
+    if c.get('grain_locked'):
+        out['grain_locked'] = True  # nesting may not rotate this part (grain / print direction)
+    return out, notes
+
+
+def normalize_joint(j, path='joint'):
+    if not isinstance(j, dict):
+        raise SchemaError(f'{path} must be an object', path)
+    jtype = j.get('type')
+    if jtype not in JOINT_TYPES:
+        raise SchemaError(f'{path}.type must be one of {JOINT_TYPES}', path + '.type')
+    out = {'id': check_id(j.get('id'), path + '.id'), 'type': jtype,
+           'a': check_id(j.get('a'), path + '.a'), 'b': check_id(j.get('b'), path + '.b')}
+    if jtype == 'tab_slot':
+        out['tab'] = check_id(j.get('tab'), path + '.tab')
+        if j.get('slot') is not None:
+            out['slot'] = check_id(j.get('slot'), path + '.slot')
+    if jtype in ('edge_butt', 'edge_mitre'):
+        e = j.get('a_edge')
+        if isinstance(e, bool) or not isinstance(e, int) or e < 0:
+            raise SchemaError(f'{path}.a_edge must be a non-negative integer', path + '.a_edge')
+        out['a_edge'] = e
+    if jtype == 'edge_mitre':
+        e = j.get('b_edge')
+        if isinstance(e, bool) or not isinstance(e, int) or e < 0:
+            raise SchemaError(f'{path}.b_edge must be a non-negative integer', path + '.b_edge')
+        out['b_edge'] = e
+    for k in ('status', 'repairs', 'joined_at', 'detached_reason'):
+        if k in j:
+            out[k] = copy.deepcopy(j[k])
+    return out
+
+
+def normalize_design(d):
+    if not isinstance(d, dict):
+        raise SchemaError('design must be an object')
+    mat = dict(DEFAULT_MATERIAL)
+    mat.update(d.get('material') or {})
+    sheet = dict(DEFAULT_SHEET)
+    sheet.update(d.get('sheet') or {})
+    comps_in = d.get('components') or []
+    joints_in = d.get('joints') or []
+    if len(comps_in) > LIMITS['max_components']:
+        raise SchemaError(f'too many components (>{LIMITS["max_components"]})', 'components')
+    if len(joints_in) > LIMITS['max_joints']:
+        raise SchemaError(f'too many joints (>{LIMITS["max_joints"]})', 'joints')
+    comps = []
+    for i, c in enumerate(comps_in):
+        nc, _ = normalize_component(c, f'components[{i}]')
+        comps.append(nc)
+    return {
+        'id': check_id(d.get('id'), 'id'),
+        'name': _text(d.get('name'), 'name', default=d.get('id')),
+        'description': _text(d.get('description'), 'description', 2000),
+        'revision': int(d.get('revision', 0)),
+        'material': {
+            'name': _text(mat.get('name'), 'material.name'),
+            'thickness': _num(mat.get('thickness'), 'material.thickness',
+                              LIMITS['min_thickness'], LIMITS['max_thickness']),
+            'kerf': _num(mat.get('kerf'), 'material.kerf', 0, 2),
+            'clearance': _num(mat.get('clearance'), 'material.clearance', 0, 2),
+            'color': _text(mat.get('color'), 'material.color', 16, '#d9b98b'),
+        },
+        'sheet': {
+            'width': _num(sheet.get('width'), 'sheet.width', 10, LIMITS['max_coord']),
+            'height': _num(sheet.get('height'), 'sheet.height', 10, LIMITS['max_coord']),
+            'spacing': _num(sheet.get('spacing'), 'sheet.spacing', 0, 100),
+        },
+        'components': comps,
+        'joints': [normalize_joint(j, f'joints[{i}]') for i, j in enumerate(joints_in)],
+        'created': d.get('created'),
+        'updated': d.get('updated'),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Derived geometry
+# ---------------------------------------------------------------------------
+
+def thickness_of(design, comp):
+    return comp.get('thickness', design['material']['thickness'])
+
+
+def feature_polygon(f):
+    if f['shape'] == 'circle':
+        return G.circle_polygon(f['center'], f['diameter'])
+    return G.rect_polygon(f['center'], f['width'], f['height'], f.get('angle', 0.0))
+
+
+def edge_frame(outline, edge_index):
+    """Start point, unit direction, outward normal and length of a CCW outline edge."""
+    n = len(outline)
+    a = outline[edge_index % n]
+    b = outline[(edge_index + 1) % n]
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L = math.hypot(dx, dy)
+    d = (dx / L, dy / L) if L > G.EPS else (1.0, 0.0)
+    return a, d, (d[1], -d[0]), L
+
+
+def tab_geometry(comp, tab):
+    """Local geometry of a tab: root centre, protrusion normal, along-edge direction."""
+    a, d, n, L = edge_frame(comp['outline'], tab['edge'])
+    root = (a[0] + d[0] * tab['offset'], a[1] + d[1] * tab['offset'])
+    centre = (root[0] + n[0] * tab['depth'] / 2.0, root[1] + n[1] * tab['depth'] / 2.0)
+    return {'root': root, 'centre': centre, 'dir': d, 'normal': n, 'edge_length': L}
+
+
+def cut_outline(comp):
+    """Outer cut profile: base outline with tabs inserted on their edges."""
+    outline = comp['outline']
+    n = len(outline)
+    by_edge = {}
+    for t in comp.get('tabs', []):
+        if t['edge'] < n:
+            by_edge.setdefault(t['edge'], []).append(t)
+    pts = []
+    for i in range(n):
+        a, d, nrm, L = edge_frame(outline, i)
+        pts.append([a[0], a[1]])
+        for t in sorted(by_edge.get(i, []), key=lambda t: t['offset']):
+            s = t['offset'] - t['width'] / 2.0
+            e = t['offset'] + t['width'] / 2.0
+            p1 = [a[0] + d[0] * s, a[1] + d[1] * s]
+            p4 = [a[0] + d[0] * e, a[1] + d[1] * e]
+            p2 = [p1[0] + nrm[0] * t['depth'], p1[1] + nrm[1] * t['depth']]
+            p3 = [p4[0] + nrm[0] * t['depth'], p4[1] + nrm[1] * t['depth']]
+            pts.extend([p1, p2, p3, p4])
+    return pts
+
+
+class Plate:
+    """Cached derived geometry for one component in one design state."""
+
+    def __init__(self, design, comp):
+        self.comp = comp
+        self.id = comp['id']
+        self.t = thickness_of(design, comp)
+        self.frame = G.Frame(comp['placement']['position'], comp['placement']['rotation'])
+        self.outline = comp['outline']
+        self.cut = cut_outline(comp)
+        self.features = comp.get('features', [])
+        self.feature_polys = [(f, feature_polygon(f)) for f in self.features]
+        self._feature_boxes = [G.bbox(poly) for _f, poly in self.feature_polys]
+        self.bbox2d = G.bbox(self.cut)
+        self._aabb = None
+
+    def world_aabb(self):
+        if self._aabb is None:
+            x0, y0, x1, y1 = self.bbox2d
+            h = self.t / 2.0
+            pts = [self.frame.to_world([x, y, z]) for x in (x0, x1) for y in (y0, y1) for z in (-h, h)]
+            self._aabb = ([min(p[i] for p in pts) for i in range(3)],
+                          [max(p[i] for p in pts) for i in range(3)])
+        return self._aabb
+
+    def world_centre(self):
+        lo, hi = self.world_aabb()
+        return [(lo[i] + hi[i]) / 2.0 for i in range(3)]
+
+    def is_material(self, pt, tol):
+        """True if local 2D point lies inside solid material, at least `tol` from any cut edge."""
+        x, y = pt
+        bx0, by0, bx1, by1 = self.bbox2d
+        if x <= bx0 + tol or x >= bx1 - tol or y <= by0 + tol or y >= by1 - tol:
+            return False
+        if not G.point_in_polygon(pt, self.cut) or G.near_boundary(pt, self.cut, tol):
+            return False
+        for (_f, poly), (fx0, fy0, fx1, fy1) in zip(self.feature_polys, self._feature_boxes):
+            if x < fx0 - tol or x > fx1 + tol or y < fy0 - tol or y > fy1 + tol:
+                continue
+            if G.point_in_polygon(pt, poly) or G.near_boundary(pt, poly, tol):
+                return False
+        return True
+
+    def feature_at(self, pt):
+        for f, poly in self.feature_polys:
+            if G.point_in_polygon(pt, poly):
+                return f
+        return None
+
+
+def build_plates(design):
+    return {c['id']: Plate(design, c) for c in design['components']}
+
+
+def find_component(design, cid):
+    for c in design['components']:
+        if c['id'] == cid:
+            return c
+    return None
+
+
+def find_joint(design, jid):
+    for j in design['joints']:
+        if j['id'] == jid:
+            return j
+    return None

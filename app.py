@@ -1,8 +1,13 @@
 import os
 import sys
+import logging
 import mimetypes
 from pathlib import Path
-from flask import Flask, send_from_directory, jsonify, render_template_string
+from flask import Flask, send_from_directory, jsonify, render_template_string, request
+
+from board_api.auth import KeyRing, SESSION_COOKIE, SESSION_TTL
+from board_api.routes import bp as board_api_bp
+from board_engine.store import DesignStore
 
 # Ensure correct MIME types for modern ES modules and CSS
 mimetypes.add_type('application/javascript', '.js')
@@ -15,6 +20,30 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = Flask(__name__, static_folder=None)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable static file caching during active development
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # bounded API payloads
+
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'), format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+
+INSTANCE_DIR = Path(os.environ.get('BOARD_INSTANCE_DIR', BASE_DIR / 'instance'))
+app.config['BOARD_STORE'] = DesignStore(INSTANCE_DIR / 'designs')
+app.config['BOARD_KEYRING'] = KeyRing(str(INSTANCE_DIR))
+app.config['BOARD_RATE_LIMIT'] = int(os.environ.get('BOARD_RATE_LIMIT', 600))
+app.register_blueprint(board_api_bp)
+
+
+def seed_example_designs():
+    """Create the example boat through the real join pipeline if it does not exist yet."""
+    store = app.config['BOARD_STORE']
+    if not store.exists('boat'):
+        from board_engine.examples.boat import build_design
+        design, failures = build_design('boat')
+        store.create(design, actor='seed')
+        if failures:
+            logging.getLogger('board_api').warning('boat seed: %d joints rejected', len(failures))
+
+
+if os.environ.get('BOARD_SKIP_SEED') != '1':
+    seed_example_designs()
 
 
 @app.after_request
@@ -23,7 +52,9 @@ def add_header(response):
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
-    response.headers['Access-Control-Allow-Origin'] = '*'
+    if not request.path.startswith('/api/v1'):
+        # Legacy read-only routes stay open; the board API grants no cross-origin access.
+        response.headers['Access-Control-Allow-Origin'] = '*'
     return response
 
 
@@ -32,8 +63,26 @@ def add_header(response):
 # ============================================================================
 
 @app.route('/')
+@app.route('/studio')
+@app.route('/studio.html')
+def page_studio():
+    """Board Studio: 2D cut sheets + 3D assembly + validation + production (API-driven)."""
+    response = send_from_directory(BASE_DIR, 'studio.html', mimetype='text/html')
+    ring = app.config['BOARD_KEYRING']
+    if not ring.session_valid(request.cookies.get(SESSION_COOKIE, '')):
+        response.set_cookie(SESSION_COOKIE, ring.new_session(), max_age=SESSION_TTL, httponly=True,
+                            samesite='Strict', secure=request.is_secure)
+    return response
+
+
+@app.route('/docs/<path:filename>')
+def serve_docs(filename):
+    return send_from_directory(BASE_DIR / 'docs', filename, mimetype='text/plain; charset=utf-8')
+
+
 @app.route('/index.html')
 @app.route('/assembly')
+@app.route('/workbench')
 def page_assembly():
     """Main 3D Assembly Workbench viewport."""
     return send_from_directory(BASE_DIR, 'index.html', mimetype='text/html')

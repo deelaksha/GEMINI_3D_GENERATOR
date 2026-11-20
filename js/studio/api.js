@@ -1,0 +1,56 @@
+/**
+ * Board API client for the studio. Uses the HttpOnly session cookie issued with the page
+ * plus the X-Board-Client header required for cookie-authenticated requests (CSRF guard).
+ */
+export class ApiError extends Error {
+  constructor(status, body) {
+    super(body?.error?.message || `HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+    this.issues = body?.error?.issues || [];
+  }
+}
+
+async function request(method, path, payload) {
+  const res = await fetch(`/api/v1${path}`, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'X-Board-Client': 'studio', ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+  const type = res.headers.get('Content-Type') || '';
+  if (!type.includes('application/json')) {
+    if (!res.ok) throw new ApiError(res.status, null);
+    return res;
+  }
+  const body = await res.json();
+  if (!res.ok || body.ok === false) throw new ApiError(res.status, body);
+  return body;
+}
+
+const enc = encodeURIComponent;
+const qs = (o) => Object.entries(o).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+  .map(([k, v]) => `${enc(k)}=${enc(v)}`).join('&');
+
+export const Api = {
+  designs: () => request('GET', '/designs'),
+  design: (id) => request('GET', `/designs/${enc(id)}`),
+  model3d: (id) => request('GET', `/designs/${enc(id)}/model3d`),
+  validate: (id) => request('POST', `/designs/${enc(id)}/validate`),
+  layout2d: (id, opts = {}) => request('GET', `/designs/${enc(id)}/layout2d?${qs(opts)}`),
+  updateComponent: (id, cid, patch, extra = {}) =>
+    request('PATCH', `/designs/${enc(id)}/components/${enc(cid)}`, { patch, ...extra }),
+  checkJoint: (id, joint) => request('POST', `/designs/${enc(id)}/joints/check`, { joint }),
+  join: (id, joint, autoRepair) => request('POST', `/designs/${enc(id)}/joints`, { joint, auto_repair: autoRepair }),
+  unjoin: (id, jid) => request('DELETE', `/designs/${enc(id)}/joints/${enc(jid)}`),
+  rebuildBoat: (id) => request('POST', '/designs/examples/boat', { id, overwrite: true }),
+  exportUrl: (id, fmt, opts) => `/api/v1/designs/${enc(id)}/export/${fmt}?${qs(opts)}`,
+  async download(id, fmt, opts) {
+    const res = await request('GET', `/designs/${enc(id)}/export/${fmt}?${qs(opts)}`);
+    return res.blob();
+  },
+  async exportText(id, fmt, opts) {
+    const res = await request('GET', `/designs/${enc(id)}/export/${fmt}?${qs(opts)}`);
+    return res.text();
+  }
+};

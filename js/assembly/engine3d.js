@@ -175,8 +175,9 @@ export class Engine3D {
     wireframe.visible = showWireframe;
     group.add(wireframe);
 
-    group.position.set(...part.assembledPos);
-    group.rotation.set(...part.assembledRot);
+    // assembledPos/Rot may be parametric functions of thickness (e.g. simple-house walls)
+    group.position.set(...(part.getAssembledPos ? part.getAssembledPos(thickness) : part.assembledPos));
+    group.rotation.set(...(part.getAssembledRot ? part.getAssembledRot(thickness) : part.assembledRot));
 
     return group;
   }
