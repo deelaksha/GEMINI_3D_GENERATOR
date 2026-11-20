@@ -26,6 +26,10 @@ class Conflict(RuntimeError):
 
 
 class DesignStore:
+    backend = 'file'
+    persistent = True      # False when the server had to fall back to a temp directory
+    config_error = None
+
     def __init__(self, root):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)

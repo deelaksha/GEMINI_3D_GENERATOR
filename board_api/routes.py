@@ -120,6 +120,15 @@ def whoami():
     return jsonify({'ok': True, 'principal': g.principal})
 
 
+@bp.get('/storage')
+@require('viewer')
+def storage():
+    st = store()
+    return jsonify({'ok': True, 'backend': st.backend, 'persistent': st.persistent,
+                    'project': getattr(st, 'project_id', None), 'config_error': st.config_error
+                    if hasattr(st, 'config_error') else None})
+
+
 @bp.get('/sheet-presets')
 def presets():
     return jsonify({'presets': {k: {'width': v[0], 'height': v[1]} for k, v in SHEET_PRESETS.items()},
@@ -182,8 +191,38 @@ def get_design(did):
                     'validation': summarize(validate_design(d), full=False)})
 
 
+@bp.patch('/designs/<did>')
+@require('editor')
+def rename_design(did):
+    data = body()
+    allowed = {'name', 'description', 'expected_revision'}
+    if set(data) - allowed:
+        raise SchemaError(f'only {sorted(allowed - {"expected_revision"})} can be changed here', 'body')
+
+    def fn(d):
+        for k in ('name', 'description'):
+            if k in data:
+                if not isinstance(data[k], str) or (k == 'name' and not data[k].strip()):
+                    raise SchemaError(f'{k} must be a non-empty string' if k == 'name' else f'{k} must be a string', k)
+                d[k] = data[k].strip()[:200 if k == 'name' else 2000]
+        return d, {k: d[k] for k in ('name', 'description')}
+    return mutate(did, fn, 'rename')
+
+
+@bp.post('/designs/<did>/duplicate')
+@require('editor')
+def duplicate_design(did):
+    data = body()
+    src = store().get(did)
+    new_id = check_id(data.get('id'), 'id')
+    copy_ = dict(src, id=new_id, name=(data.get('name') or f"{src['name']} (copy)")[:200], created=None)
+    created = store().create(copy_, actor=g.principal['id'])
+    return jsonify({'ok': True, 'revision': created['revision'], 'design_id': new_id,
+                    'validation': summarize(validate_design(created), full=False)}), 201
+
+
 @bp.delete('/designs/<did>')
-@require('admin')
+@require('editor')
 def delete_design(did):
     store().delete(did, actor=g.principal['id'])
     return jsonify({'ok': True, 'deleted': did})

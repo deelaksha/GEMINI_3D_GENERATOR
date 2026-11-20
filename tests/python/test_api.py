@@ -42,8 +42,9 @@ def test_authentication_and_roles(client):
     r = client.post('/api/v1/designs', headers=VIEW, json={'id': 'x', 'components': []})
     assert r.status_code == 403
     client.post('/api/v1/designs', headers=ED, json={'id': 'to-delete'})
-    assert client.delete('/api/v1/designs/to-delete', headers=ED).status_code == 403
-    assert client.delete('/api/v1/designs/to-delete', headers=ADM).status_code == 200
+    assert client.delete('/api/v1/designs/to-delete', headers=VIEW).status_code == 403
+    assert client.delete('/api/v1/designs/to-delete', headers=ED).status_code == 200
+    assert client.get('/api/v1/designs/to-delete', headers=VIEW).status_code == 404
 
 
 def test_studio_session_requires_csrf_header(client):
@@ -154,3 +155,17 @@ def test_export_refused_for_invalid_design(client):
     r = client.get('/api/v1/designs/broken/export/pdf?force=1', headers=VIEW)
     assert r.status_code == 200 and b'DO NOT CUT' in __import__('zlib').decompress(
         r.data.split(b'stream\n')[1].split(b'\nendstream')[0])
+
+
+def test_design_management_and_storage(client):
+    st = client.get('/api/v1/storage', headers=VIEW).json
+    assert st['backend'] == 'file' and st['persistent'] is True
+    client.post('/api/v1/designs', headers=ED, json={'id': 'mgmt', 'name': 'Original', 'components': [base_plate()]})
+    r = client.patch('/api/v1/designs/mgmt', headers=ED, json={'name': 'Renamed'})
+    assert r.status_code == 200 and r.json['result']['name'] == 'Renamed'
+    assert client.patch('/api/v1/designs/mgmt', headers=ED, json={'components': []}).status_code == 400
+    r = client.post('/api/v1/designs/mgmt/duplicate', headers=ED, json={'id': 'mgmt-copy'})
+    assert r.status_code == 201
+    copy_ = client.get('/api/v1/designs/mgmt-copy', headers=VIEW).json['design']
+    assert copy_['name'] == 'Renamed (copy)' and len(copy_['components']) == 1 and copy_['revision'] == 1
+    assert client.post('/api/v1/designs/mgmt/duplicate', headers=ED, json={'id': 'mgmt-copy'}).status_code == 409

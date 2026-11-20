@@ -1,9 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // PuzzleCore Designs Collection
+    // Legacy JS workbench designs (browser SDK, unchanged policy)
     match /designs/{designId} {
       allow read, write: if true; // Public collaborative prototype access
+    }
+    // Board Studio designs: written ONLY by the server (service account bypasses rules),
+    // so every change goes through the validation pipeline. No direct browser access.
+    match /board_designs/{designId}/{document=**} {
+      allow read, write: if false;
     }
   }
 }

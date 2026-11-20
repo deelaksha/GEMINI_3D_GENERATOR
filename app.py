@@ -8,6 +8,7 @@ from flask import Flask, send_from_directory, jsonify, render_template_string, r
 
 from board_api.auth import KeyRing, SESSION_COOKIE, SESSION_TTL
 from board_api.routes import bp as board_api_bp
+from board_engine.firestore_store import store_from_env
 from board_engine.store import DesignStore
 
 # Ensure correct MIME types for modern ES modules and CSS
@@ -45,7 +46,9 @@ def _writable_instance_dir():
 
 
 INSTANCE_DIR = _writable_instance_dir()
-app.config['BOARD_STORE'] = DesignStore(INSTANCE_DIR / 'designs')
+_file_store = DesignStore(INSTANCE_DIR / 'designs')
+_file_store.persistent = INSTANCE_DIR == BASE_DIR / 'instance' or bool(os.environ.get('BOARD_INSTANCE_DIR'))
+app.config['BOARD_STORE'] = store_from_env(_file_store)  # Firestore when FIREBASE_SERVICE_ACCOUNT is set
 app.config['BOARD_KEYRING'] = KeyRing(str(INSTANCE_DIR))
 app.config['BOARD_RATE_LIMIT'] = int(os.environ.get('BOARD_RATE_LIMIT', 600))
 app.register_blueprint(board_api_bp)

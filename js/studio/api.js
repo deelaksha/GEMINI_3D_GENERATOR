@@ -46,6 +46,15 @@ export const Api = {
   applyFix: (id, fixId) => request('POST', `/designs/${enc(id)}/fixes/apply`, { fix_id: fixId }),
   autoFix: (id) => request('POST', `/designs/${enc(id)}/fixes/auto`, {}),
   rebuildBoat: (id) => request('POST', '/designs/examples/boat', { id, overwrite: true }),
+  storage: () => request('GET', '/storage'),
+  createBoat: (id, name, params) => request('POST', '/designs/examples/boat', { id, params }).then(async (r) => {
+    if (name) await request('PATCH', `/designs/${enc(id)}`, { name });
+    return r;
+  }),
+  createBlank: (id, name) => request('POST', '/designs', { id, name }),
+  renameDesign: (id, name) => request('PATCH', `/designs/${enc(id)}`, { name }),
+  duplicateDesign: (id, newId, name) => request('POST', `/designs/${enc(id)}/duplicate`, { id: newId, name }),
+  deleteDesign: (id) => request('DELETE', `/designs/${enc(id)}`),
   exportUrl: (id, fmt, opts) => `/api/v1/designs/${enc(id)}/export/${fmt}?${qs(opts)}`,
   async download(id, fmt, opts) {
     const res = await request('GET', `/designs/${enc(id)}/export/${fmt}?${qs(opts)}`);
