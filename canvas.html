@@ -25,7 +25,9 @@
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
-    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-format" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
@@ -127,7 +129,8 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
         <div class="view view-3d pv" data-pv-id="3d">
           <div class="view-tools">
             <div class="seg tiny"><button data-cam="iso">Iso</button><button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="top">Top</button></div>
-            <button class="tool" id="btn-fit-3d" title="Fit"><svg><use href="#i-fit"/></svg></button>
+            <button class="tool" id="btn-fit-3d" title="Fit to view"><svg><use href="#i-fit"/></svg></button>
+            <button class="tool" id="btn-full-3d" title="Full screen"></button>
           </div>
           <div id="canvas3d"></div>
           <div class="explode-ctl"><span>Explode</span><input type="range" id="explode" min="0" max="100" value="0" aria-label="Explode" /></div>
@@ -135,7 +138,8 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
           <div class="tooltip" id="tip-3d"></div>
         </div>
         <div class="view view-2d pv" data-pv-id="2d" hidden>
-          <div class="view-tools"><button class="tool" id="btn-fit-2d"><svg><use href="#i-fit"/></svg></button></div>
+          <div class="view-tools"><button class="tool" id="btn-fit-2d" title="Fit to view"><svg><use href="#i-fit"/></svg></button>
+            <button class="tool" id="btn-full-2d" title="Full screen"></button></div>
           <svg id="svg2d" xmlns="http://www.w3.org/2000/svg"></svg>
           <div class="legend"><span><i class="swatch" style="background:var(--cut)"></i>Outer cut</span><span><i class="swatch" style="background:var(--slot)"></i>Slot</span><span><i class="swatch" style="background:var(--opening)"></i>Opening</span><span><i class="swatch" style="background:var(--hole)"></i>Hole</span></div>
           <div class="scalebar" id="scalebar-2d"></div>

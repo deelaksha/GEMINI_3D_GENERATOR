@@ -331,3 +331,9 @@ details.more summary::-webkit-details-marker { display: none; }
   .design-card { grid-template-columns: 1fr; }
   .design-card .acts { justify-content: flex-start; }
 }
+
+/* full-screen viewports (Fullscreen API, or the window-filling fallback on iPhone / iPad) */
+.view:fullscreen { width: 100vw; height: 100vh; }
+.view:-webkit-full-screen { width: 100vw; height: 100vh; }
+.view.is-max { position: fixed !important; inset: 0 !important; z-index: 300; display: block !important; }
+body.view-maximized .fab, body.view-maximized .tabbar { display: none !important; }

@@ -9,6 +9,7 @@
 import { Api, ApiError } from './api.js';
 import { Viewport3D } from './viewport3d.js';
 import { Sheet2D } from './sheet2d.js';
+import { bindFullscreen } from './fullscreen.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -736,6 +737,8 @@ $('#design-btn').onclick = openDesignsDialog;
 $('#status-pill').onclick = async () => { await setStep('check', { keepPanel: true }); if (mqSheet.matches) openPanel(); };
 $('#btn-fit-3d').onclick = () => view3d.view('iso');
 $('#btn-fit-2d').onclick = () => sheet2d.fit();
+bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
+bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#btn-edges').onclick = (e) => { view3d.setEdges(!view3d.showEdges); e.currentTarget.classList.toggle('on', view3d.showEdges); };
 $('#btn-labels-2d').onclick = (e) => { sheet2d.setLabels(!sheet2d.labels); e.currentTarget.classList.toggle('on', sheet2d.labels); };
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);

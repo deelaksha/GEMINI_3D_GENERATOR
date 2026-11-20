@@ -10,6 +10,7 @@
 import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
+import { bindFullscreen } from '../studio/fullscreen.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -489,6 +490,8 @@ $$('#pv-seg button').forEach((b) => (b.onclick = () => setPreview(b.dataset.pv))
 $$('[data-cam]').forEach((b) => (b.onclick = () => view3d.view(b.dataset.cam)));
 $('#btn-fit-3d').onclick = () => view3d.view('iso');
 $('#btn-fit-2d').onclick = () => sheet2d.fit();
+bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
+bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 $('#btn-gen-prompt').onclick = generatePrompt;
 $('#btn-copy-prompt').onclick = () => copyText($('#out-prompt').value, 'Prompt');
