@@ -339,3 +339,72 @@ def test_glue_free_joints_alone_keep_the_design_interlocking():
     d = copy.deepcopy(STRUCTURES_EXAMPLE)
     d.pop('joinery', None)
     assert _compile(d)['design']['joinery'] == 'interlocking'
+
+
+# ---------------------------------------------------------------------------
+# Designs written by an independent AI from the generated prompt alone (no access to the code). They must keep
+# compiling cleanly, and the clarifications those AIs asked for are checked against the compiler.
+# ---------------------------------------------------------------------------
+
+def _fixture(name):
+    import os
+    return open(os.path.join(os.path.dirname(__file__), 'fixtures', f'ai_{name}.json')).read()
+
+
+@pytest.mark.parametrize('name, joints, types', [
+    ('bookshelf', 30, {'finger', 'tab_slot'}),
+    ('birdhouse', 12, {'tab_slot'}),
+    ('winerack', 32, {'finger', 'tab_slot', 'cross_lap'}),
+    ('cabinet', 13, {'finger', 'tab_slot', 'hinge'}),
+])
+def test_ai_written_designs_compile_clean(name, joints, types):
+    r = compile_source(_fixture(name))
+    assert r['ok'], [(d['code'], d['message']) for d in r['diagnostics'] if d['severity'] == 'error']
+    assert r['summary']['joined'] == r['summary']['joints'] == joints
+    assert set(_types(r['design'])) == types and r['layout']['ready_for_production']
+    assert [d['code'] for d in r['diagnostics'] if d['severity'] == 'warning'] in ([], ['OVERALL_MISMATCH'])
+
+
+def test_clarification_tab_slot_may_run_flush_along_the_contact():
+    d = copy.deepcopy(EXAMPLE)
+    shelf = next(b for b in d['boards'] if b['id'] == 'SHELF')
+    shelf['position'][2], shelf['size'][2] = 20, 560          # as deep as the leg panels (z 20..580)
+    r = _compile(d)
+    assert r['ok'] and 'SLOT_AT_EDGE' not in _errs(r)
+
+
+def test_clarification_finger_order_does_not_matter():
+    d = copy.deepcopy(STRUCTURES_EXAMPLE)
+    d['connections'] = [dict(c, board=c['into'], into=c['board']) if c['type'] == 'finger' else c for c in d['connections']]
+    r = _compile(d)
+    assert r['ok'] and 'CONNECTION_REVERSED' in _codes(r, 'warning') and _types(r['design'])['finger'] == 8
+
+
+def test_clarification_flush_back_panel_with_three_way_corners():
+    back = {'format': 'board-design/v1', 'product': {'name': 'Carcass with flush back'},
+            'material': {'name': 'Ply 18', 'type': 'plywood', 'thickness': 18},
+            'boards': [{'id': 'BACK', 'name': 'Back', 'position': [0, 0, 0], 'size': [400, 600, 18]},
+                       {'id': 'SIDE-L', 'name': 'Left', 'position': [0, 0, 18], 'size': [18, 600, 382]},
+                       {'id': 'SIDE-R', 'name': 'Right', 'position': [382, 0, 18], 'size': [18, 600, 382]},
+                       {'id': 'TOP', 'name': 'Top', 'position': [18, 582, 18], 'size': [364, 18, 382]},
+                       {'id': 'BOTTOM', 'name': 'Bottom', 'position': [18, 0, 18], 'size': [364, 18, 382]}],
+            'connections': 'auto'}
+    r = _compile(back)
+    assert r['ok'] and _types(r['design']) == {'finger': 8}
+
+
+@pytest.mark.parametrize('dz, ok', [(0.0, True), (2.0, True), (3.0, False)])
+def test_clarification_overlay_door_gap(dz, ok):
+    d = json.loads(_fixture('cabinet'))
+    door = next(b for b in d['boards'] if b['id'] == 'DOOR')
+    door['position'][2] += dz                                   # move the door off the carcass front (gap 2 mm)
+    r = _compile(d)
+    assert r['ok'] == ok, (dz, _errs(r))
+
+
+def test_prompt_contains_the_clarifications():
+    from board_engine.canvas_prompt import spec_markdown
+    spec = spec_markdown()
+    for phrase in ('Along the contact A may run right up to B', 'does not matter (a reversed pair is swapped',
+                   'Three boards meeting at one', 'Profiled or tilted boards join', 'Back panels:', '**overlay** doors'):
+        assert phrase in spec, phrase

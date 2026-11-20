@@ -1,0 +1,247 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Glue-free bookshelf",
+    "description": "Plywood bookshelf with finger-jointed corners, three tab-and-slot shelves and a recessed back panel. No glue or screws.",
+    "overall": {
+      "length": 800,
+      "height": 1200,
+      "depth": 300
+    }
+  },
+  "material": {
+    "name": "Plywood 18 mm",
+    "type": "plywood",
+    "thickness": 18
+  },
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "BOTTOM",
+      "name": "Bottom",
+      "group": "Carcass",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        800,
+        18,
+        300
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "TOP",
+      "name": "Top",
+      "group": "Carcass",
+      "position": [
+        0,
+        1182,
+        0
+      ],
+      "size": [
+        800,
+        18,
+        300
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "SIDE-L",
+      "name": "Left side",
+      "group": "Carcass",
+      "position": [
+        0,
+        18,
+        0
+      ],
+      "size": [
+        18,
+        1164,
+        300
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "SIDE-R",
+      "name": "Right side",
+      "group": "Carcass",
+      "position": [
+        782,
+        18,
+        0
+      ],
+      "size": [
+        18,
+        1164,
+        300
+      ],
+      "grain": "y"
+    },
+    {
+      "id": "BACK",
+      "name": "Back panel",
+      "group": "Carcass",
+      "position": [
+        18,
+        18,
+        18
+      ],
+      "size": [
+        764,
+        1164,
+        18
+      ]
+    },
+    {
+      "id": "SHELF-1",
+      "name": "Shelf 1",
+      "group": "Shelves",
+      "position": [
+        18,
+        295.5,
+        36
+      ],
+      "size": [
+        764,
+        18,
+        246
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "SHELF-2",
+      "name": "Shelf 2",
+      "group": "Shelves",
+      "position": [
+        18,
+        591,
+        36
+      ],
+      "size": [
+        764,
+        18,
+        246
+      ],
+      "grain": "x"
+    },
+    {
+      "id": "SHELF-3",
+      "name": "Shelf 3",
+      "group": "Shelves",
+      "position": [
+        18,
+        886.5,
+        36
+      ],
+      "size": [
+        764,
+        18,
+        246
+      ],
+      "grain": "x"
+    }
+  ],
+  "connections": [
+    {
+      "id": "SL-BOTTOM",
+      "type": "finger",
+      "board": "SIDE-L",
+      "into": "BOTTOM",
+      "fingers": 5
+    },
+    {
+      "id": "SR-BOTTOM",
+      "type": "finger",
+      "board": "SIDE-R",
+      "into": "BOTTOM",
+      "fingers": 5
+    },
+    {
+      "id": "SL-TOP",
+      "type": "finger",
+      "board": "SIDE-L",
+      "into": "TOP",
+      "fingers": 5
+    },
+    {
+      "id": "SR-TOP",
+      "type": "finger",
+      "board": "SIDE-R",
+      "into": "TOP",
+      "fingers": 5
+    },
+    {
+      "id": "BACK-SL",
+      "type": "tab_slot",
+      "board": "BACK",
+      "into": "SIDE-L",
+      "tabs": 4
+    },
+    {
+      "id": "BACK-SR",
+      "type": "tab_slot",
+      "board": "BACK",
+      "into": "SIDE-R",
+      "tabs": 4
+    },
+    {
+      "id": "BACK-TOP",
+      "type": "tab_slot",
+      "board": "BACK",
+      "into": "TOP",
+      "tabs": 3
+    },
+    {
+      "id": "BACK-BOTTOM",
+      "type": "tab_slot",
+      "board": "BACK",
+      "into": "BOTTOM",
+      "tabs": 3
+    },
+    {
+      "id": "S1-SL",
+      "type": "tab_slot",
+      "board": "SHELF-1",
+      "into": "SIDE-L",
+      "tabs": 2
+    },
+    {
+      "id": "S1-SR",
+      "type": "tab_slot",
+      "board": "SHELF-1",
+      "into": "SIDE-R",
+      "tabs": 2
+    },
+    {
+      "id": "S2-SL",
+      "type": "tab_slot",
+      "board": "SHELF-2",
+      "into": "SIDE-L",
+      "tabs": 2
+    },
+    {
+      "id": "S2-SR",
+      "type": "tab_slot",
+      "board": "SHELF-2",
+      "into": "SIDE-R",
+      "tabs": 2
+    },
+    {
+      "id": "S3-SL",
+      "type": "tab_slot",
+      "board": "SHELF-3",
+      "into": "SIDE-L",
+      "tabs": 2
+    },
+    {
+      "id": "S3-SR",
+      "type": "tab_slot",
+      "board": "SHELF-3",
+      "into": "SIDE-R",
+      "tabs": 2
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Bedside cabinet with door",
+    "description": "Particle board bedside cabinet: two sides, top, bottom, back, one shelf and a hinged front door on the right.",
+    "overall": {
+      "length": 450,
+      "height": 550,
+      "depth": 400
+    }
+  },
+  "material": {
+    "name": "Particle board 18 mm",
+    "type": "particle_board",
+    "thickness": 18
+  },
+  "joinery": "glue_allowed",
+  "boards": [
+    {
+      "id": "BACK",
+      "name": "Back panel",
+      "group": "Carcass",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        450,
+        550,
+        18
+      ]
+    },
+    {
+      "id": "SIDE-L",
+      "name": "Left side",
+      "group": "Carcass",
+      "position": [
+        0,
+        0,
+        18
+      ],
+      "size": [
+        18,
+        550,
+        364
+      ]
+    },
+    {
+      "id": "SIDE-R",
+      "name": "Right side",
+      "group": "Carcass",
+      "position": [
+        432,
+        0,
+        18
+      ],
+      "size": [
+        18,
+        550,
+        364
+      ]
+    },
+    {
+      "id": "TOP",
+      "name": "Top",
+      "group": "Carcass",
+      "position": [
+        18,
+        532,
+        18
+      ],
+      "size": [
+        414,
+        18,
+        364
+      ]
+    },
+    {
+      "id": "BOTTOM",
+      "name": "Bottom",
+      "group": "Carcass",
+      "position": [
+        18,
+        0,
+        18
+      ],
+      "size": [
+        414,
+        18,
+        364
+      ]
+    },
+    {
+      "id": "SHELF",
+      "name": "Internal shelf",
+      "group": "Carcass",
+      "position": [
+        18,
+        266,
+        36
+      ],
+      "size": [
+        414,
+        18,
+        328
+      ]
+    },
+    {
+      "id": "DOOR",
+      "name": "Front door",
+      "group": "Door",
+      "position": [
+        0,
+        0,
+        382
+      ],
+      "size": [
+        450,
+        550,
+        18
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "SL-BACK",
+      "type": "finger",
+      "board": "SIDE-L",
+      "into": "BACK"
+    },
+    {
+      "id": "SR-BACK",
+      "type": "finger",
+      "board": "SIDE-R",
+      "into": "BACK"
+    },
+    {
+      "id": "TOP-BACK",
+      "type": "finger",
+      "board": "TOP",
+      "into": "BACK"
+    },
+    {
+      "id": "BOT-BACK",
+      "type": "finger",
+      "board": "BOTTOM",
+      "into": "BACK"
+    },
+    {
+      "id": "TOP-SL",
+      "type": "finger",
+      "board": "TOP",
+      "into": "SIDE-L"
+    },
+    {
+      "id": "TOP-SR",
+      "type": "finger",
+      "board": "TOP",
+      "into": "SIDE-R"
+    },
+    {
+      "id": "BOT-SL",
+      "type": "finger",
+      "board": "BOTTOM",
+      "into": "SIDE-L"
+    },
+    {
+      "id": "BOT-SR",
+      "type": "finger",
+      "board": "BOTTOM",
+      "into": "SIDE-R"
+    },
+    {
+      "id": "SHELF-L",
+      "type": "tab_slot",
+      "board": "SHELF",
+      "into": "SIDE-L",
+      "tabs": 2
+    },
+    {
+      "id": "SHELF-R",
+      "type": "tab_slot",
+      "board": "SHELF",
+      "into": "SIDE-R",
+      "tabs": 2
+    },
+    {
+      "id": "DOOR-HNG",
+      "type": "hinge",
+      "board": "DOOR",
+      "into": "SIDE-R",
+      "edge": "+x",
+      "count": 2,
+      "gap": 2
+    }
+  ]
+}

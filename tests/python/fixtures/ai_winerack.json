@@ -1,0 +1,250 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Cube wine rack",
+    "description": "Glue-free 3x3 egg-crate wine rack, open front and back",
+    "overall": {
+      "length": 450,
+      "height": 450,
+      "depth": 300
+    }
+  },
+  "material": {
+    "name": "MDF 12 mm",
+    "type": "mdf",
+    "thickness": 12
+  },
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "BASE",
+      "name": "Base",
+      "group": "Box",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        450,
+        12,
+        300
+      ]
+    },
+    {
+      "id": "TOP",
+      "name": "Top",
+      "group": "Box",
+      "position": [
+        0,
+        438,
+        0
+      ],
+      "size": [
+        450,
+        12,
+        300
+      ]
+    },
+    {
+      "id": "LEFT",
+      "name": "Left side",
+      "group": "Box",
+      "position": [
+        0,
+        12,
+        0
+      ],
+      "size": [
+        12,
+        426,
+        300
+      ]
+    },
+    {
+      "id": "RIGHT",
+      "name": "Right side",
+      "group": "Box",
+      "position": [
+        438,
+        12,
+        0
+      ],
+      "size": [
+        12,
+        426,
+        300
+      ]
+    },
+    {
+      "id": "DIV-V1",
+      "name": "Vertical divider 1",
+      "group": "Dividers",
+      "position": [
+        146,
+        12,
+        12
+      ],
+      "size": [
+        12,
+        426,
+        276
+      ]
+    },
+    {
+      "id": "DIV-V2",
+      "name": "Vertical divider 2",
+      "group": "Dividers",
+      "position": [
+        292,
+        12,
+        12
+      ],
+      "size": [
+        12,
+        426,
+        276
+      ]
+    },
+    {
+      "id": "DIV-H1",
+      "name": "Horizontal divider 1",
+      "group": "Dividers",
+      "position": [
+        12,
+        146,
+        12
+      ],
+      "size": [
+        426,
+        12,
+        276
+      ]
+    },
+    {
+      "id": "DIV-H2",
+      "name": "Horizontal divider 2",
+      "group": "Dividers",
+      "position": [
+        12,
+        292,
+        12
+      ],
+      "size": [
+        426,
+        12,
+        276
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "LEFT-BASE",
+      "type": "finger",
+      "board": "LEFT",
+      "into": "BASE",
+      "fingers": 9
+    },
+    {
+      "id": "LEFT-TOP",
+      "type": "finger",
+      "board": "LEFT",
+      "into": "TOP",
+      "fingers": 9
+    },
+    {
+      "id": "RIGHT-BASE",
+      "type": "finger",
+      "board": "RIGHT",
+      "into": "BASE",
+      "fingers": 9
+    },
+    {
+      "id": "RIGHT-TOP",
+      "type": "finger",
+      "board": "RIGHT",
+      "into": "TOP",
+      "fingers": 9
+    },
+    {
+      "id": "DIV-V1-BASE",
+      "type": "tab_slot",
+      "board": "DIV-V1",
+      "into": "BASE",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-V1-TOP",
+      "type": "tab_slot",
+      "board": "DIV-V1",
+      "into": "TOP",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-V2-BASE",
+      "type": "tab_slot",
+      "board": "DIV-V2",
+      "into": "BASE",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-V2-TOP",
+      "type": "tab_slot",
+      "board": "DIV-V2",
+      "into": "TOP",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-H1-LEFT",
+      "type": "tab_slot",
+      "board": "DIV-H1",
+      "into": "LEFT",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-H1-RIGHT",
+      "type": "tab_slot",
+      "board": "DIV-H1",
+      "into": "RIGHT",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-H2-LEFT",
+      "type": "tab_slot",
+      "board": "DIV-H2",
+      "into": "LEFT",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-H2-RIGHT",
+      "type": "tab_slot",
+      "board": "DIV-H2",
+      "into": "RIGHT",
+      "tabs": 3
+    },
+    {
+      "id": "DIV-V1-DIV-H1",
+      "type": "cross_lap",
+      "board": "DIV-V1",
+      "into": "DIV-H1"
+    },
+    {
+      "id": "DIV-V1-DIV-H2",
+      "type": "cross_lap",
+      "board": "DIV-V1",
+      "into": "DIV-H2"
+    },
+    {
+      "id": "DIV-V2-DIV-H1",
+      "type": "cross_lap",
+      "board": "DIV-V2",
+      "into": "DIV-H1"
+    },
+    {
+      "id": "DIV-V2-DIV-H2",
+      "type": "cross_lap",
+      "board": "DIV-V2",
+      "into": "DIV-H2"
+    }
+  ]
+}

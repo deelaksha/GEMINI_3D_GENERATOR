@@ -10,7 +10,7 @@ import json
 from .canvas import CONNECTION_TYPES, FORMAT
 from .manufacturing import FASTENERS, MATERIALS
 from .model import DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MATERIAL_TYPES
-from .validation import NEAR_MISS as NEAR, TOL
+from .validation import HINGE, NEAR_MISS as NEAR, TOL
 
 # A complete, valid study table (1200 x 600 x 750, 18 mm plywood, glue-free tab & slot)
 EXAMPLE = {
@@ -770,27 +770,36 @@ Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …)
   `"tabs"`: 1..12 (default one per ~250 mm of contact, max 6), `"tab_width"`: mm (default about half the tab spacing,
   at least max({tol['min_tab_width']:g} mm, A's thickness)), `"tab_depth"`: mm (default B's thickness = flush with B's far face; larger
   makes the tab stand proud on purpose), `"edge"`: which side of A carries the tabs (default: the side touching B).
-  A must be inset from B's edges by ≥ {tol['min_edge_margin']:g} mm (recommended ≥ {tol['rec_edge_margin']:g} mm; use ≥ the board thickness for furniture).
-  Tabs stay A's thickness away from both ends of the contact, so the contact must be longer than
+  Across A's thickness, A must be inset from B's edges by ≥ {tol['min_edge_margin']:g} mm (recommended ≥ {tol['rec_edge_margin']:g} mm; use ≥ the board
+  thickness for furniture) — at the edge it is a `finger` corner instead. Along the contact A may run right up to B's
+  edges (a shelf can be as deep as the sides): tabs stay A's thickness away from both ends automatically, so the contact must be longer than
   2 × A's thickness + max({tol['min_tab_width']:g} mm, A's thickness).
 - `finger` — box corner: A's end face sits on B's face **flush with one of B's edges** (within {tol['contact']:g} mm), e.g. walls
   meeting at a box corner or a wall standing on the edge of a base. Draw both as plain boxes that just meet (A ends at
   B's face); the generator cuts alternating fingers into both along the corner: A's fingers are B's thickness deep, B's
   notches are A's thickness deep and `clearance` wider. Options: `"fingers"`: odd count 3..41 (an even count is rounded up;
   default: fingers about 3 × the thicker board long, at least 10 mm), `"edge"`: A's side at the corner. Each finger must
-  be at least max({tol['min_tab_width']:g} mm, half of A's thickness) long, or the corner is too short.
+  be at least max({tol['min_tab_width']:g} mm, half of A's thickness) long, or the corner is too short. Which board is
+  `"board"` and which `"into"` does not matter (a reversed pair is swapped with a warning). Three boards meeting at one
+  corner (e.g. side + top + back of a cabinet) are fine: give each pair its own finger connection; the overlapping cuts
+  are resolved exactly.
 - `cross_lap` — egg-crate / halving: two perpendicular boards drawn **passing through each other** (dividers in a grid).
   Each gets a notch half the crossing height deep and the other board's thickness + `clearance` wide, cut from opposite
   edges. One board must end at the top of the crossing and the other at its bottom (within {tol['contact']:g} mm), e.g. both the
   same height; each must stick out > {tol['min_edge_margin']:g} mm past the other's faces. The order of the two boards does not matter.
-- `finger` and `cross_lap` boards must be plain rectangles (no `profile`, no `rotate`); tilted or profiled boards use `tab_slot`.
+- `finger` and `cross_lap` boards must be plain rectangles (no `profile`, no `rotate`). Profiled or tilted boards join
+  with `tab_slot`: e.g. inset the walls from a pitched gable's edges and tab them into its face (as in the cottage
+  example), and tab the gables' sloped edges into the roof panels.
 
 **Joints that need `"joinery": "glue_allowed"`:**
 - `butt` — A's end face against B's face, glued and/or held by `"fasteners"`: `{{"kind": one of {list(FASTENER_KINDS)},
   "count"?: 1..20, "diameter"?: 2..20 mm, "length"?: 5..200 mm}}` or just the kind as a string (`"fasteners": "screw"`).
   Catalogue: {fasteners}.
 - `hinge` — `"board"` = the door, `"into"` = the carcass board it hangs on, `"edge"` (required) = the door side that carries
-  the hinges, optional `"count"`: 1..8 hinges, `"gap"`: 0..5 mm (door clearance).
+  the hinges, optional `"count"`: 1..8 hinges, `"gap"`: 0..5 mm. Doors are **overlay** doors: draw the door in front of the
+  carcass, its back face 0..`gap` mm (default {HINGE['default_gap']:g}) from the carcass front edges, covering the front edge of the board it
+  hangs on (flush with that board's outer face; overhanging it is a warning). The door must be ≥
+  {HINGE['cup_depth'] + HINGE['min_remaining']:g} mm thick for the {HINGE['cup_diameter']:g} mm hinge cups. Do not connect the door to anything else.
 - `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required. `"bevel"`
   defaults to **true** (both edges cut at half the corner angle, saw / CNC only); set `"bevel": false` for a plain corner.
   Optional `"fasteners"` as for butt.
@@ -806,7 +815,9 @@ One valid line per type:
 ```
 - Every board must be connected (directly or through others) to the rest of the product.
 - Choosing the joint: end face on a face away from the edges → `tab_slot`; at the edge (corner) → `finger`; boards
-  crossing → `cross_lap`. A `tab_slot` written for a corner or a crossing is converted automatically (with a warning).
+  crossing → `cross_lap`. Back panels: either recess the back inside the carcass (its edges tab into the sides, top and
+  bottom: `tab_slot`), or make it full size behind the carcass with the sides, top and bottom ending on its face flush
+  with its edges (`finger` at each of its edges). A `tab_slot` written for a corner or a crossing is converted automatically (with a warning).
 - `"connections": "auto"` (or leaving it out) infers every connection from where boards touch or cross; with a list,
   `"auto_connect": true` adds the ones you missed. Listing them yourself gives control over tabs and edges.
 - Use the exact keys `"board"` / `"into"`, exact type names and exact board ids: near-misses are accepted but reported.

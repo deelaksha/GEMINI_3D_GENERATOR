@@ -1,0 +1,281 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Bird house",
+    "description": "Glue-free 6 mm plywood bird house with 40 degree pitched roof, 32 mm entrance hole in the front gable",
+    "overall": {
+      "length": 200,
+      "height": 250,
+      "depth": 180
+    }
+  },
+  "material": {
+    "name": "Birch plywood 6 mm",
+    "type": "plywood",
+    "thickness": 6
+  },
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "FLOOR",
+      "name": "Floor",
+      "group": "Base",
+      "position": [
+        -10,
+        0,
+        -10
+      ],
+      "size": [
+        190,
+        6,
+        170
+      ]
+    },
+    {
+      "id": "GABLE-B",
+      "name": "Back gable",
+      "group": "Walls",
+      "position": [
+        0,
+        6,
+        0
+      ],
+      "size": [
+        170,
+        239.3235,
+        6
+      ],
+      "profile": {
+        "shape": "polygon",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            170,
+            0
+          ],
+          [
+            170,
+            168
+          ],
+          [
+            85,
+            239.3235
+          ],
+          [
+            0,
+            168
+          ]
+        ]
+      }
+    },
+    {
+      "id": "GABLE-F",
+      "name": "Front gable",
+      "group": "Walls",
+      "position": [
+        0,
+        6,
+        144
+      ],
+      "size": [
+        170,
+        239.3235,
+        6
+      ],
+      "profile": {
+        "shape": "polygon",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            170,
+            0
+          ],
+          [
+            170,
+            168
+          ],
+          [
+            85,
+            239.3235
+          ],
+          [
+            0,
+            168
+          ]
+        ]
+      },
+      "openings": [
+        {
+          "id": "entrance",
+          "kind": "opening",
+          "shape": "circle",
+          "center": [
+            85,
+            130,
+            147
+          ],
+          "diameter": 32,
+          "note": "32 mm entrance hole"
+        }
+      ]
+    },
+    {
+      "id": "SIDE-L",
+      "name": "Left wall",
+      "group": "Walls",
+      "position": [
+        10,
+        6,
+        6
+      ],
+      "size": [
+        6,
+        168,
+        138
+      ]
+    },
+    {
+      "id": "SIDE-R",
+      "name": "Right wall",
+      "group": "Walls",
+      "position": [
+        154,
+        6,
+        6
+      ],
+      "size": [
+        6,
+        168,
+        138
+      ]
+    },
+    {
+      "id": "ROOF-L",
+      "name": "Roof left",
+      "group": "Roof",
+      "position": [
+        -15,
+        174,
+        -15
+      ],
+      "size": [
+        125.9596,
+        6,
+        180
+      ],
+      "rotate": {
+        "axis": "z",
+        "angle": 40,
+        "pivot": [
+          0,
+          174,
+          0
+        ]
+      }
+    },
+    {
+      "id": "ROOF-R",
+      "name": "Roof right",
+      "group": "Roof",
+      "position": [
+        59.0404,
+        174,
+        -15
+      ],
+      "size": [
+        125.9596,
+        6,
+        180
+      ],
+      "rotate": {
+        "axis": "z",
+        "angle": -40,
+        "pivot": [
+          170,
+          174,
+          0
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "gb-floor",
+      "type": "tab_slot",
+      "board": "GABLE-B",
+      "into": "FLOOR"
+    },
+    {
+      "id": "gf-floor",
+      "type": "tab_slot",
+      "board": "GABLE-F",
+      "into": "FLOOR"
+    },
+    {
+      "id": "sl-floor",
+      "type": "tab_slot",
+      "board": "SIDE-L",
+      "into": "FLOOR"
+    },
+    {
+      "id": "sr-floor",
+      "type": "tab_slot",
+      "board": "SIDE-R",
+      "into": "FLOOR"
+    },
+    {
+      "id": "sl-gb",
+      "type": "tab_slot",
+      "board": "SIDE-L",
+      "into": "GABLE-B"
+    },
+    {
+      "id": "sl-gf",
+      "type": "tab_slot",
+      "board": "SIDE-L",
+      "into": "GABLE-F"
+    },
+    {
+      "id": "sr-gb",
+      "type": "tab_slot",
+      "board": "SIDE-R",
+      "into": "GABLE-B"
+    },
+    {
+      "id": "sr-gf",
+      "type": "tab_slot",
+      "board": "SIDE-R",
+      "into": "GABLE-F"
+    },
+    {
+      "id": "gb-roofl",
+      "type": "tab_slot",
+      "board": "GABLE-B",
+      "into": "ROOF-L"
+    },
+    {
+      "id": "gb-roofr",
+      "type": "tab_slot",
+      "board": "GABLE-B",
+      "into": "ROOF-R"
+    },
+    {
+      "id": "gf-roofl",
+      "type": "tab_slot",
+      "board": "GABLE-F",
+      "into": "ROOF-L"
+    },
+    {
+      "id": "gf-roofr",
+      "type": "tab_slot",
+      "board": "GABLE-F",
+      "into": "ROOF-R"
+    }
+  ]
+}
