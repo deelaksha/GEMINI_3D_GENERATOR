@@ -121,8 +121,9 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
                             _local=poly)
             else:
                 pts, arcs = feature_shape(f)
-                path.update(shape='polyline', points=[tf(p) for p in (offset_polygon(pts, -half) if half else pts)],
-                            _local=poly)
+                off = offset_polygon(pts, -half) if half else pts
+                path.update(shape='polyline', points=[tf(p) for p in off], _local=poly,
+                            _collapsed=G.signed_area(off) * G.signed_area(pts) <= 0)
                 if arcs:
                     path['arcs'] = [dict(a, center=tf(a['center'])) for a in arcs]
             inner.append(path)
@@ -159,6 +160,10 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
                         G.polygons_overlap(inner[a]['_local'], inner[b]['_local']):
                     issues.append(_iss('OVERLAPPING_CUT_PATHS', pl.id,
                                        f"Cut paths '{inner[a]['id']}' and '{inner[b]['id']}' overlap."))
+        for p in inner:                 # a cut-out narrower than the kerf would come out inverted or with a negative radius
+            if (p['shape'] == 'circle' and p['radius'] <= 0) or p.pop('_collapsed', False):
+                issues.append(_iss('CUT_PATH_DEGENERATE', pl.id, f"Cut path '{p['id']}' collapses after kerf compensation "
+                                                                  f"({kerf:g} mm kerf); the cut-out is too small for the tool."))
         # Dimension check: every compensated edge must lie exactly kerf/2 outside its design edge
         drift = _offset_error(pl.cut, outer_local, half)
         if drift > 0.005:

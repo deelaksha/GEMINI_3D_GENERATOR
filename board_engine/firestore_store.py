@@ -22,7 +22,7 @@ import time
 from urllib.parse import quote
 
 from .model import check_id, normalize_design
-from .store import Conflict, NotFound
+from .store import KEEP_VERSIONS, Conflict, NotFound
 
 log = logging.getLogger('board_engine.firestore')
 SCOPES = ['https://www.googleapis.com/auth/datastore']
@@ -154,18 +154,20 @@ class FirestoreStore:
         else:
             self._call('POST', f'/{COLLECTION}?documentId={quote(design["id"])}', {'fields': self._fields(design)},
                        ok=(200,))
+        self._snapshot(design)
         self._audit(design['id'], {'at': now, 'actor': actor, 'op': 'create', 'revision': 1})
         return design
 
     def delete(self, did, actor='system'):
         if not self.exists(did):
             raise NotFound(did)
-        try:  # history first (subcollections are not removed with their parent)
-            _s, data = self._call('GET', self._doc_path(did) + '/history?pageSize=300&mask.fieldPaths=at')
-            for doc in data.get('documents', []):
-                self._call('DELETE', '/' + doc['name'].split('/documents/', 1)[1])
-        except FirestoreError as e:
-            log.warning('could not clear history of %s: %s', did, e)
+        for sub in ('history', 'versions'):   # subcollections are not removed with their parent
+            try:
+                _s, data = self._call('GET', self._doc_path(did) + f'/{sub}?pageSize=300&mask.fieldPaths=at')
+                for doc in data.get('documents', []):
+                    self._call('DELETE', '/' + doc['name'].split('/documents/', 1)[1])
+            except FirestoreError as e:
+                log.warning('could not clear %s of %s: %s', sub, did, e)
         self._call('DELETE', self._doc_path(did))
 
     def mutate(self, did, fn, op, actor='system', expected_revision=None, detail=None):
@@ -183,8 +185,35 @@ class FirestoreStore:
         new['updated'] = now
         self._call('PATCH', self._doc_path(did) + f'?currentDocument.updateTime={quote(update_time)}',
                    {'fields': self._fields(new)})
+        self._snapshot(new)
         self._audit(did, {'at': now, 'actor': actor, 'op': op, 'revision': new['revision'], 'detail': detail})
         return new, result, True
+
+    def _snapshot(self, design):
+        """Full copy of this revision (best-effort, like the history: the design itself is already saved)."""
+        try:
+            self._call('PATCH', self._doc_path(design['id']) + f"/versions/{design['revision']}",
+                       {'fields': {'revision': {'integerValue': str(design['revision'])}, 'at': {'stringValue': design['updated']},
+                                   'data': {'stringValue': json.dumps(design, separators=(',', ':'))}}})
+            old = design['revision'] - KEEP_VERSIONS          # same retention as the file store
+            if old >= 1:
+                self._call('DELETE', self._doc_path(design['id']) + f'/versions/{old}')
+        except FirestoreError as e:
+            log.warning('version snapshot failed for %s: %s', design['id'], e)
+
+    def versions(self, did):
+        out, token = [], None
+        while True:
+            q = '/versions?pageSize=300&mask.fieldPaths=revision' + (f'&pageToken={quote(token)}' if token else '')
+            _s, data = self._call('GET', self._doc_path(did) + q)
+            out += [int(d['fields']['revision']['integerValue']) for d in data.get('documents', [])]
+            token = data.get('nextPageToken')
+            if not token:
+                return sorted(out)
+
+    def get_version(self, did, revision):
+        _s, doc = self._call('GET', self._doc_path(did) + f'/versions/{int(revision)}')
+        return normalize_design(json.loads(doc['fields']['data']['stringValue']))
 
     def _audit(self, did, entry):
         fields = {'seq': {'integerValue': str(time.time_ns())},  # orders entries within the same second

@@ -1,0 +1,461 @@
+{
+ "positives": [
+  {
+   "joint": "T-joint",
+   "engine_type": "tab_slot",
+   "scenario": "wall standing mid-base",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "tab_slot"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Mortise and tenon",
+   "engine_type": "tab_slot (through)",
+   "scenario": "type \"mortise_and_tenon\"",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [
+     "CONNECTION_TYPE_NORMALISED"
+    ],
+    "engine_types": [
+     "tab_slot"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": "through tenon only; blind mortise not supported"
+  },
+  {
+   "joint": "Interlocking",
+   "engine_type": "tab_slot",
+   "scenario": "type \"interlocking\"",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [
+     "CONNECTION_TYPE_NORMALISED"
+    ],
+    "engine_types": [
+     "tab_slot"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Corner joint",
+   "engine_type": "finger",
+   "scenario": "wall flush with base edge",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "finger"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Finger joint",
+   "engine_type": "finger",
+   "scenario": "type \"finger\", 5 fingers",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "finger"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Dovetail joint",
+   "engine_type": "finger (substituted)",
+   "scenario": "type \"dovetail\"",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [
+     "CONNECTION_TYPE_NORMALISED"
+    ],
+    "engine_types": [
+     "finger"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": "SILENT SEMANTIC SUBSTITUTION: a dovetail is read as a straight finger joint (only a \"normalised\" warning)"
+  },
+  {
+   "joint": "Butt joint",
+   "engine_type": "edge_butt",
+   "scenario": "glue_allowed, no fasteners",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "edge_butt"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Screw connection",
+   "engine_type": "edge_butt + screws",
+   "scenario": "fasteners \"screw\"",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "edge_butt"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Dowel connection",
+   "engine_type": "edge_butt + dowels",
+   "scenario": "fasteners {\"kind\": \"dowel\", \"count\": 3}",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "edge_butt"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Cross joint",
+   "engine_type": "cross_lap",
+   "scenario": "two plates crossing",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "cross_lap"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Miter joint",
+   "engine_type": "edge_mitre",
+   "scenario": "each board drawn to the other board's mid-plane (engine convention)",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [
+     "CANTILEVER",
+     "TIP_OVER"
+    ],
+    "engine_types": [
+     "edge_mitre"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Miter joint, drawn to the outer corner",
+   "engine_type": "edge_mitre",
+   "scenario": "boards drawn to the outside corner (how an AI draws it)",
+   "expected": "rejected",
+   "actual": {
+    "compiled": false,
+    "errors": [
+     "COLLISION",
+     "EDGES_NOT_COINCIDENT",
+     "UNSUPPORTED_COMPONENT"
+    ],
+    "warnings": [
+     "FLOATING_COMPONENT",
+     "TIP_OVER"
+    ],
+    "engine_types": [],
+    "ready": false
+   },
+   "pass": true,
+   "note": "PROMPT GAP: the mid-plane convention is not in the AI prompt; this natural drawing is rejected (EDGES_NOT_COINCIDENT)"
+  },
+  {
+   "joint": "Lap joint",
+   "engine_type": "face_lap (native only)",
+   "scenario": "type \"lap\" in board-design/v1",
+   "expected": "rejected",
+   "actual": {
+    "compiled": false,
+    "errors": [
+     "NO_CROSSING"
+    ],
+    "warnings": [
+     "CONNECTION_TYPE_NORMALISED"
+    ],
+    "engine_types": [],
+    "ready": null
+   },
+   "pass": true,
+   "note": "\"lap\" is read as cross_lap (alias) and then fails NO_CROSSING; a face-to-face lap cannot be written in v1"
+  },
+  {
+   "joint": "Dado joint",
+   "engine_type": "\u2014 (not supported)",
+   "scenario": "type \"dado\"",
+   "expected": "rejected",
+   "actual": {
+    "compiled": false,
+    "errors": [
+     "CONNECTION_TYPE"
+    ],
+    "warnings": [],
+    "engine_types": [],
+    "ready": null
+   },
+   "pass": true,
+   "note": "partial-depth housings are not modelled; must be rejected, not faked"
+  },
+  {
+   "joint": "Rabbet joint",
+   "engine_type": "\u2014 (not supported)",
+   "scenario": "type \"rabbet\"",
+   "expected": "rejected",
+   "actual": {
+    "compiled": false,
+    "errors": [
+     "CONNECTION_TYPE"
+    ],
+    "warnings": [],
+    "engine_types": [],
+    "ready": null
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "Removable connection",
+   "engine_type": "\u2014 (no knock-down fittings)",
+   "scenario": "type \"cam_lock\"",
+   "expected": "rejected",
+   "actual": {
+    "compiled": false,
+    "errors": [
+     "CONNECTION_TYPE"
+    ],
+    "warnings": [],
+    "engine_types": [],
+    "ready": null
+   },
+   "pass": true,
+   "note": "loose parts are covered by the support analysis (\"resting\"), not by joints"
+  },
+  {
+   "joint": "Hinge (moving)",
+   "engine_type": "hinge",
+   "scenario": "overlay door on a side panel",
+   "expected": "compiles",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "warnings": [],
+    "engine_types": [
+     "finger",
+     "hinge"
+    ],
+    "ready": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "joint": "T-joint fit",
+   "engine_type": "tab_slot",
+   "scenario": "slot width = wall thickness + clearance",
+   "expected": "18 + 0.10 = 18.10 mm",
+   "actual": {
+    "slot_short_side": 18.1
+   },
+   "pass": true
+  }
+ ],
+ "negatives": [
+  {
+   "defect": "Joint wider than the board",
+   "expected_any_of": [
+    "TAB_OUTSIDE_EDGE"
+   ],
+   "actual": [
+    "COLLISION",
+    "TAB_OUTSIDE_EDGE"
+   ],
+   "detail": "90 mm tab on an 80 mm edge",
+   "pass": true
+  },
+  {
+   "defect": "Joint deeper than the material",
+   "expected_any_of": [
+    "TAB_PROTRUDES"
+   ],
+   "actual": [
+    "TAB_PROTRUDES",
+    "accepted=True"
+   ],
+   "detail": "6 mm tab into a 3 mm receiver (no \"protrude\" flag): warning, accepted",
+   "pass": true
+  },
+  {
+   "defect": "Incorrect joint orientation",
+   "expected_any_of": [
+    "ORIENTATION_MISMATCH"
+   ],
+   "actual": [
+    "ORIENTATION_MISMATCH"
+   ],
+   "detail": "wall lying parallel to the base",
+   "pass": true
+  },
+  {
+   "defect": "Missing mating component",
+   "expected_any_of": [
+    "JOINT_BROKEN"
+   ],
+   "actual": [
+    "COLLISION",
+    "FLOATING_COMPONENT",
+    "JOINT_BROKEN"
+   ],
+   "detail": "joint into 'NOPE' (cause: JOINT_REFERENCE_INVALID)",
+   "pass": true
+  },
+  {
+   "defect": "Duplicate joint",
+   "expected_any_of": [
+    "DUPLICATE_JOINT",
+    "JOINT_ID_EXISTS"
+   ],
+   "actual": [
+    "DUPLICATE_JOINT"
+   ],
+   "detail": "same tab joined twice",
+   "pass": true
+  },
+  {
+   "defect": "Misaligned joint position",
+   "expected_any_of": [
+    "SLOT_MISALIGNED",
+    "SLOT_POSITION"
+   ],
+   "actual": [
+    "SLOT_MISALIGNED"
+   ],
+   "detail": "existing slot 4 mm off the tab",
+   "pass": true
+  },
+  {
+   "defect": "Overlapping joints",
+   "expected_any_of": [
+    "TAB_OVERLAP"
+   ],
+   "actual": [
+    "COLLISION",
+    "CUT_PROFILE_SELF_INTERSECTION",
+    "TAB_OVERLAP"
+   ],
+   "detail": "two tabs overlapping on one edge",
+   "pass": true
+  },
+  {
+   "defect": "Insufficient material around a joint",
+   "expected_any_of": [
+    "INSUFFICIENT_EDGE_MARGIN",
+    "SLOT_TOO_CLOSE_TO_EDGE",
+    "TAB_OUTSIDE_RECEIVER"
+   ],
+   "actual": [
+    "TAB_OUTSIDE_RECEIVER",
+    "rejected"
+   ],
+   "detail": "wall 1 mm from the base edge: the slot bridge would break",
+   "pass": true
+  },
+  {
+   "defect": "Loose joint (excess clearance)",
+   "expected_any_of": [
+    "SLOT_TOO_LOOSE"
+   ],
+   "actual": [
+    "SLOT_TOO_LOOSE"
+   ],
+   "detail": "slot 0.9 mm wider than the tab board (auto_repair=False; with repair it is resized)",
+   "pass": true
+  },
+  {
+   "defect": "Gap at the joint",
+   "expected_any_of": [
+    "UNINTENDED_GAP"
+   ],
+   "actual": [
+    "MISSING_SLOT",
+    "UNINTENDED_GAP"
+   ],
+   "detail": "wall 1 mm above the base",
+   "pass": true
+  },
+  {
+   "defect": "Glued joint in a glue-free design",
+   "expected_any_of": [
+    "GLUE_JOINT_NOT_ALLOWED"
+   ],
+   "actual": [
+    "GLUE_JOINT_NOT_ALLOWED"
+   ],
+   "detail": "butt joint, joinery interlocking",
+   "pass": true
+  }
+ ],
+ "summary": {
+  "positive_pass": 18,
+  "positive_total": 18,
+  "negative_pass": 11,
+  "negative_total": 11
+ }
+}

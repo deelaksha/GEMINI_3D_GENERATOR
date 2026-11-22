@@ -216,7 +216,12 @@ def op_set_material(design, op):
     allowed = {'name', 'thickness', 'kerf', 'clearance', 'color', 'type'}
     if set(mat) - allowed:
         raise SchemaError(f'material fields: {sorted(allowed)}', 'material')
+    old_t = design['material']['thickness']
     design['material'] = dict(design['material'], **mat)
+    if 'thickness' in mat:
+        for c in design['components']:     # boards cut from the old stock (thickness pinned to it) follow the new stock
+            if c.get('thickness') == old_t:
+                c['thickness'] = mat['thickness']
     from .model import normalize_design
     design.update(normalize_design(design))
     # Thickness changes affect every tab/slot fit: re-check all joined connections

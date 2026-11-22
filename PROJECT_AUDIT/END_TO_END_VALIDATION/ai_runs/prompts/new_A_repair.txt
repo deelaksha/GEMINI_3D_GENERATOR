@@ -1,0 +1,87 @@
+The board design generator compiled your JSON and reported the problems below.
+
+Return the COMPLETE corrected design as one ```json code block. Change only what is needed to fix these problems:
+keep every other board, id, dimension and connection exactly as it is. Where a problem names a suggested fix,
+apply it. Then run the self-check from the specification again before answering.
+
+PROBLEMS:
+- (none)
+
+YOUR PREVIOUS JSON:
+```json
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Three-column bookshelf",
+    "description": "Glue-free 18 mm plywood bookshelf: two full-height sides, a top and a raised bottom, two vertical dividers forming three 376 mm columns, three shelves per column, a flush 80 mm plinth and a 6 mm back panel recessed between the sides, top and bottom. Assumptions: 'three shelves each' means three intermediate shelves per column (four compartments per column) in addition to the bottom and top; the middle column's shelves are staggered 100 mm higher than the outer columns so no two shelves tab into a divider at the same place from opposite sides; plinth height 80 mm, flush with the front and finger-jointed to the sides and bottom; the back panel is inset 18 mm from the rear edges and tabbed into the sides, top and bottom; shelves and dividers are 276 mm deep and tab into the back panel.",
+    "overall": {"length": 1200, "height": 1800, "depth": 300}
+  },
+  "material": {"name": "Birch plywood 18 mm", "type": "plywood", "thickness": 18},
+  "joinery": "interlocking",
+  "boards": [
+    {"id": "SIDE-L", "name": "Left side", "group": "Carcass", "position": [0, 0, 0], "size": [18, 1800, 300], "grain": "y"},
+    {"id": "SIDE-R", "name": "Right side", "group": "Carcass", "position": [1182, 0, 0], "size": [18, 1800, 300], "grain": "y"},
+    {"id": "TOP", "name": "Top", "group": "Carcass", "position": [18, 1782, 0], "size": [1164, 18, 300], "grain": "x"},
+    {"id": "BOTTOM", "name": "Bottom", "group": "Carcass", "position": [18, 80, 0], "size": [1164, 18, 300], "grain": "x"},
+    {"id": "PLINTH", "name": "Plinth", "group": "Plinth", "position": [18, 0, 282], "size": [1164, 80, 18], "grain": "x"},
+    {"id": "BACK", "name": "Back panel 6 mm", "group": "Back", "position": [18, 98, 18], "size": [1164, 1684, 6], "thickness": 6, "material": {"name": "Birch plywood 6 mm", "type": "plywood"}},
+    {"id": "DIV-1", "name": "Divider left", "group": "Dividers", "position": [394, 98, 24], "size": [18, 1684, 276], "grain": "y"},
+    {"id": "DIV-2", "name": "Divider right", "group": "Dividers", "position": [788, 98, 24], "size": [18, 1684, 276], "grain": "y"},
+    {"id": "SH-C1-1", "name": "Column 1 shelf 1", "group": "Column 1", "position": [18, 500, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C1-2", "name": "Column 1 shelf 2", "group": "Column 1", "position": [18, 930, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C1-3", "name": "Column 1 shelf 3", "group": "Column 1", "position": [18, 1360, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C2-1", "name": "Column 2 shelf 1", "group": "Column 2", "position": [412, 600, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C2-2", "name": "Column 2 shelf 2", "group": "Column 2", "position": [412, 1030, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C2-3", "name": "Column 2 shelf 3", "group": "Column 2", "position": [412, 1460, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C3-1", "name": "Column 3 shelf 1", "group": "Column 3", "position": [806, 500, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C3-2", "name": "Column 3 shelf 2", "group": "Column 3", "position": [806, 930, 24], "size": [376, 18, 276], "grain": "x"},
+    {"id": "SH-C3-3", "name": "Column 3 shelf 3", "group": "Column 3", "position": [806, 1360, 24], "size": [376, 18, 276], "grain": "x"}
+  ],
+  "connections": [
+    {"id": "TOP-SL", "type": "finger", "board": "TOP", "into": "SIDE-L"},
+    {"id": "TOP-SR", "type": "finger", "board": "TOP", "into": "SIDE-R"},
+    {"id": "BOT-SL", "type": "tab_slot", "board": "BOTTOM", "into": "SIDE-L", "tabs": 2},
+    {"id": "BOT-SR", "type": "tab_slot", "board": "BOTTOM", "into": "SIDE-R", "tabs": 2},
+    {"id": "PLI-SL", "type": "finger", "board": "PLINTH", "into": "SIDE-L"},
+    {"id": "PLI-SR", "type": "finger", "board": "PLINTH", "into": "SIDE-R"},
+    {"id": "PLI-BOT", "type": "finger", "board": "PLINTH", "into": "BOTTOM"},
+    {"id": "BACK-SL", "type": "tab_slot", "board": "BACK", "into": "SIDE-L", "tabs": 5},
+    {"id": "BACK-SR", "type": "tab_slot", "board": "BACK", "into": "SIDE-R", "tabs": 5},
+    {"id": "BACK-TOP", "type": "tab_slot", "board": "BACK", "into": "TOP", "tabs": 4},
+    {"id": "BACK-BOT", "type": "tab_slot", "board": "BACK", "into": "BOTTOM", "tabs": 4},
+    {"id": "DIV1-BOT", "type": "tab_slot", "board": "DIV-1", "into": "BOTTOM"},
+    {"id": "DIV1-TOP", "type": "tab_slot", "board": "DIV-1", "into": "TOP"},
+    {"id": "DIV1-BACK", "type": "tab_slot", "board": "DIV-1", "into": "BACK", "tabs": 4},
+    {"id": "DIV2-BOT", "type": "tab_slot", "board": "DIV-2", "into": "BOTTOM"},
+    {"id": "DIV2-TOP", "type": "tab_slot", "board": "DIV-2", "into": "TOP"},
+    {"id": "DIV2-BACK", "type": "tab_slot", "board": "DIV-2", "into": "BACK", "tabs": 4},
+    {"id": "C1-1-SL", "type": "tab_slot", "board": "SH-C1-1", "into": "SIDE-L"},
+    {"id": "C1-1-D1", "type": "tab_slot", "board": "SH-C1-1", "into": "DIV-1"},
+    {"id": "C1-1-BK", "type": "tab_slot", "board": "SH-C1-1", "into": "BACK"},
+    {"id": "C1-2-SL", "type": "tab_slot", "board": "SH-C1-2", "into": "SIDE-L"},
+    {"id": "C1-2-D1", "type": "tab_slot", "board": "SH-C1-2", "into": "DIV-1"},
+    {"id": "C1-2-BK", "type": "tab_slot", "board": "SH-C1-2", "into": "BACK"},
+    {"id": "C1-3-SL", "type": "tab_slot", "board": "SH-C1-3", "into": "SIDE-L"},
+    {"id": "C1-3-D1", "type": "tab_slot", "board": "SH-C1-3", "into": "DIV-1"},
+    {"id": "C1-3-BK", "type": "tab_slot", "board": "SH-C1-3", "into": "BACK"},
+    {"id": "C2-1-D1", "type": "tab_slot", "board": "SH-C2-1", "into": "DIV-1"},
+    {"id": "C2-1-D2", "type": "tab_slot", "board": "SH-C2-1", "into": "DIV-2"},
+    {"id": "C2-1-BK", "type": "tab_slot", "board": "SH-C2-1", "into": "BACK"},
+    {"id": "C2-2-D1", "type": "tab_slot", "board": "SH-C2-2", "into": "DIV-1"},
+    {"id": "C2-2-D2", "type": "tab_slot", "board": "SH-C2-2", "into": "DIV-2"},
+    {"id": "C2-2-BK", "type": "tab_slot", "board": "SH-C2-2", "into": "BACK"},
+    {"id": "C2-3-D1", "type": "tab_slot", "board": "SH-C2-3", "into": "DIV-1"},
+    {"id": "C2-3-D2", "type": "tab_slot", "board": "SH-C2-3", "into": "DIV-2"},
+    {"id": "C2-3-BK", "type": "tab_slot", "board": "SH-C2-3", "into": "BACK"},
+    {"id": "C3-1-D2", "type": "tab_slot", "board": "SH-C3-1", "into": "DIV-2"},
+    {"id": "C3-1-SR", "type": "tab_slot", "board": "SH-C3-1", "into": "SIDE-R"},
+    {"id": "C3-1-BK", "type": "tab_slot", "board": "SH-C3-1", "into": "BACK"},
+    {"id": "C3-2-D2", "type": "tab_slot", "board": "SH-C3-2", "into": "DIV-2"},
+    {"id": "C3-2-SR", "type": "tab_slot", "board": "SH-C3-2", "into": "SIDE-R"},
+    {"id": "C3-2-BK", "type": "tab_slot", "board": "SH-C3-2", "into": "BACK"},
+    {"id": "C3-3-D2", "type": "tab_slot", "board": "SH-C3-3", "into": "DIV-2"},
+    {"id": "C3-3-SR", "type": "tab_slot", "board": "SH-C3-3", "into": "SIDE-R"},
+    {"id": "C3-3-BK", "type": "tab_slot", "board": "SH-C3-3", "into": "BACK"}
+  ]
+}
+```

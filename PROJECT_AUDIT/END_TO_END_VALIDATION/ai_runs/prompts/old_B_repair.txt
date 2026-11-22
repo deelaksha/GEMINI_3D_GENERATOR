@@ -1,0 +1,19 @@
+The generator reported these problems with your design. Please fix them and give me the complete JSON again.
+
+FASTENER_COLLISION: 'BOT-SL/confirmat3' and 'PL-BOT/screw4' pass 1.0 mm apart (need 7.5 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards.
+FASTENER_COLLISION: 'BOT-SR/confirmat1' and 'PL-BOT/screw1' pass 1.0 mm apart (need 7.5 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards.
+FASTENER_COLLISION: 'SHL-DIV/dowel1' and 'SHR-DIV/dowel3' pass 0.0 mm apart (need 10.0 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards.
+FASTENER_COLLISION: 'SHL-DIV/dowel2' and 'SHR-DIV/dowel2' pass 0.0 mm apart (need 10.0 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards.
+FASTENER_COLLISION: 'SHL-DIV/dowel3' and 'SHR-DIV/dowel1' pass 0.0 mm apart (need 10.0 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards.
+TOOL_ACCESS_BLOCKED: The head of 'PL-BOT/screw1' cannot be reached: DRW1-BT is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'PL-BOT/screw2' cannot be reached: DRW1-BT is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D1-BK-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D1-BK-SL/screw2' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D1-BT-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D1-BT-SL/screw2' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D1-BT-SL/screw3' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D2-BK-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D2-BK-SL/screw2' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D2-BT-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D2-BT-SL/screw2' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.
+TOOL_ACCESS_BLOCKED: The head of 'D2-BT-SL/screw3' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened.

@@ -15,7 +15,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 ```
 {
   "format": "board-design/v1",
-  "product":  {"name": str, "description": str, "overall": {"length": mm, "height": mm, "depth": mm}},
+  "product":  {"name": str, "description": str, "overall": {"length": mm, "height": mm, "depth": mm},
+               "mounting"?: one of ['floor', 'wall'] (default "floor"; "wall" = screwed to the wall behind it, z = 0 side)},
   "material": {"name": str, "type": one of ['plywood', 'mdf', 'particle_board', 'solid_wood', 'hardboard', 'cardboard', 'other'], "thickness": mm, "kerf"?: mm, "clearance"?: mm},
   "joinery":  one of ['interlocking', 'glue_allowed']   (optional; "interlocking" = glue-free: tab_slot, finger and cross_lap
               only; "glue_allowed" also permits butt, hinge and mitre. Derived from the connections when omitted),
@@ -30,18 +31,21 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 
 ## board
 ```
-{"id": str, "name": str, "group": str, "position": [x, y, z], "size": [sx, sy, sz],
+{"id": str, "name": str, "group": str (sub-assembly, e.g. "Carcass", "Drawer 1", "Door"), "position": [x, y, z], "size": [sx, sy, sz],
   "thickness"?: mm (default material.thickness), "material"?: {"name", "type"}, "grain"?: "x"|"y"|"z",
   "openings"?: [ {"id", "kind": "opening"|"hole", "shape": "circle", "center": [x, y, z], "diameter": mm}
                | {"id", "kind": "opening"|"hole", "shape": "rect", "center": [x, y, z], "size": [a, b]} ],
   "edge_banding"?: [{"edge": "+x"|"-x"|"+y"|"-y"|"+z"|"-z", "thickness": mm, "material"?: str}],
   "profile"?: shape, "engravings"?: [...], "rotate"?: {...}   (see "Complex cuts and tilted boards")}
 ```
-- `id` must match `^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$` and be unique (e.g. `TOP`, `SIDE-L`, `SHELF-2`).
+- `id` must match `^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$`, be unique and at most 24 characters (e.g. `TOP`, `SIDE-L`, `SHELF-2`).
+- `group` names the sub-assembly a board belongs to (product → group → board). Give every drawer, door, module or
+  lid its own group so the parts list and assembly steps follow the product's structure.
 - Opening `center` is a world point inside the board; rect `size` is along the board's two in-plane axes in x, y, z order.
   `opening` = intentional design opening (never filled), `hole` = functional hole (cable, dowel). Openings and
   engravings may carry `"note"`: str (shown in the drawings). Keep ≥ 1.5 mm
   (recommended 3 mm) of material between any opening/slot and an edge, and ≥ 1 mm between cut-outs.
+  Every opening and hole must be wider than the material's kerf (table below): at least twice the kerf is safe.
 
 ## Complex cuts and tilted boards (optional)
 Face coordinates `[u, v]`: millimetres from the board box's **minimum corner**, along the board's two in-plane axes in
@@ -117,7 +121,11 @@ Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …)
   carcass, its back face 0..`gap` mm (default 2) from the carcass front edges, covering the front edge of the board it
   hangs on (flush with that board's outer face; overhanging it is a warning). The door must be ≥
   16 mm thick for the 35 mm hinge cups. Do not connect the door to anything else.
-- `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required. `"bevel"`
+- `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required.
+  **Draw each board up to the other board's mid-plane** (not to the outside corner): e.g. an 18 mm side
+  `"position": [0, 0, 0], "size": [18, 141, 200]` and a top `"position": [9, 132, 0], "size": [291, 18, 200]` meet
+  in a mitre with `"edge": "+y"` on the side and `"into_edge": "-x"` on the top. Drawn to the outside corner the two
+  edges do not coincide and the joint is rejected. `"bevel"`
   defaults to **true** (both edges cut at half the corner angle, saw / CNC only); set `"bevel": false` for a plain corner.
   Optional `"fasteners"` as for butt.
 
@@ -138,6 +146,40 @@ One valid line per type:
 - `"connections": "auto"` (or leaving it out) infers every connection from where boards touch or cross; with a list,
   `"auto_connect": true` adds the ones you missed. Listing them yourself gives control over tabs and edges.
 - Use the exact keys `"board"` / `"into"`, exact type names and exact board ids: near-misses are accepted but reported.
+
+- Fasteners (`butt` / `mitre`): the screw, confirmat or dowel goes through B's face into A's **edge**, so A's edge must
+  leave ≥ 3–4 mm of material each side of the bore (no fasteners into the edge of 6 mm boards or of hardboard /
+  cardboard) and the fastener must be long enough to engage A after passing through B. Where two butt joints meet at
+  the same corner their fasteners collide: stagger them with `"end"` (distance of the first/last fastener from the
+  contact ends) or use a tab_slot / finger joint for one of them. Thin back panels are better as `tab_slot` / `finger`.
+- Two boards must never tab into the same board at the same place from opposite sides (e.g. shelves on both sides
+  of a centre divider, or a leg below and a riser above the same top): their tabs would need the same through-slot.
+  Offset them by at least 60 mm (or 4 × the board thickness, whichever is larger).
+
+### Joint names
+Only the types above exist. A requested "dovetail" or "box joint" is made as a straight `finger` joint; "mortise and
+tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cross lap" / "egg-crate" is `cross_lap`
+(the word "lap" alone also means `cross_lap`); "screwed" / "dowelled" is `butt` with `"fasteners"`. Dado, rabbet
+(rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
+`finger`, or a `butt` with fasteners, and say so in the description.
+
+## What this generator cannot build (do not attempt; use the alternative)
+- Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
+  no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
+- Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its pitch
+  (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
+- Round or bent parts: dowels, axles, rods, wheels on axles, curved or kerf-bent panels. For a purchased dowel or axle,
+  add a `"hole"` opening where it passes and leave the rod itself out of the design.
+- Moving parts other than hinged doors: drawers on runners, sliding trays, wheels, folding mechanisms. Draw a drawer as
+  a fixed box standing on its runner board; draw a folding product in its open position.
+
+## Support and stability (checked)
+- Every board must be held: joined to the product (directly or through others), or **resting on top of** a held board
+  (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
+- A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
+  A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
+  `"product": {"mounting": "wall"}` and give the product a back rail or back panel at z = 0.
+- These checks are geometric only; they do not prove strength under load.
 
 ## Geometry rules the generator validates (violations are compile errors)
 1. **Touching, not overlapping:** for every connection A's end face must lie exactly on B's face (|gap| ≤ 0.25 mm).
@@ -359,22 +401,11 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "FLOOR",
       "name": "Floor",
       "group": "Base",
-      "position": [
-        -10,
-        0,
-        -10
-      ],
-      "size": [
-        220,
-        6,
-        180
-      ],
+      "position": [-10, 0, -10],
+      "size": [220, 6, 180],
       "profile": {
         "shape": "rect",
-        "center": [
-          110,
-          90
-        ],
+        "center": [110, 90],
         "width": 220,
         "height": 180,
         "corner_radius": 12
@@ -384,39 +415,16 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "GABLE-B",
       "name": "Back gable",
       "group": "Walls",
-      "position": [
-        0,
-        6,
-        0
-      ],
-      "size": [
-        200,
-        220.02,
-        6
-      ],
+      "position": [0, 6, 0],
+      "size": [200, 220.02, 6],
       "profile": {
         "shape": "polygon",
         "points": [
-          [
-            0,
-            0
-          ],
-          [
-            200,
-            0
-          ],
-          [
-            200,
-            150
-          ],
-          [
-            100,
-            220.02
-          ],
-          [
-            0,
-            150
-          ]
+          [0, 0],
+          [200, 0],
+          [200, 150],
+          [100, 220.02],
+          [0, 150]
         ]
       },
       "openings": [
@@ -424,38 +432,22 @@ Return **one** fenced ```json code block containing only the design object — n
           "id": "heart",
           "kind": "opening",
           "shape": "path",
-          "center": [
-            100,
-            165,
-            3
-          ],
-          "start": [
-            0,
-            -14
-          ],
+          "center": [100, 165, 3],
+          "start": [0, -14],
           "segments": [
             {
-              "line": [
-                16,
-                2
-              ]
+              "line": [16, 2]
             },
             {
               "arc": {
-                "to": [
-                  0,
-                  10
-                ],
+                "to": [0, 10],
                 "radius": 9,
                 "large": true
               }
             },
             {
               "arc": {
-                "to": [
-                  -16,
-                  2
-                ],
+                "to": [-16, 2],
                 "radius": 9,
                 "large": true
               }
@@ -468,39 +460,16 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "GABLE-F",
       "name": "Front gable",
       "group": "Walls",
-      "position": [
-        0,
-        6,
-        154
-      ],
-      "size": [
-        200,
-        220.02,
-        6
-      ],
+      "position": [0, 6, 154],
+      "size": [200, 220.02, 6],
       "profile": {
         "shape": "polygon",
         "points": [
-          [
-            0,
-            0
-          ],
-          [
-            200,
-            0
-          ],
-          [
-            200,
-            150
-          ],
-          [
-            100,
-            220.02
-          ],
-          [
-            0,
-            150
-          ]
+          [0, 0],
+          [200, 0],
+          [200, 150],
+          [100, 220.02],
+          [0, 150]
         ]
       },
       "openings": [
@@ -508,36 +477,21 @@ Return **one** fenced ```json code block containing only the design object — n
           "id": "door",
           "kind": "opening",
           "shape": "arch",
-          "center": [
-            100,
-            62,
-            157
-          ],
-          "size": [
-            50,
-            80
-          ]
+          "center": [100, 62, 157],
+          "size": [50, 80]
         },
         {
           "id": "window",
           "kind": "opening",
           "shape": "circle",
-          "center": [
-            155,
-            120,
-            157
-          ],
+          "center": [155, 120, 157],
           "diameter": 30
         },
         {
           "id": "vent",
           "kind": "opening",
           "shape": "regular_polygon",
-          "center": [
-            100,
-            175,
-            157
-          ],
+          "center": [100, 175, 157],
           "sides": 6,
           "diameter": 24
         }
@@ -548,14 +502,8 @@ Return **one** fenced ```json code block containing only the design object — n
           "kind": "engrave",
           "depth": 0.5,
           "points": [
-            [
-              60,
-              135
-            ],
-            [
-              140,
-              135
-            ]
+            [60, 135],
+            [140, 135]
           ]
         }
       ]
@@ -564,30 +512,15 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "SIDE-L",
       "name": "Left wall",
       "group": "Walls",
-      "position": [
-        10,
-        6,
-        6
-      ],
-      "size": [
-        6,
-        150,
-        148
-      ],
+      "position": [10, 6, 6],
+      "size": [6, 150, 148],
       "openings": [
         {
           "id": "win-l",
           "kind": "opening",
           "shape": "rect",
-          "center": [
-            13,
-            90,
-            80
-          ],
-          "size": [
-            40,
-            50
-          ],
+          "center": [13, 90, 80],
+          "size": [40, 50],
           "corner_radius": 8
         }
       ]
@@ -596,26 +529,15 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "SIDE-R",
       "name": "Right wall",
       "group": "Walls",
-      "position": [
-        184,
-        6,
-        6
-      ],
-      "size": [
-        6,
-        150,
-        148
-      ],
+      "position": [184, 6, 6],
+      "size": [6, 150, 148],
       "engravings": [
         {
           "id": "planter",
           "kind": "pocket",
           "depth": 2,
           "shape": "rect",
-          "center": [
-            74,
-            40
-          ],
+          "center": [74, 40],
           "width": 60,
           "height": 20,
           "corner_radius": 4
@@ -626,48 +548,24 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "ROOF-L",
       "name": "Roof left",
       "group": "Roof",
-      "position": [
-        -20,
-        156,
-        -15
-      ],
-      "size": [
-        142.0775,
-        6,
-        190
-      ],
+      "position": [-20, 156, -15],
+      "size": [142.0775, 6, 190],
       "rotate": {
         "axis": "z",
         "angle": 35,
-        "pivot": [
-          0,
-          156,
-          0
-        ]
+        "pivot": [0, 156, 0]
       }
     },
     {
       "id": "ROOF-R",
       "name": "Roof right",
       "group": "Roof",
-      "position": [
-        77.9225,
-        156,
-        -15
-      ],
-      "size": [
-        142.0775,
-        6,
-        190
-      ],
+      "position": [77.9225, 156, -15],
+      "size": [142.0775, 6, 190],
       "rotate": {
         "axis": "z",
         "angle": -35,
-        "pivot": [
-          200,
-          156,
-          0
-        ]
+        "pivot": [200, 156, 0]
       }
     }
   ],
@@ -771,121 +669,57 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "BASE",
       "name": "Base",
       "group": "Box",
-      "position": [
-        0,
-        0,
-        0
-      ],
-      "size": [
-        300,
-        6,
-        200
-      ]
+      "position": [0, 0, 0],
+      "size": [300, 6, 200]
     },
     {
       "id": "FRONT",
       "name": "Front wall",
       "group": "Box",
-      "position": [
-        0,
-        6,
-        194
-      ],
-      "size": [
-        300,
-        94,
-        6
-      ]
+      "position": [0, 6, 194],
+      "size": [300, 94, 6]
     },
     {
       "id": "BACK",
       "name": "Back wall",
       "group": "Box",
-      "position": [
-        0,
-        6,
-        0
-      ],
-      "size": [
-        300,
-        94,
-        6
-      ]
+      "position": [0, 6, 0],
+      "size": [300, 94, 6]
     },
     {
       "id": "LEFT",
       "name": "Left wall",
       "group": "Box",
-      "position": [
-        0,
-        6,
-        6
-      ],
-      "size": [
-        6,
-        94,
-        188
-      ]
+      "position": [0, 6, 6],
+      "size": [6, 94, 188]
     },
     {
       "id": "RIGHT",
       "name": "Right wall",
       "group": "Box",
-      "position": [
-        294,
-        6,
-        6
-      ],
-      "size": [
-        6,
-        94,
-        188
-      ]
+      "position": [294, 6, 6],
+      "size": [6, 94, 188]
     },
     {
       "id": "DIV-X",
       "name": "Long divider",
       "group": "Dividers",
-      "position": [
-        10,
-        6,
-        97
-      ],
-      "size": [
-        280,
-        70,
-        6
-      ]
+      "position": [10, 6, 97],
+      "size": [280, 70, 6]
     },
     {
       "id": "DIV-Z1",
       "name": "Cross divider 1",
       "group": "Dividers",
-      "position": [
-        97,
-        6,
-        10
-      ],
-      "size": [
-        6,
-        70,
-        180
-      ]
+      "position": [97, 6, 10],
+      "size": [6, 70, 180]
     },
     {
       "id": "DIV-Z2",
       "name": "Cross divider 2",
       "group": "Dividers",
-      "position": [
-        197,
-        6,
-        10
-      ],
-      "size": [
-        6,
-        70,
-        180
-      ]
+      "position": [197, 6, 10],
+      "size": [6, 70, 180]
     }
   ],
   "connections": [

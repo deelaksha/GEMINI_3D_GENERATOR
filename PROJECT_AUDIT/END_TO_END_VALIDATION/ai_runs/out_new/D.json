@@ -1,0 +1,58 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Toy car",
+    "description": "Glue-free 6 mm plywood toy car: two side panels with a car silhouette and a rounded (arched) roof line and two windows each, joined by a floor, front and rear bumper panels and a roof brace, all tab & slot. Assumptions: 200 mm long, 80 mm wide, 90 mm high body. Left out (not supported by the generator): the wheels and axles - each side panel has two 7 mm axle holes (wheelbase 120 mm, 12 mm above the bottom edge) for purchased 6 mm axle dowels and wheels of about 40 mm diameter, which lift the body clear of the ground. The roof is rounded in the side profile; the roof brace itself is flat because bent panels are not supported.",
+    "overall": {"length": 200, "height": 90, "depth": 80}
+  },
+  "material": {"name": "Birch plywood 6 mm", "type": "plywood", "thickness": 6},
+  "joinery": "interlocking",
+  "boards": [
+    {"id": "SIDE-B", "name": "Side panel (back)", "group": "Body", "position": [0, 0, 0], "size": [200, 90, 6],
+      "profile": {"shape": "path", "start": [0, 0], "segments": [
+        {"line": [200, 0]},
+        {"line": [200, 40]},
+        {"line": [140, 45]},
+        {"arc": {"to": [40, 45], "radius": 50.28, "clockwise": false}},
+        {"line": [0, 40]},
+        {"line": [0, 0]}
+      ]},
+      "openings": [
+        {"id": "axle-r", "kind": "hole", "shape": "circle", "center": [40, 12, 3], "diameter": 7, "note": "rear axle"},
+        {"id": "axle-f", "kind": "hole", "shape": "circle", "center": [160, 12, 3], "diameter": 7, "note": "front axle"},
+        {"id": "win-r", "kind": "opening", "shape": "rect", "center": [70, 62, 3], "size": [30, 20], "corner_radius": 4},
+        {"id": "win-f", "kind": "opening", "shape": "rect", "center": [110, 62, 3], "size": [30, 20], "corner_radius": 4}
+      ]},
+    {"id": "SIDE-F", "name": "Side panel (front)", "group": "Body", "position": [0, 0, 74], "size": [200, 90, 6],
+      "profile": {"shape": "path", "start": [0, 0], "segments": [
+        {"line": [200, 0]},
+        {"line": [200, 40]},
+        {"line": [140, 45]},
+        {"arc": {"to": [40, 45], "radius": 50.28, "clockwise": false}},
+        {"line": [0, 40]},
+        {"line": [0, 0]}
+      ]},
+      "openings": [
+        {"id": "axle-r", "kind": "hole", "shape": "circle", "center": [40, 12, 77], "diameter": 7, "note": "rear axle"},
+        {"id": "axle-f", "kind": "hole", "shape": "circle", "center": [160, 12, 77], "diameter": 7, "note": "front axle"},
+        {"id": "win-r", "kind": "opening", "shape": "rect", "center": [70, 62, 77], "size": [30, 20], "corner_radius": 4},
+        {"id": "win-f", "kind": "opening", "shape": "rect", "center": [110, 62, 77], "size": [30, 20], "corner_radius": 4}
+      ]},
+    {"id": "FLOOR", "name": "Floor", "group": "Body", "position": [16, 20, 6], "size": [168, 6, 68]},
+    {"id": "FRONT", "name": "Front bumper panel", "group": "Body", "position": [184, 6, 6], "size": [6, 30, 68]},
+    {"id": "REAR", "name": "Rear bumper panel", "group": "Body", "position": [10, 6, 6], "size": [6, 30, 68]},
+    {"id": "ROOF", "name": "Roof brace", "group": "Body", "position": [75, 78, 6], "size": [30, 6, 68]}
+  ],
+  "connections": [
+    {"id": "FLOOR-SB", "type": "tab_slot", "board": "FLOOR", "into": "SIDE-B", "tabs": 2},
+    {"id": "FLOOR-SF", "type": "tab_slot", "board": "FLOOR", "into": "SIDE-F", "tabs": 2},
+    {"id": "FLOOR-FR", "type": "tab_slot", "board": "FLOOR", "into": "FRONT", "tabs": 1},
+    {"id": "FLOOR-RE", "type": "tab_slot", "board": "FLOOR", "into": "REAR", "tabs": 1},
+    {"id": "FRONT-SB", "type": "tab_slot", "board": "FRONT", "into": "SIDE-B", "tabs": 1},
+    {"id": "FRONT-SF", "type": "tab_slot", "board": "FRONT", "into": "SIDE-F", "tabs": 1},
+    {"id": "REAR-SB", "type": "tab_slot", "board": "REAR", "into": "SIDE-B", "tabs": 1},
+    {"id": "REAR-SF", "type": "tab_slot", "board": "REAR", "into": "SIDE-F", "tabs": 1},
+    {"id": "ROOF-SB", "type": "tab_slot", "board": "ROOF", "into": "SIDE-B", "tabs": 1},
+    {"id": "ROOF-SF", "type": "tab_slot", "board": "ROOF", "into": "SIDE-F", "tabs": 1}
+  ]
+}

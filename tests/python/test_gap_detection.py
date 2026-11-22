@@ -13,6 +13,7 @@ import copy
 import json
 import math
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -291,7 +292,7 @@ def test_slot_and_kerf_match_js_profile(t, kerf, clr):
     node = shutil.which('node')
     if node:
         js = subprocess.run([node, '--input-type=module', '-e',
-                             f"import {{ ConnectorStandards as C }} from '{ROOT}/js/core/connectors.js';"
+                             f"import {{ ConnectorStandards as C }} from '{pathlib.Path(ROOT, 'js/core/connectors.js').as_uri()}';"
                              f"console.log(JSON.stringify(C.calculateSlotDimensions({t}, {clr}, {kerf})))"],
                             capture_output=True, text=True, check=True)
         dims = json.loads(js.stdout)

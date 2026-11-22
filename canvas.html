@@ -74,6 +74,7 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
             </select>
           </label>
           <button class="btn primary full" id="btn-gen-prompt">Generate AI prompt</button>
+          <button class="btn full" id="btn-change-prompt" title="Uses the code in the editor as the current design and the requirements text above as the change request">Prompt for a change to the current design</button>
         </div>
       </section>
       <section class="cv-pane" data-pane-id="prompt">
@@ -110,6 +111,7 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
         <div class="cv-diag-head">
           <span id="diag-title">Problems</span><span class="badge" id="diag-count">0</span>
           <span class="spacer"></span>
+          <button class="btn small" id="btn-repair-prompt" title="Put a follow-up prompt that hands these problems back to the AI into step 2">Fix prompt for the AI</button>
           <button class="btn small" id="btn-autofix" disabled title="Apply only corrections that cannot change the intended design"><svg><use href="#i-wand"/></svg>Auto-fix safe issues</button>
         </div>
         <div class="cv-diag-list" id="diag-list"><div class="empty">Paste the AI’s code above and click Compile.</div></div>

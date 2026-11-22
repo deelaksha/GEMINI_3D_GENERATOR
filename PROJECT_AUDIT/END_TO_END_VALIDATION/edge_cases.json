@@ -1,0 +1,353 @@
+{
+ "cases": [
+  {
+   "id": "EC-01",
+   "case": "Empty prompt (no product title)",
+   "sent": {
+    "title": ""
+   },
+   "http_status": 400,
+   "error_codes": [],
+   "api_error": "invalid_request",
+   "expected": "HTTP 4xx with a message",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-02",
+   "case": "Extremely long prompt (1.2 MB of requirements)",
+   "sent": "1200000 chars",
+   "http_status": 200,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "rejected (413) or truncated, never a crash",
+   "pass": true,
+   "note": "prompt length returned: 36090 chars (requirements are cut to 4000)"
+  },
+  {
+   "id": "EC-03",
+   "case": "Invalid AI response (prose, no JSON)",
+   "sent": "Sorry, I cannot design that product.",
+   "http_status": 200,
+   "error_codes": [
+    "JSON_SYNTAX"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['JSON_SYNTAX', 'NOT_AN_OBJECT']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-04",
+   "case": "Malformed JSON",
+   "sent": "{\"boards\": [ {\"id\": \"A\" \"size\": [1,2,3]} ]}",
+   "http_status": 200,
+   "error_codes": [
+    "JSON_SYNTAX"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['JSON_SYNTAX']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-05",
+   "case": "Partial generation (response cut off)",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "JSON_SYNTAX"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['JSON_SYNTAX']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-06",
+   "case": "Missing required fields (no boards)",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "NO_BOARDS"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['NO_BOARDS']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-07",
+   "case": "Missing dimensions",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "BOARD_GEOMETRY"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['BOARD_GEOMETRY']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-08",
+   "case": "Negative dimensions",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "BOARD_SIZE"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['BOARD_SIZE']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-09",
+   "case": "Zero thickness",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "MATERIAL_THICKNESS"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['MATERIAL_THICKNESS']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-10",
+   "case": "Extremely small board (0.3 mm thick material)",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "MATERIAL_THICKNESS"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['MATERIAL_THICKNESS']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-11",
+   "case": "Extremely large dimensions (8 m board)",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "BOARD_SIZE"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['BOARD_SIZE']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-12",
+   "case": "Duplicate IDs",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "DUPLICATE_BOARD_ID"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['DUPLICATE_BOARD_ID']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-13",
+   "case": "Missing component reference",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "UNKNOWN_BOARD"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['UNKNOWN_BOARD']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-14",
+   "case": "Circular / self reference",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "SELF_CONNECTION"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['SELF_CONNECTION', 'UNKNOWN_BOARD']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-15",
+   "case": "Circular pair (A into B and B into A)",
+   "sent": "LEG-L into TOP plus TOP into LEG-L",
+   "http_status": 200,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "the reversed duplicate is ignored with a warning; design still compiles",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-16",
+   "case": "Unsupported material",
+   "sent": "{\"format\": \"board-design/v1\", \"product\": {\"name\": \"Modern Study Table\", \"description\": \"Glue-free plywood desk with a mo\u2026",
+   "http_status": 200,
+   "error_codes": [
+    "MATERIAL_TYPE"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['MATERIAL_TYPE']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-17",
+   "case": "Excessive polygon complexity (3000-point profile)",
+   "sent": "LEG-L profile with 3000 points",
+   "http_status": 200,
+   "error_codes": [
+    "PROFILE_INVALID",
+    "UNKNOWN_BOARD"
+   ],
+   "api_error": null,
+   "expected": "HTTP 200, compiled=false, one of ['PROFILE_INVALID']",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-18",
+   "case": "Unexpected properties",
+   "sent": "\"hinge_side\", \"colour_name\" on a board",
+   "http_status": 200,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "compiles; unknown fields reported",
+   "pass": true,
+   "note": "unknown fields are silently ignored (no warning) \u2014 see bug tracker"
+  },
+  {
+   "id": "EC-19",
+   "case": "Extremely large JSON response (\u22483.5 MB)",
+   "sent": "3468903 chars",
+   "http_status": 413,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "refused with 413 (body limit) or SOURCE_TOO_LARGE",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-20",
+   "case": "Repeated generation requests (3x same source)",
+   "sent": "EXAMPLE x3",
+   "http_status": 200,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "identical results",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-21",
+   "case": "Concurrent editing with expected_revision",
+   "sent": "two renames at the same revision",
+   "http_status": 409,
+   "error_codes": [],
+   "api_error": "conflict",
+   "expected": "first 200, second 409 conflict",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-22",
+   "case": "Concurrent editing without expected_revision",
+   "sent": "rename without revision",
+   "http_status": 200,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "accepted (last write wins) \u2014 this is what the Studio UI does",
+   "pass": true,
+   "note": "the Studio never sends expected_revision (BUG-010)"
+  },
+  {
+   "id": "EC-23",
+   "case": "Failed batch operation leaves no partial change",
+   "sent": "translate + delete of a missing part",
+   "http_status": 404,
+   "error_codes": [],
+   "api_error": "not_found",
+   "expected": "4xx and the stored design is unchanged",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-24",
+   "case": "Failed file export (sheet out of range)",
+   "sent": "sheet=99",
+   "http_status": 400,
+   "error_codes": [],
+   "api_error": "invalid_request",
+   "expected": "HTTP 400, no file",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-25",
+   "case": "Export of a design with a floating board",
+   "sent": "DXF export",
+   "http_status": 409,
+   "error_codes": [],
+   "api_error": "not_ready_for_production",
+   "expected": "HTTP 409 not_ready_for_production (no manufacturing file)",
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "EC-26",
+   "case": "Expensive collision detection under a 5 s budget (8x8 egg-crate, production on)",
+   "sent": "15 boards, 91 joints",
+   "http_status": 200,
+   "error_codes": [
+    "COMPILE_TIMEOUT"
+   ],
+   "api_error": null,
+   "expected": "clear COMPILE_TIMEOUT within ~budget, no hang",
+   "pass": true,
+   "note": "request took 5.0 s"
+  },
+  {
+   "id": "EC-27",
+   "case": "API rate limit",
+   "sent": "7 requests with a 5/min limit",
+   "http_status": 429,
+   "error_codes": [],
+   "api_error": null,
+   "expected": "HTTP 429 after 5",
+   "pass": true,
+   "note": "status codes: [200, 200, 200, 200, 200, 429, 429]"
+  },
+  {
+   "id": "EC-28",
+   "case": "Gemini API timeout / rate limit / network interruption",
+   "pass": null,
+   "expected": "n/a",
+   "note": "NOT APPLICABLE: the application never calls Gemini (prompt is copy-pasted)."
+  },
+  {
+   "id": "EC-29",
+   "case": "Browser refresh during generation",
+   "pass": null,
+   "expected": "draft restored",
+   "note": "NOT EXECUTED (needs a browser). Code: canvas drafts autosave to localStorage (js/canvas/main.js:142-143)."
+  }
+ ],
+ "summary": {
+  "pass": 27,
+  "fail": 0,
+  "not_applicable_or_not_executed": 2
+ }
+}

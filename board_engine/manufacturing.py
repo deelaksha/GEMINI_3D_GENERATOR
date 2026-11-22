@@ -29,6 +29,7 @@ Coordinate conventions are those of geometry.py. Drilling positions are given in
 import math
 
 from . import geometry as G
+from .deadline import check as check_budget
 from .model import build_plates, edge_frame, material_of, tab_geometry
 from .validation import HINGE, TOL, _edge_world, _material_intervals, _r, evaluate_joint, hinge_count, issue
 
@@ -542,6 +543,7 @@ def find_contacts(design, plates, tol=TOL):
     out = []
     ids = sorted(p for p in plates if p not in doors)
     for i in range(len(ids)):
+        check_budget()
         for k in range(len(ids)):
             if i == k:
                 continue

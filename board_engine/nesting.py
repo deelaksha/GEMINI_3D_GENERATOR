@@ -12,6 +12,7 @@ is shown as seen from its local +z face, never mirrored:
 import math
 
 from . import geometry as G
+from .deadline import check as check_budget
 from .model import Plate, feature_polygon, material_of
 
 SHEET_PRESETS = {
@@ -162,6 +163,7 @@ def nest(design, opts=None):
         stock = {'material': key[0], 'type': key[1], 'thickness': key[2]}
         bins, first = [], len(sheets)
         for pl, options, grain in items:
+            check_budget()
             placed = False
             for bi, mr in enumerate(bins + [None]):
                 if mr is None:

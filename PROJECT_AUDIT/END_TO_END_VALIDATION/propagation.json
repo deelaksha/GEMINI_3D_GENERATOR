@@ -1,0 +1,25 @@
+{
+ "edit": "add a 60 mm grommet hole to TOP via POST /components/TOP/features",
+ "http": 200,
+ "before": {
+  "revision_3d": 1,
+  "revision_2d": 1,
+  "revision_cutlist": 1,
+  "top_features_3d": 7,
+  "top_inner_paths_2d": 7,
+  "hole_in_svg": false,
+  "hole_in_dxf_circles": 1,
+  "ready": true
+ },
+ "after": {
+  "revision_3d": 2,
+  "revision_2d": 2,
+  "revision_cutlist": 2,
+  "top_features_3d": 8,
+  "top_inner_paths_2d": 8,
+  "hole_in_svg": true,
+  "hole_in_dxf_circles": 2,
+  "ready": true
+ },
+ "pass": true
+}

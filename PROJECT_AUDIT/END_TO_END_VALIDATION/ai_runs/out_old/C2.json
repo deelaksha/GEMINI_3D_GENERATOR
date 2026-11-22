@@ -1,0 +1,40 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Wall shelf",
+    "description": "Glue-free plywood wall shelf: a wall plate with screw holes, a 600 x 250 mm shelf and two triangular brackets.",
+    "overall": {"length": 600, "height": 250, "depth": 250}
+  },
+  "material": {"name": "Birch plywood 18 mm", "type": "plywood", "thickness": 18},
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "WALL-PLATE", "name": "Wall plate", "group": "Back",
+      "position": [0, 0, 0], "size": [600, 250, 18], "grain": "x",
+      "openings": [
+        {"id": "screw-tl", "kind": "hole", "shape": "circle", "center": [50, 234, 9], "diameter": 5, "note": "wall screw"},
+        {"id": "screw-tr", "kind": "hole", "shape": "circle", "center": [550, 234, 9], "diameter": 5, "note": "wall screw"},
+        {"id": "screw-bl", "kind": "hole", "shape": "circle", "center": [50, 15, 9], "diameter": 5, "note": "wall screw"},
+        {"id": "screw-br", "kind": "hole", "shape": "circle", "center": [550, 15, 9], "diameter": 5, "note": "wall screw"}
+      ]
+    },
+    {"id": "SHELF", "name": "Shelf", "group": "Shelf", "position": [0, 200, 18], "size": [600, 18, 232], "grain": "x"},
+    {
+      "id": "BRACKET-L", "name": "Left bracket", "group": "Brackets",
+      "position": [100, 30, 18], "size": [18, 170, 220], "grain": "y",
+      "profile": {"shape": "polygon", "points": [[0, 0], [170, 0], [170, 220], [150, 220], [0, 20]]}
+    },
+    {
+      "id": "BRACKET-R", "name": "Right bracket", "group": "Brackets",
+      "position": [482, 30, 18], "size": [18, 170, 220], "grain": "y",
+      "profile": {"shape": "polygon", "points": [[0, 0], [170, 0], [170, 220], [150, 220], [0, 20]]}
+    }
+  ],
+  "connections": [
+    {"id": "SHELF-WALL", "type": "tab_slot", "board": "SHELF", "into": "WALL-PLATE", "tabs": 3},
+    {"id": "BRL-WALL", "type": "tab_slot", "board": "BRACKET-L", "into": "WALL-PLATE", "tabs": 1},
+    {"id": "BRR-WALL", "type": "tab_slot", "board": "BRACKET-R", "into": "WALL-PLATE", "tabs": 1},
+    {"id": "BRL-SHELF", "type": "tab_slot", "board": "BRACKET-L", "into": "SHELF", "tabs": 1},
+    {"id": "BRR-SHELF", "type": "tab_slot", "board": "BRACKET-R", "into": "SHELF", "tabs": 1}
+  ]
+}

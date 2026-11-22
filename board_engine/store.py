@@ -10,6 +10,7 @@ Every mutation goes through DesignStore.mutate(), which:
 import copy
 import json
 import os
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,9 @@ class NotFound(KeyError):
 
 class Conflict(RuntimeError):
     pass
+
+
+KEEP_VERSIONS = 100     # full snapshots kept per design (older ones are pruned; the audit history stays)
 
 
 class DesignStore:
@@ -71,6 +75,24 @@ class DesignStore:
         tmp.write_text(json.dumps(design, indent=1))
         os.replace(tmp, p)
 
+    def _snapshot(self, design):
+        """Keep a full copy of every revision so an earlier design can be restored."""
+        d = self.root / 'versions' / design['id']
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{design['revision']}.json").write_text(json.dumps(design))
+        for old in sorted(d.glob('*.json'), key=lambda p: int(p.stem))[:-KEEP_VERSIONS]:
+            old.unlink()
+
+    def versions(self, did):
+        d = self.root / 'versions' / check_id(did, 'design id')
+        return sorted(int(p.stem) for p in d.glob('*.json')) if d.exists() else []
+
+    def get_version(self, did, revision):
+        p = self.root / 'versions' / check_id(did, 'design id') / f'{int(revision)}.json'
+        if not p.exists():
+            raise NotFound(f'{did}@{revision}')
+        return normalize_design(json.loads(p.read_text()))
+
     def _audit(self, did, entry):
         with open(self.root / f'{did}.history.jsonl', 'a') as f:
             f.write(json.dumps(entry) + '\n')
@@ -85,6 +107,7 @@ class DesignStore:
             design['created'] = design.get('created') or now
             design['updated'] = now
             self._write(design)
+            self._snapshot(design)
             self._audit(design['id'], {'at': now, 'actor': actor, 'op': 'create', 'revision': 1})
         return design
 
@@ -94,6 +117,7 @@ class DesignStore:
             if not p.exists():
                 raise NotFound(did)
             p.unlink()
+            shutil.rmtree(self.root / 'versions' / did, ignore_errors=True)
             self._audit(did, {'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'actor': actor,
                               'op': 'delete'})
 
@@ -113,6 +137,7 @@ class DesignStore:
             new['created'] = current.get('created')
             new['updated'] = now
             self._write(new)
+            self._snapshot(new)
             self._audit(did, {'at': now, 'actor': actor, 'op': op, 'revision': new['revision'],
                               'detail': detail})
             return new, result, True

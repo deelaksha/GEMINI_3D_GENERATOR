@@ -1,0 +1,155 @@
+{
+ "cases": [
+  {
+   "id": "NS-01",
+   "case": "Part exactly the usable sheet area (2420 x 1186)",
+   "expected": "placed",
+   "actual": {
+    "placed": 1,
+    "unplaced": []
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-02",
+   "case": "Part 1 mm larger than the usable area",
+   "expected": "PART_EXCEEDS_SHEET",
+   "actual": [
+    "PART_EXCEEDS_SHEET"
+   ],
+   "pass": true
+  },
+  {
+   "id": "NS-03",
+   "case": "Very narrow part (600 x 12 mm plywood)",
+   "expected": "PART_BELOW_MIN_SIZE blocks production",
+   "actual": [
+    "PART_BELOW_MIN_SIZE"
+   ],
+   "pass": true
+  },
+  {
+   "id": "NS-04",
+   "case": "Excessive kerf (7 mm)",
+   "expected": "schema error",
+   "actual": "material.kerf must be <= 6.0",
+   "pass": true
+  },
+  {
+   "id": "NS-05",
+   "case": "Hole smaller than the kerf",
+   "expected": "blocked (FEATURE_SMALLER_THAN_KERF / CUT_PATH_DEGENERATE)",
+   "actual": [
+    "CUT_PATH_DEGENERATE",
+    "FEATURE_SMALLER_THAN_KERF"
+   ],
+   "pass": true
+  },
+  {
+   "id": "NS-06",
+   "case": "Grain restriction: grain must run along the sheet length",
+   "expected": "LONG unrotated, TALL rotated 90\u00b0",
+   "actual": {
+    "TALL": 90.0,
+    "LONG": 0.0
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-07",
+   "case": "Rotation forbidden (grain_locked) and part only fits rotated",
+   "expected": "G placed, G2 PART_EXCEEDS_SHEET",
+   "actual": {
+    "placed": [
+     "G"
+    ],
+    "unplaced": [
+     "PART_EXCEEDS_SHEET"
+    ]
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-08",
+   "case": "Different thicknesses never share a sheet",
+   "expected": "two sheets",
+   "actual": {
+    "sheets": 2,
+    "placement": {
+     "T18": 0,
+     "T6": 1
+    }
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-09",
+   "case": "Repeated components (12 identical parts)",
+   "expected": "one cut-list line x12, all placed, no overlaps",
+   "actual": {
+    "lines": [
+     [
+      "P0 (x12)",
+      12
+     ]
+    ],
+    "placed": 12,
+    "nest_issues": []
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-10",
+   "case": "Waste arithmetic",
+   "expected": "used = sum of part areas; waste = sheets x area - used",
+   "actual": {
+    "reported_used": 1440000.0,
+    "sum_parts": 1440000.0,
+    "reported_waste": 1536800.0,
+    "recomputed_waste": 1536800.0
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-11",
+   "case": "Impossible to share a sheet (3 parts each > half a sheet)",
+   "expected": "one sheet per part",
+   "actual": {
+    "sheets": 3
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-12",
+   "case": "Irregular shapes (hexagon, circle)",
+   "expected": "placed on bounding boxes, no overlap, ready",
+   "actual": {
+    "placed": 2,
+    "issues": [],
+    "ready": true
+   },
+   "pass": true
+  },
+  {
+   "id": "NS-13",
+   "case": "Shared-edge (common-line) cutting",
+   "expected": "n/a",
+   "actual": "not implemented",
+   "pass": null,
+   "note": "parts are always separated by the spacing; no common-line cutting"
+  },
+  {
+   "id": "NS-14",
+   "case": "True-shape nesting",
+   "expected": "n/a",
+   "actual": "not implemented",
+   "pass": null,
+   "note": "bounding-box MaxRects, 0/90 degrees only"
+  }
+ ],
+ "summary": {
+  "pass": 12,
+  "fail": 0,
+  "not_implemented": 2
+ }
+}

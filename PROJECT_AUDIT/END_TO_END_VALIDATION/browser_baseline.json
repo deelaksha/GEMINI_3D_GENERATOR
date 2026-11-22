@@ -1,0 +1,45 @@
+{
+ "root": "/tmp/claude-1002/-home-sonic-claude2-deelaksha-MCLAG--1/8064baa5-d485-429a-b89f-128c91065582/scratchpad/baseline_wt",
+ "cases": [
+  {
+   "id": "BR-01",
+   "case": "Studio loads",
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-02",
+   "case": "Canvas loads",
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-03",
+   "case": "Compile the example",
+   "status": "Compiled \u00b7 5 boards \u00b7 13/13 joints",
+   "problems": "0",
+   "canvas_elements": 1,
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-04",
+   "case": "Edit during a running compile",
+   "status": "Compiled \u00b7 11 boards \u00b7 50/50 joints \u00b7 preparing cut sheets\u2026",
+   "compile_running_when_edited": true,
+   "pass": false,
+   "note": "the latest (broken) text must be compiled and its error shown",
+   "diagnostics_excerpt": "CONNECTIONS_INFERRED \u00b7 line 1\n35 connection(s) inferred from where boards touch or cross (25 cross_lap, 10 tab_slot); list them under \"connections\" to control tabs and joint types."
+  },
+  {
+   "id": "BR-05",
+   "case": "Save then Ctrl-S twice",
+   "projects_created": 3,
+   "pass": false
+  }
+ ],
+ "summary": {
+  "pass": 3,
+  "total": 5
+ }
+}

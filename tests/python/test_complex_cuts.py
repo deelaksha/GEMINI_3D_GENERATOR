@@ -246,7 +246,8 @@ def test_profile_without_a_straight_edge_on_the_contact_side_is_explained():
 COMPILER_FIELDS = """format product name description overall length height depth material type thickness kerf clearance
 joinery sheet width boards connections id group position size grain normal openings edge_banding edge profile
 engravings rotate axis angle pivot kind shape center diameter corner_radius note points closed sides rotation start
-segments line arc to radius large clockwise into into_edge tabs tab_width tab_depth fasteners count gap bevel fingers auto_connect""".split()
+segments line arc to radius large clockwise into into_edge tabs tab_width tab_depth fasteners count gap bevel fingers auto_connect
+mounting""".split()
 
 
 def test_ai_prompt_documents_every_field_the_compiler_accepts():

@@ -1,0 +1,395 @@
+{
+ "out_old": {
+  "A": {
+   "file": "A.json",
+   "chars": 7259,
+   "json_ok": true,
+   "compiled": false,
+   "errors": [
+    "SLOT_ALREADY_USED"
+   ],
+   "warnings": [
+    "TAB_NOT_FLUSH",
+    "UNJOINED_TAB"
+   ],
+   "first_errors": [
+    "Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t1' on 'DIV-1' already receives joint 'C1-1-D1-t1'.",
+    "Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t2' on 'DIV-1' already receives joint 'C1-1-D1-t2'.",
+    "Connection 'C2-2-D1' could not be joined (rejected): Slot 'slot-C1-2-D1-t1' on 'DIV-1' already receives joint 'C1-2-D1-t1'."
+   ],
+   "boards": 18,
+   "max_id_len": 8,
+   "joints": 106,
+   "joined": 94,
+   "ready": false,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 5,
+   "error_count": 12,
+   "warning_count": 24
+  },
+  "A2": {
+   "file": "A2.json",
+   "chars": 7150,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 18,
+   "max_id_len": 8,
+   "joints": 106,
+   "joined": 106,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 5,
+   "error_count": 0,
+   "warning_count": 0,
+   "preservation": {
+    "kept_identical": 15,
+    "changed": [
+     "SH-C2-1",
+     "SH-C2-2",
+     "SH-C2-3"
+    ],
+    "added": [],
+    "removed": []
+   }
+  },
+  "B": {
+   "file": "B.json",
+   "chars": 7887,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 20,
+   "max_id_len": 7,
+   "joints": 41,
+   "joined": 41,
+   "ready": false,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 4,
+   "error_count": 0,
+   "warning_count": 0
+  },
+  "B2": {
+   "file": "B2.json",
+   "chars": 7843,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 20,
+   "max_id_len": 7,
+   "joints": 41,
+   "joined": 41,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 4,
+   "error_count": 0,
+   "warning_count": 0,
+   "preservation": {
+    "kept_identical": 19,
+    "changed": [
+     "SHELF-L"
+    ],
+    "added": [],
+    "removed": []
+   }
+  },
+  "C": {
+   "file": "C.json",
+   "chars": 2210,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [
+    "TIP_OVER"
+   ],
+   "first_errors": [],
+   "boards": 4,
+   "max_id_len": 10,
+   "joints": 7,
+   "joined": 7,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": false,
+   "support_issues": [
+    "TIP_OVER"
+   ],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 3,
+   "error_count": 0,
+   "warning_count": 1
+  },
+  "C2": {
+   "file": "C2.json",
+   "chars": 2210,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [
+    "TIP_OVER"
+   ],
+   "first_errors": [],
+   "boards": 4,
+   "max_id_len": 10,
+   "joints": 7,
+   "joined": 7,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": false,
+   "support_issues": [
+    "TIP_OVER"
+   ],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 3,
+   "error_count": 0,
+   "warning_count": 1,
+   "preservation": {
+    "kept_identical": 1,
+    "changed": [
+     "BRACKET-L",
+     "BRACKET-R",
+     "SHELF"
+    ],
+    "added": [],
+    "removed": []
+   }
+  },
+  "D": {
+   "file": "D.json",
+   "chars": 4907,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [
+    "OVERALL_MISMATCH"
+   ],
+   "first_errors": [],
+   "boards": 13,
+   "max_id_len": 10,
+   "joints": 24,
+   "joined": 24,
+   "ready": false,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": false,
+   "mounting": null,
+   "groups": 4,
+   "error_count": 0,
+   "warning_count": 1
+  }
+ },
+ "out_new": {
+  "A": {
+   "file": "A.json",
+   "chars": 7012,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 17,
+   "max_id_len": 7,
+   "joints": 75,
+   "joined": 75,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": true,
+   "mounting": null,
+   "groups": 7,
+   "error_count": 0,
+   "warning_count": 0
+  },
+  "B": {
+   "file": "B.json",
+   "chars": 8878,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 21,
+   "max_id_len": 8,
+   "joints": 40,
+   "joined": 40,
+   "ready": false,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [
+    "RESTING_COMPONENT"
+   ],
+   "states_assumptions": true,
+   "mounting": null,
+   "groups": 5,
+   "error_count": 0,
+   "warning_count": 0
+  },
+  "B2": {
+   "file": "B2.json",
+   "chars": 8741,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 21,
+   "max_id_len": 8,
+   "joints": 40,
+   "joined": 40,
+   "ready": false,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [
+    "RESTING_COMPONENT"
+   ],
+   "states_assumptions": true,
+   "mounting": null,
+   "groups": 5,
+   "error_count": 0,
+   "warning_count": 0,
+   "preservation": {
+    "kept_identical": 21,
+    "changed": [],
+    "added": [],
+    "removed": []
+   }
+  },
+  "C": {
+   "file": "C.json",
+   "chars": 2136,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 4,
+   "max_id_len": 5,
+   "joints": 9,
+   "joined": 9,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": null,
+   "support_issues": [
+    "WALL_MOUNTED"
+   ],
+   "states_assumptions": true,
+   "mounting": "wall",
+   "groups": 2,
+   "error_count": 0,
+   "warning_count": 0
+  },
+  "C2": {
+   "file": "C2.json",
+   "chars": 2279,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 4,
+   "max_id_len": 5,
+   "joints": 9,
+   "joined": 9,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": null,
+   "support_issues": [
+    "WALL_MOUNTED"
+   ],
+   "states_assumptions": true,
+   "mounting": "wall",
+   "groups": 2,
+   "error_count": 0,
+   "warning_count": 0,
+   "preservation": {
+    "kept_identical": 1,
+    "changed": [
+     "BRK-L",
+     "BRK-R",
+     "SHELF"
+    ],
+    "added": [],
+    "removed": []
+   }
+  },
+  "D": {
+   "file": "D.json",
+   "chars": 4107,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 6,
+   "max_id_len": 6,
+   "joints": 12,
+   "joined": 12,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [],
+   "states_assumptions": true,
+   "mounting": null,
+   "groups": 1,
+   "error_count": 0,
+   "warning_count": 0
+  },
+  "B3": {
+   "file": "B3.json",
+   "chars": 8968,
+   "json_ok": true,
+   "compiled": true,
+   "errors": [],
+   "warnings": [],
+   "first_errors": [],
+   "boards": 21,
+   "max_id_len": 8,
+   "joints": 40,
+   "joined": 40,
+   "ready": true,
+   "consistent_2d_3d": true,
+   "stable": true,
+   "support_issues": [
+    "RESTING_COMPONENT"
+   ],
+   "states_assumptions": true,
+   "mounting": null,
+   "groups": 5,
+   "error_count": 0,
+   "warning_count": 0,
+   "preservation": {
+    "kept_identical": 20,
+    "changed": [
+     "SHELF"
+    ],
+    "added": [],
+    "removed": []
+   }
+  }
+ }
+}

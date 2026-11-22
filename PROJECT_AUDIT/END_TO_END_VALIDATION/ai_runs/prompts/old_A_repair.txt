@@ -1,0 +1,42 @@
+The generator reported these problems with your design. Please fix them and give me the complete JSON again.
+
+SLOT_ALREADY_USED: Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t1' on 'DIV-1' already receives joint 'C1-1-D1-t1'.
+SLOT_ALREADY_USED: Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t2' on 'DIV-1' already receives joint 'C1-1-D1-t2'.
+SLOT_ALREADY_USED: Connection 'C2-2-D1' could not be joined (rejected): Slot 'slot-C1-2-D1-t1' on 'DIV-1' already receives joint 'C1-2-D1-t1'.
+SLOT_ALREADY_USED: Connection 'C2-2-D1' could not be joined (rejected): Slot 'slot-C1-2-D1-t2' on 'DIV-1' already receives joint 'C1-2-D1-t2'.
+SLOT_ALREADY_USED: Connection 'C2-3-D1' could not be joined (rejected): Slot 'slot-C1-3-D1-t1' on 'DIV-1' already receives joint 'C1-3-D1-t1'.
+SLOT_ALREADY_USED: Connection 'C2-3-D1' could not be joined (rejected): Slot 'slot-C1-3-D1-t2' on 'DIV-1' already receives joint 'C1-3-D1-t2'.
+SLOT_ALREADY_USED: Connection 'C3-1-D2' could not be joined (rejected): Slot 'slot-C2-1-D2-t1' on 'DIV-2' already receives joint 'C2-1-D2-t1'.
+SLOT_ALREADY_USED: Connection 'C3-1-D2' could not be joined (rejected): Slot 'slot-C2-1-D2-t2' on 'DIV-2' already receives joint 'C2-1-D2-t2'.
+SLOT_ALREADY_USED: Connection 'C3-2-D2' could not be joined (rejected): Slot 'slot-C2-2-D2-t1' on 'DIV-2' already receives joint 'C2-2-D2-t1'.
+SLOT_ALREADY_USED: Connection 'C3-2-D2' could not be joined (rejected): Slot 'slot-C2-2-D2-t2' on 'DIV-2' already receives joint 'C2-2-D2-t2'.
+SLOT_ALREADY_USED: Connection 'C3-3-D2' could not be joined (rejected): Slot 'slot-C2-3-D2-t1' on 'DIV-2' already receives joint 'C2-3-D2-t1'.
+SLOT_ALREADY_USED: Connection 'C3-3-D2' could not be joined (rejected): Slot 'slot-C2-3-D2-t2' on 'DIV-2' already receives joint 'C2-3-D2-t2'.
+TAB_NOT_FLUSH: Tab 'C1-1-D1-t1' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C1-1-D1-t2' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C1-2-D1-t1' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C1-2-D1-t2' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C1-3-D1-t1' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C1-3-D1-t2' (9.00 mm) does not pass through 'DIV-1' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-1-D2-t1' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-1-D2-t2' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-2-D2-t1' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-2-D2-t2' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-3-D2-t1' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+TAB_NOT_FLUSH: Tab 'C2-3-D2-t2' (9.00 mm) does not pass through 'DIV-2' (18.00 mm).
+UNJOINED_TAB: Tab 'C2-1-D1-t1' on 'SH-C2-1' is not joined to anything.
+UNJOINED_TAB: Tab 'C2-1-D1-t2' on 'SH-C2-1' is not joined to anything.
+UNJOINED_TAB: Tab 'C2-2-D1-t1' on 'SH-C2-2' is not joined to anything.
+UNJOINED_TAB: Tab 'C2-2-D1-t2' on 'SH-C2-2' is not joined to anything.
+UNJOINED_TAB: Tab 'C2-3-D1-t1' on 'SH-C2-3' is not joined to anything.
+UNJOINED_TAB: Tab 'C2-3-D1-t2' on 'SH-C2-3' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-1-D2-t1' on 'SH-C3-1' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-1-D2-t2' on 'SH-C3-1' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-2-D2-t1' on 'SH-C3-2' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-2-D2-t2' on 'SH-C3-2' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-3-D2-t1' on 'SH-C3-3' is not joined to anything.
+UNJOINED_TAB: Tab 'C3-3-D2-t2' on 'SH-C3-3' is not joined to anything.
+JOINT_NOT_JOINED: Connection 'C2-1-D1-t1' (tab_slot SH-C2-1 -> DIV-1) is detached (SLOT_ALREADY_USED).
+JOINT_NOT_JOINED: Connection 'C2-1-D1-t2' (tab_slot SH-C2-1 -> DIV-1) is detached (SLOT_ALREADY_USED).
+JOINT_NOT_JOINED: Connection 'C2-2-D1-t1' (tab_slot SH-C2-2 -> DIV-1) is detached (SLOT_ALREADY_USED).
+JOINT_NOT_JOINED: Connection 'C2-2-D1-t2' (tab_slot SH-C2-2 -> DIV-1) is detached (SLOT_ALREADY_USED).

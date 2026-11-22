@@ -23,6 +23,7 @@ import copy
 import math
 
 from . import geometry as G
+from .deadline import check as check_budget
 from .model import (INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
                     find_component, material_of, thickness_of)
 
@@ -145,6 +146,11 @@ def validate_component(design, comp, tol=TOL):
             out.append(issue('FEATURE_TOO_SMALL', 'error', 'manufacturing',
                              f"Feature '{f['id']}' on '{cid}' is {size:.2f} mm; the laser cannot cut features "
                              f"below {tol['min_feature_size']} mm.", [cid], feature=f['id']))
+        elif size <= design['material'].get('kerf', 0.0):
+            out.append(issue('FEATURE_SMALLER_THAN_KERF', 'error', 'manufacturing',
+                             f"{f['kind'].capitalize()} '{f['id']}' on '{cid}' is {size:.2f} mm across but the cut is "
+                             f"{design['material']['kerf']:g} mm wide: the tool cannot cut it. Make it wider than the kerf "
+                             f"or drill it as a separate operation.", [cid], feature=f['id']))
         if not all(G.point_in_polygon(p, cut) for p in poly) or G.polygon_distance(poly, cut) == 0.0:
             out.append(issue('FEATURE_OUTSIDE_OUTLINE', 'error', '2d',
                              f"{f['kind'].capitalize()} '{f['id']}' on '{cid}' is not fully inside the outline "
@@ -1045,6 +1051,7 @@ def _plate_interference(a, b, tol):
     step = tol['sample_step']
     hit_idx = set()
     for P, Q in ((a, b), (b, a)):
+        check_budget()
         vP = G.v_norm(G.v_cross(P.frame.normal, u))          # in P's plane, perpendicular to the line
         vp_loc, vq_loc = P.frame.dir_to_local(vP), Q.frame.dir_to_local(vP)
         n_st = int((hi - lo) / step) + 1
@@ -1314,6 +1321,7 @@ def find_collisions(design, plates, only=None, tol=TOL):
             bevelled.setdefault(frozenset((j['a'], j['b'])), []).append(_edge_world(plates[j['a']], j['a_edge']))
     for i in range(len(ids)):
         for k in range(i + 1, len(ids)):
+            check_budget()
             a, b = plates[ids[i]], plates[ids[k]]
             if only and a.id not in only and b.id not in only:
                 continue

@@ -20,6 +20,7 @@ import copy
 import logging
 import time
 
+from .deadline import check as check_budget
 from .model import build_plates, find_component, normalize_joint
 from .validation import TOL, evaluate_joint, validate_component, validate_design
 
@@ -64,6 +65,7 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
     whole_design_check=False skips the before/after validation of the entire design (rule 6). Only for
     callers that join many joints in one go and validate the finished design once afterwards (the AI canvas
     compiler); the joint itself, its slot repair and the receiver's 2D profile are still fully checked."""
+    check_budget()
     spec = normalize_joint(spec)
     spec.pop('status', None)
     spec.pop('repairs', None)

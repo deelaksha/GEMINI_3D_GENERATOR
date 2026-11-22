@@ -46,6 +46,7 @@ MARK_KINDS = ('engrave', 'pocket')   # non-through machining: never holes for co
 JOINT_TYPES = ('tab_slot', 'edge_butt', 'edge_mitre', 'face_lap', 'hinge', 'finger', 'cross_lap')
 # Glue-free products (cardboard, friction-fit board) can only use mechanical interlocks.
 JOINERY_MODES = ('interlocking', 'glue_allowed')
+MOUNTINGS = ('floor', 'wall')   # how the product is held: standing on the floor (default) or fixed to a wall (support.py)
 INTERLOCKING_JOINTS = ('tab_slot', 'finger', 'cross_lap')   # glue-free: finger = box corner, cross_lap = egg-crate
 # Material families; manufacturing.MATERIALS holds their stock and tolerance data.
 MATERIAL_TYPES = ('plywood', 'mdf', 'particle_board', 'solid_wood', 'hardboard', 'cardboard', 'other')
@@ -387,6 +388,15 @@ def _joinery(v):
     return v
 
 
+def _mounting(v):
+    """Optional; only stored when given, so existing designs are unchanged (absent = 'floor')."""
+    if v is None:
+        return {}
+    if v not in MOUNTINGS:
+        raise SchemaError(f'mounting must be one of {MOUNTINGS}', 'mounting')
+    return {'mounting': v}
+
+
 def normalize_design(d):
     if not isinstance(d, dict):
         raise SchemaError('design must be an object')
@@ -427,6 +437,7 @@ def normalize_design(d):
         'components': comps,
         'joints': [normalize_joint(j, f'joints[{i}]') for i, j in enumerate(joints_in)],
         'joinery': _joinery(d.get('joinery')),
+        **_mounting(d.get('mounting')),
         **_source(d.get('source')),
         'created': d.get('created'),
         'updated': d.get('updated'),

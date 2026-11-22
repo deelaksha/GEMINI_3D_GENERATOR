@@ -1,0 +1,934 @@
+{
+ "generated": "2026-11-22T01:19:48Z",
+ "baseline_commit": "bf1f44b",
+ "evidence_policy": "every entry is an actual execution unless marked simulated / not executed; designs in the product corpus are hand-written AI-style inputs; AI comparison used isolated Claude agents (not Gemini)",
+ "suites": {
+  "pytest": {
+   "baseline": "300 passed, 4 failed (path contains #, harness bug)",
+   "after": "369 passed, 0 failed"
+  },
+  "product_corpus": {
+   "baseline": {
+    "passed": 11,
+    "failed": 7
+   },
+   "after": {
+    "passed": 18,
+    "failed": 0
+   },
+   "per_case": [
+    {
+     "test_id": "E2E-01",
+     "title": "Serving board",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 1,
+     "joints": 0,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 1
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 0.148,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-02",
+     "title": "Multi-compartment bookshelf",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 16,
+     "joints": 86,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 2,
+       "joined": 14
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 13.163,
+     "baseline_failure": [
+      "ready_for_production=False expected True (blocking ['PART_EXCEEDS_SHEET'])"
+     ]
+    },
+    {
+     "test_id": "E2E-03",
+     "title": "Cabinet with door and drawers",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 18,
+     "joints": 47,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 3,
+       "joined": 5,
+       "resting": 10
+      },
+      "stable": true,
+      "issues": [
+       "RESTING_COMPONENT"
+      ]
+     },
+     "errors": [],
+     "duration_s": 7.083,
+     "baseline_failure": [
+      "resting: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-04",
+     "title": "Chair (fixed version of a folding chair)",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 5,
+     "joints": 8,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 2,
+       "joined": 3
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 0.261,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-05",
+     "title": "Complex computer desk",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 16,
+     "joints": 41,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 3,
+       "joined": 10,
+       "resting": 3
+      },
+      "stable": true,
+      "issues": [
+       "RESTING_COMPONENT"
+      ]
+     },
+     "errors": [],
+     "duration_s": 3.045,
+     "baseline_failure": [
+      "resting: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-06",
+     "title": "Stepped multi-level storage",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 16,
+     "joints": 44,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 4,
+       "joined": 12
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 3.006,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-07",
+     "title": "Three-plate interlocking puzzle",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 0,
+     "joints": 0,
+     "ready": null,
+     "consistent_2d_3d": null,
+     "exports_ok": null,
+     "support": null,
+     "errors": [
+      "JOINT_CUTS_INVALID"
+     ],
+     "duration_s": 0.001,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-08",
+     "title": "Stackable modular cubes",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 8,
+     "joints": 8,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 3,
+       "joined": 1,
+       "resting": 4
+      },
+      "stable": true,
+      "issues": [
+       "RESTING_COMPONENT"
+      ]
+     },
+     "errors": [],
+     "duration_s": 1.401,
+     "baseline_failure": [
+      "resting: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-09",
+     "title": "Electronics enclosure",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 7,
+     "joints": 11,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 6,
+       "resting": 1
+      },
+      "stable": true,
+      "issues": [
+       "RESTING_COMPONENT"
+      ]
+     },
+     "errors": [],
+     "duration_s": 0.926,
+     "baseline_failure": [
+      "resting: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-10",
+     "title": "Acoustic guitar",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 0,
+     "joints": 0,
+     "ready": null,
+     "consistent_2d_3d": null,
+     "exports_ok": null,
+     "support": null,
+     "errors": [
+      "NO_CONTACT"
+     ],
+     "duration_s": 0.003,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-11",
+     "title": "Wooden boat (native example)",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 14,
+     "joints": 32,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 1,
+       "joined": 13
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 0.774,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-12",
+     "title": "Punt model, vertical sides",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 6,
+     "joints": 14,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 5,
+       "joined": 1
+      },
+      "stable": true,
+      "issues": []
+     },
+     "errors": [],
+     "duration_s": 0.453,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-13",
+     "title": "Punt model, flared sides",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 0,
+     "joints": 0,
+     "ready": null,
+     "consistent_2d_3d": null,
+     "exports_ok": null,
+     "support": null,
+     "errors": [
+      "NO_CONTACT"
+     ],
+     "duration_s": 0.002,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-14",
+     "title": "Wall-mounted shelf",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 4,
+     "joints": 5,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 4
+      },
+      "stable": null,
+      "issues": [
+       "WALL_MOUNTED"
+      ]
+     },
+     "errors": [],
+     "duration_s": 0.299,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-15",
+     "title": "Cantilever table (tips over)",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 4,
+     "joints": 6,
+     "ready": true,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 2,
+       "joined": 2
+      },
+      "stable": false,
+      "issues": [
+       "CANTILEVER",
+       "TIP_OVER"
+      ]
+     },
+     "errors": [],
+     "duration_s": 0.237,
+     "baseline_failure": [
+      "tips: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-16",
+     "title": "Table with a floating board",
+     "baseline": "FAIL",
+     "after": "PASS",
+     "components": 4,
+     "joints": 4,
+     "ready": false,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 2,
+       "joined": 1,
+       "unsupported": 1
+      },
+      "stable": true,
+      "issues": [
+       "UNSUPPORTED_COMPONENT"
+      ]
+     },
+     "errors": [
+      "UNSUPPORTED_COMPONENT"
+     ],
+     "duration_s": 0.138,
+     "baseline_failure": [
+      "ready_for_production=True expected False (blocking [])",
+      "unsupported: support analysis not available"
+     ]
+    },
+    {
+     "test_id": "E2E-17",
+     "title": "Stepped storage, shelves sharing a slot",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 16,
+     "joints": 44,
+     "ready": false,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 4,
+       "joined": 12
+      },
+      "stable": true,
+      "issues": [
+       "CANTILEVER"
+      ]
+     },
+     "errors": [
+      "COLLISION",
+      "SLOT_ALREADY_USED"
+     ],
+     "duration_s": 2.05,
+     "baseline_failure": []
+    },
+    {
+     "test_id": "E2E-18",
+     "title": "Enclosure, divider tab lands in a vent",
+     "baseline": "PASS",
+     "after": "PASS",
+     "components": 7,
+     "joints": 11,
+     "ready": false,
+     "consistent_2d_3d": true,
+     "exports_ok": true,
+     "support": {
+      "status_counts": {
+       "anchored": 6,
+       "resting": 1
+      },
+      "stable": true,
+      "issues": [
+       "RESTING_COMPONENT"
+      ]
+     },
+     "errors": [
+      "COLLISION",
+      "TAB_IN_OPENING"
+     ],
+     "duration_s": 0.67,
+     "baseline_failure": []
+    }
+   ]
+  },
+  "joint_matrix": {
+   "baseline": {
+    "positive_pass": 18,
+    "positive_total": 18,
+    "negative_pass": 11,
+    "negative_total": 11
+   },
+   "after": {
+    "positive_pass": 18,
+    "positive_total": 18,
+    "negative_pass": 11,
+    "negative_total": 11
+   }
+  },
+  "edge_cases": {
+   "baseline": {
+    "pass": 25,
+    "fail": 2,
+    "not_applicable_or_not_executed": 2
+   },
+   "after": {
+    "pass": 27,
+    "fail": 0,
+    "not_applicable_or_not_executed": 2
+   }
+  },
+  "support_matrix": {
+   "pass": 9,
+   "total": 10
+  },
+  "nesting_cases": {
+   "pass": 12,
+   "fail": 0,
+   "not_implemented": 2
+  },
+  "propagation": {
+   "pass": true
+  },
+  "browser": {
+   "baseline": {
+    "pass": 3,
+    "total": 5
+   },
+   "after": {
+    "pass": 5,
+    "total": 5
+   }
+  },
+  "new_regression_tests_on_baseline_code": {
+   "summary": "35 failed, 25 passed in 35.67s",
+   "failing_on_baseline": [
+    "test_bug002_feature_smaller_than_kerf_is_rejected",
+    "test_bug003_long_board_ids_compile[auto-29]",
+    "test_bug003_long_board_ids_compile[auto-30]",
+    "test_bug003_long_board_ids_compile[auto-40]",
+    "test_bug003_long_board_ids_compile[auto-64]",
+    "test_bug003_long_board_ids_compile[explicit-without-id-29]",
+    "test_bug003_long_board_ids_compile[explicit-without-id-30]",
+    "test_bug003_long_board_ids_compile[explicit-without-id-40]",
+    "test_bug003_long_board_ids_compile[explicit-without-id-64]",
+    "test_bug006_no_safe_cross_lap_fix_for_a_profiled_board",
+    "test_bug007_unsupported_board_blocks_compile_and_production",
+    "test_bug007_resting_lid_is_allowed_and_reported",
+    "test_bug008_set_material_thickness_reaches_canvas_boards",
+    "test_bug009_connection_option_error_names_the_connection",
+    "test_bug019_auto_sheet_fits_a_1200_mm_back_panel",
+    "test_support_tip_over_and_cantilever",
+    "test_support_balanced_table_is_stable_without_warnings",
+    "test_support_wall_mounting_skips_tip_over_and_requires_valid_value",
+    "test_support_report_never_claims_strength",
+    "test_time_budget_stops_compile_with_a_clear_diagnostic",
+    "test_no_time_budget_means_no_limit",
+    "test_versions_list_get_and_restore",
+    "test_firestore_store_keeps_versions",
+    "test_prompt_states_the_new_rules",
+    "test_claim_board_held_by_nothing_is_an_error_but_a_resting_one_is_not",
+    "test_repair_prompt_carries_the_diagnostics_and_the_source",
+    "test_update_prompt_asks_for_a_minimal_change",
+    "test_repair_and_update_prompt_endpoints",
+    "test_product_pipeline[E2E-02]",
+    "test_product_pipeline[E2E-03]",
+    "test_product_pipeline[E2E-05]",
+    "test_product_pipeline[E2E-08]",
+    "test_product_pipeline[E2E-09]",
+    "test_product_pipeline[E2E-15]",
+    "test_product_pipeline[E2E-16]"
+   ]
+  },
+  "ai_prompt_comparison": {
+   "model": "Claude (isolated agents), not Gemini",
+   "scores": {
+    "out_old": {
+     "A": {
+      "file": "A.json",
+      "chars": 7259,
+      "json_ok": true,
+      "compiled": false,
+      "errors": [
+       "SLOT_ALREADY_USED"
+      ],
+      "warnings": [
+       "TAB_NOT_FLUSH",
+       "UNJOINED_TAB"
+      ],
+      "first_errors": [
+       "Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t1' on 'DIV-1' already receives joint 'C1-1-D1-t1'.",
+       "Connection 'C2-1-D1' could not be joined (rejected): Slot 'slot-C1-1-D1-t2' on 'DIV-1' already receives joint 'C1-1-D1-t2'.",
+       "Connection 'C2-2-D1' could not be joined (rejected): Slot 'slot-C1-2-D1-t1' on 'DIV-1' already receives joint 'C1-2-D1-t1'."
+      ],
+      "boards": 18,
+      "max_id_len": 8,
+      "joints": 106,
+      "joined": 94,
+      "ready": false,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 5,
+      "error_count": 12,
+      "warning_count": 24
+     },
+     "A2": {
+      "file": "A2.json",
+      "chars": 7150,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 18,
+      "max_id_len": 8,
+      "joints": 106,
+      "joined": 106,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 5,
+      "error_count": 0,
+      "warning_count": 0,
+      "preservation": {
+       "kept_identical": 15,
+       "changed": [
+        "SH-C2-1",
+        "SH-C2-2",
+        "SH-C2-3"
+       ],
+       "added": [],
+       "removed": []
+      }
+     },
+     "B": {
+      "file": "B.json",
+      "chars": 7887,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 20,
+      "max_id_len": 7,
+      "joints": 41,
+      "joined": 41,
+      "ready": false,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 4,
+      "error_count": 0,
+      "warning_count": 0
+     },
+     "B2": {
+      "file": "B2.json",
+      "chars": 7843,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 20,
+      "max_id_len": 7,
+      "joints": 41,
+      "joined": 41,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 4,
+      "error_count": 0,
+      "warning_count": 0,
+      "preservation": {
+       "kept_identical": 19,
+       "changed": [
+        "SHELF-L"
+       ],
+       "added": [],
+       "removed": []
+      }
+     },
+     "C": {
+      "file": "C.json",
+      "chars": 2210,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [
+       "TIP_OVER"
+      ],
+      "first_errors": [],
+      "boards": 4,
+      "max_id_len": 10,
+      "joints": 7,
+      "joined": 7,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": false,
+      "support_issues": [
+       "TIP_OVER"
+      ],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 3,
+      "error_count": 0,
+      "warning_count": 1
+     },
+     "C2": {
+      "file": "C2.json",
+      "chars": 2210,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [
+       "TIP_OVER"
+      ],
+      "first_errors": [],
+      "boards": 4,
+      "max_id_len": 10,
+      "joints": 7,
+      "joined": 7,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": false,
+      "support_issues": [
+       "TIP_OVER"
+      ],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 3,
+      "error_count": 0,
+      "warning_count": 1,
+      "preservation": {
+       "kept_identical": 1,
+       "changed": [
+        "BRACKET-L",
+        "BRACKET-R",
+        "SHELF"
+       ],
+       "added": [],
+       "removed": []
+      }
+     },
+     "D": {
+      "file": "D.json",
+      "chars": 4907,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [
+       "OVERALL_MISMATCH"
+      ],
+      "first_errors": [],
+      "boards": 13,
+      "max_id_len": 10,
+      "joints": 24,
+      "joined": 24,
+      "ready": false,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": false,
+      "mounting": null,
+      "groups": 4,
+      "error_count": 0,
+      "warning_count": 1
+     }
+    },
+    "out_new": {
+     "A": {
+      "file": "A.json",
+      "chars": 7012,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 17,
+      "max_id_len": 7,
+      "joints": 75,
+      "joined": 75,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": true,
+      "mounting": null,
+      "groups": 7,
+      "error_count": 0,
+      "warning_count": 0
+     },
+     "B": {
+      "file": "B.json",
+      "chars": 8878,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 21,
+      "max_id_len": 8,
+      "joints": 40,
+      "joined": 40,
+      "ready": false,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [
+       "RESTING_COMPONENT"
+      ],
+      "states_assumptions": true,
+      "mounting": null,
+      "groups": 5,
+      "error_count": 0,
+      "warning_count": 0
+     },
+     "B2": {
+      "file": "B2.json",
+      "chars": 8741,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 21,
+      "max_id_len": 8,
+      "joints": 40,
+      "joined": 40,
+      "ready": false,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [
+       "RESTING_COMPONENT"
+      ],
+      "states_assumptions": true,
+      "mounting": null,
+      "groups": 5,
+      "error_count": 0,
+      "warning_count": 0,
+      "preservation": {
+       "kept_identical": 21,
+       "changed": [],
+       "added": [],
+       "removed": []
+      }
+     },
+     "C": {
+      "file": "C.json",
+      "chars": 2136,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 4,
+      "max_id_len": 5,
+      "joints": 9,
+      "joined": 9,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": null,
+      "support_issues": [
+       "WALL_MOUNTED"
+      ],
+      "states_assumptions": true,
+      "mounting": "wall",
+      "groups": 2,
+      "error_count": 0,
+      "warning_count": 0
+     },
+     "C2": {
+      "file": "C2.json",
+      "chars": 2279,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 4,
+      "max_id_len": 5,
+      "joints": 9,
+      "joined": 9,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": null,
+      "support_issues": [
+       "WALL_MOUNTED"
+      ],
+      "states_assumptions": true,
+      "mounting": "wall",
+      "groups": 2,
+      "error_count": 0,
+      "warning_count": 0,
+      "preservation": {
+       "kept_identical": 1,
+       "changed": [
+        "BRK-L",
+        "BRK-R",
+        "SHELF"
+       ],
+       "added": [],
+       "removed": []
+      }
+     },
+     "D": {
+      "file": "D.json",
+      "chars": 4107,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 6,
+      "max_id_len": 6,
+      "joints": 12,
+      "joined": 12,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [],
+      "states_assumptions": true,
+      "mounting": null,
+      "groups": 1,
+      "error_count": 0,
+      "warning_count": 0
+     },
+     "B3": {
+      "file": "B3.json",
+      "chars": 8968,
+      "json_ok": true,
+      "compiled": true,
+      "errors": [],
+      "warnings": [],
+      "first_errors": [],
+      "boards": 21,
+      "max_id_len": 8,
+      "joints": 40,
+      "joined": 40,
+      "ready": true,
+      "consistent_2d_3d": true,
+      "stable": true,
+      "support_issues": [
+       "RESTING_COMPONENT"
+      ],
+      "states_assumptions": true,
+      "mounting": null,
+      "groups": 5,
+      "error_count": 0,
+      "warning_count": 0,
+      "preservation": {
+       "kept_identical": 20,
+       "changed": [
+        "SHELF"
+       ],
+       "added": [],
+       "removed": []
+      }
+     }
+    }
+   }
+  }
+ }
+}

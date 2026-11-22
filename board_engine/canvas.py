@@ -25,16 +25,18 @@ production package do the rest. Diagnostics carry the source line and, where pos
 """
 import copy
 import difflib
+import hashlib
 import json
 import math
 import re
 
 from . import geometry as G
+from .deadline import TimeBudgetExceeded, time_budget as _budget
 from .examples.furniture import DIRS, edge_facing, panel
 from .joining import join
 from .manufacturing import FASTENERS, MATERIALS
-from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES,
-                    SchemaError, edge_frame, normalize_design)
+from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
+                    SchemaError, cut_outline, edge_frame, normalize_design)
 from .nesting import SHEET_PRESETS
 from .shapes import ShapeError, arc_sweep, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
@@ -63,6 +65,13 @@ SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambi
 
 class CompileError(Exception):
     pass
+
+
+def _fit_id(text):
+    """An id derived from board / connection ids, shortened (with a hash, so it stays unique) to fit ID_RE."""
+    if ID_RE.match(text):
+        return text
+    return text[:57].rstrip('-_.') + '-' + hashlib.sha1(text.encode()).hexdigest()[:6]
 
 
 def diag(severity, code, message, *, path=None, board=None, connection=None, line=None, fixes=None, **extra):
@@ -579,7 +588,7 @@ def _tabs_for(comp, bd_a, bd_b, ct, conn, cid):
         pt[k], pt[m], pt[bd_a.thin] = face, wm, (bd_a.lo[bd_a.thin] + bd_a.hi[bd_a.thin]) / 2
         loc = f.to_local(pt)
         off = (loc[0] - a0[0]) * d[0] + (loc[1] - a0[1]) * d[1]
-        tabs.append({'id': f'{cid}-t{i + 1}', 'edge': edge, 'offset': round(off, 4), 'width': round(w, 3),
+        tabs.append({'id': _fit_id(f'{cid}-t{i + 1}'), 'edge': edge, 'offset': round(off, 4), 'width': round(w, 3),
                      'depth': round(float(depth), 3), **_proud(depth, bd_b.t)})
     return tabs, None
 
@@ -717,7 +726,7 @@ def _connect_tilted(comps, comps0, A, B, c, cid, cline, ctype, want, joints, dia
                           f"{ct['t1'] - ct['t0']:.1f} mm long — too short for a tab.", connection=cid, line=cline))
         return
     w, n, pitch, depth = _tab_layout(hi - lo, c, A.t, B.t)
-    tabs = [{'id': f'{cid}-t{i + 1}', 'edge': ct['edge'], 'offset': round(lo + (i + 0.5) * pitch, 4), 'width': round(w, 3),
+    tabs = [{'id': _fit_id(f'{cid}-t{i + 1}'), 'edge': ct['edge'], 'offset': round(lo + (i + 0.5) * pitch, 4), 'width': round(w, 3),
              'depth': round(float(depth), 3), **_proud(depth, B.t)} for i in range(n)]
     comps[a].setdefault('tabs', []).extend(tabs)
     for t in tabs:
@@ -830,6 +839,17 @@ def _crossing(A, B):
     return {'c': c, 'c0': c0, 'c1': c1} if c1 - c0 > 2 * eps else None
 
 
+def _cross_lap_cuttable(A, B):
+    """True when _cut_joint can halve A and B: plain unrotated boards that cross, each reaching one end of the crossing."""
+    if A.rot or B.rot or A.raw.get('profile') is not None or B.raw.get('profile') is not None:
+        return False
+    x = _crossing(A, B)
+    if x is None:
+        return False
+    k, c0, c1, t = x['c'], x['c0'], x['c1'], TOL['contact']
+    return (abs(A.hi[k] - c1) <= t and abs(B.lo[k] - c0) <= t) or (abs(A.lo[k] - c0) <= t and abs(B.hi[k] - c1) <= t)
+
+
 def _corner(A, B, ct):
     """For a touching end-face contact: +1 / -1 if A is flush with B's edge on the hi / lo side (a box corner)."""
     n = ct['n']
@@ -864,7 +884,7 @@ def _infer_connections(boards, comps):
                     found = ('cross_lap', P, Q)
             if found:
                 t, A, B = found
-                out.append({'id': f'auto-{A.id}-{B.id}', 'type': t, 'board': A.id, 'into': B.id, '_i': None, '_auto': True})
+                out.append({'id': _fit_id(f'auto-{A.id}-{B.id}'), 'type': t, 'board': A.id, 'into': B.id, '_i': None, '_auto': True})
     return out
 
 
@@ -909,7 +929,7 @@ def _face_side(bd, axis, sign):
 def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map):
     """Finger / cross-lap: compute the edge cuts on both boards (face coordinates) and record the engine joint."""
     a, b = c['board'], c['into']
-    label = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else f"C{(c['_i'] or 0) + 1}-{a}-{b}"
+    label = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else _fit_id(f"C{(c['_i'] or 0) + 1}-{a}-{b}")
     if c.get('_auto'):
         label = c['id']
     cline = _id_line(src, c['id'], off) if isinstance(c.get('id'), str) and not c.get('_auto') else None
@@ -1030,30 +1050,39 @@ def _auto_sheet(design, mat, data):
     sh = data.get('sheet') if isinstance(data.get('sheet'), dict) else {}
     if _num(sh.get('width')) and _num(sh.get('height')):
         return {'width': float(sh['width']), 'height': float(sh['height']), 'spacing': 6.0}
+    # tabs are already on the boards here, so measure the real cut profile, plus the allowances nesting uses:
+    # a 10 mm margin all round and the 14 mm title strip of the printed sheet (views.production_package)
     need = 0.0, 0.0
     for c in design['components']:
-        xs = [p[0] for p in c['outline']]
-        ys = [p[1] for p in c['outline']]
-        w, h = max(xs) - min(xs) + 2 * mat['thickness'] + 20, max(ys) - min(ys) + 2 * mat['thickness'] + 20
-        need = max(need[0], max(w, h)), max(need[1], min(w, h))
+        x0, y0, x1, y1 = G.bbox(cut_outline(c))
+        lng, sht = max(x1 - x0, y1 - y0), min(x1 - x0, y1 - y0)
+        need = max(need[0], lng + 20), max(need[1], sht + 20 + 14)
     stock = [tuple(s) for s in MATERIALS.get(mat['type'], {}).get('stock', [])]
     stock += sorted({tuple(sorted(v, reverse=True)) for v in SHEET_PRESETS.values()}, key=lambda s: s[0] * s[1])
     for W, H in stock:
         if max(W, H) >= need[0] and min(W, H) >= need[1]:
             return {'width': float(max(W, H)), 'height': float(min(W, H)), 'spacing': 6.0}
-    return {'width': 2440.0, 'height': 1220.0, 'spacing': 6.0}
+    W, H = max(stock, key=lambda s: s[0] * s[1])      # nothing fits: the largest sheet (nesting reports what is too big)
+    return {'width': float(max(W, H)), 'height': float(min(W, H)), 'spacing': 6.0}
 
 
-def compile_source(text, design_id='canvas-preview', run_production=True):
-    """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic."""
+def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None):
+    """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic.
+    time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget)."""
     data, src, off, diags = parse_source(text)
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
         return result
     try:
-        if 'components' in data and 'boards' not in data:
-            return _compile_native(data, design_id, result, run_production)
-        return _compile_v1(data, src, off, design_id, result, run_production)
+        with _budget(time_budget):
+            if 'components' in data and 'boards' not in data:
+                return _compile_native(data, design_id, result, run_production)
+            return _compile_v1(data, src, off, design_id, result, run_production)
+    except TimeBudgetExceeded as e:
+        result['ok'], result['design'] = False, None
+        result['diagnostics'].append(diag('error', 'COMPILE_TIMEOUT', f'{str(e).capitalize()}. The design is too complex to '
+                                          f'check in one request: split it into sub-assemblies or reduce the number of crossing '
+                                          f'boards and joints, then compile again.'))
     except SchemaError as e:
         result['diagnostics'].append(diag('error', 'SCHEMA_ERROR', str(e), path=e.path))
     except Exception as e:  # last line of defence: compiler bugs must never take the page down
@@ -1089,6 +1118,11 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                           line=_key_line(src, 'product', off)))
     mat = _check_material(data.get('material'), diags, src, off)
     if mat is None:
+        return result
+    mounting = product.get('mounting', data.get('mounting'))
+    if mounting is not None and mounting not in MOUNTINGS:
+        diags.append(diag('error', 'MOUNTING', f'"product.mounting" must be one of {list(MOUNTINGS)}.',
+                          line=_key_line(src, 'mounting', off)))
         return result
     boards = _check_boards(data, mat, diags, src, off)
     if any(d['severity'] == 'error' for d in diags):
@@ -1162,7 +1196,8 @@ def _compile_v1(data, src, off, design_id, result, run_production):
         p = f'connections[{i}]'
         ctype = c.get('type', 'tab_slot')
         a, b = c.get('board'), c.get('into')
-        cid = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else f"C{i + 1}-{a}-{b}"
+        cid = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else \
+            _fit_id(f"C{(i if i is not None else norm.index(c)) + 1}-{a}-{b}")
         cline = _id_line(src, c['id'], off) if c.get('id') else None
         source_map[cid] = cline
         if cid in seen:
@@ -1267,15 +1302,26 @@ def _compile_v1(data, src, off, design_id, result, run_production):
         result['source_map'] = source_map
         return result
 
-    design = normalize_design({
-        'id': design_id, 'name': str(product.get('name') or 'AI design')[:200],
-        'description': str(product.get('description') or '')[:2000], 'joinery': joinery, 'material': mat,
-        'components': list(comps.values()), 'joints': []})
+    try:
+        design = normalize_design({
+            'id': design_id, 'name': str(product.get('name') or 'AI design')[:200],
+            'description': str(product.get('description') or '')[:2000], 'joinery': joinery, 'material': mat,
+            'mounting': mounting, 'components': list(comps.values()), 'joints': []})
+    except SchemaError as e:          # a board field the v1 checks pass through (e.g. edge_banding thickness)
+        m = re.match(r'components\[(\d+)\]', e.path or '')
+        bid = list(comps)[int(m.group(1))] if m else None
+        diags.append(diag('error', 'BOARD_INVALID', f"Board '{bid}': {e}" if bid else str(e), board=bid,
+                          line=boards[bid].line if bid else None))
+        return result
     design['sheet'] = _auto_sheet(design, mat, data)
     design['source'] = {'format': FORMAT, 'code': None}
 
     for j, c, cid, cline in joints:
-        res = join(design, j, auto_repair=True, whole_design_check=False)
+        try:
+            res = join(design, j, auto_repair=True, whole_design_check=False)
+        except SchemaError as e:      # connection options out of range (hinge count, gap, fasteners, ...)
+            diags.append(diag('error', 'CONNECTION_INVALID', f"Connection '{cid}': {e}", connection=cid, line=cline))
+            continue
         if res['accepted']:
             design = res['design']
             continue
@@ -1317,13 +1363,18 @@ def _remove_fix(raw_conns, i, cid):
 
 
 def _finish(design, result, boards, run_production, raw_conns=None):
+    from .support import support_report
     from .views import model3d, production_package
     diags = result['diagnostics']
     report = validate_design(design)
+    support = support_report(design)
     known = {(d.get('connection'), d['code']) for d in diags}
+    held = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
     for i in report['issues']:
         if i['code'] in ('JOINT_NOT_JOINED',):
             continue
+        if i['code'] == 'FLOATING_COMPONENT' and set(i['components']) <= held:
+            continue                    # reported more precisely below as RESTING_COMPONENT / UNSUPPORTED_COMPONENT
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
         fixes = None
         sug = i.get('suggestion')
@@ -1334,7 +1385,7 @@ def _finish(design, result, boards, run_production, raw_conns=None):
             fixes = [{'id': f"move-{bd.id}", 'title': f"Move '{bd.id}' by [{', '.join(f'{v:g}' for v in sug['delta'])}] mm",
                       'safe': mag <= SAFE_MOVE, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}]
         pair = [c for c in i.get('components', []) if c in boards]
-        if i['code'] == 'COLLISION' and raw_conns is not None and len(pair) == 2 and _crossing(boards[pair[0]], boards[pair[1]]) \
+        if i['code'] == 'COLLISION' and raw_conns is not None and len(pair) == 2 and _cross_lap_cuttable(boards[pair[0]], boards[pair[1]]) \
                 and not any(j['a'] in pair and j['b'] in pair for j in design['joints']):
             # boards drawn crossing each other can only both exist with halving notches: the fix is unambiguous
             i = dict(i, message=i['message'] + f" They cross each other: connect them with a cross_lap (egg-crate notches).")
@@ -1344,6 +1395,12 @@ def _finish(design, result, boards, run_production, raw_conns=None):
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp,
                           line=boards[comp].line if comp in boards else None, components=i.get('components'),
                           location=i.get('location'), fixes=fixes))
+    for i in support['issues']:
+        comp = next((c for c in i['components'] if c in boards), None)
+        diags.append(diag(i['severity'], i['code'], i['message'], board=comp, line=boards[comp].line if comp else None,
+                          components=i['components'] or None, location=i.get('location')))
+    result['support'] = {k: support[k] for k in ('mounting', 'stable', 'stability_margin', 'centre_of_mass', 'footprint',
+                                                 'status_counts', 'components', 'disclaimer')}
     result['design'] = design
     result['validation'] = {'valid': report['valid'], 'complete': report['complete'], 'summary': report['summary']}
     result['model3d'] = model3d(design, report)
@@ -1355,6 +1412,8 @@ def _finish(design, result, boards, run_production, raw_conns=None):
             result['cut_list'] = pkg.get('cut_list')
             mfg = pkg.get('manufacturing') or {}
             result['manufacturing'] = {k: mfg[k] for k in ('summary', 'assembly') if k in mfg}
+        except TimeBudgetExceeded:
+            raise
         except Exception as e:
             diags.append(diag('warning', 'PRODUCTION_UNAVAILABLE', f'Cut sheets could not be computed: {e}'))
     errors = sum(1 for d in diags if d['severity'] == 'error')

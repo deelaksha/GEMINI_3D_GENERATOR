@@ -171,6 +171,8 @@ CONTRACT = {
         'DELETE /api/v1/designs/{id}/joints/{jid}',
         'GET  /api/v1/canvas/spec', 'POST /api/v1/canvas/prompt', 'POST /api/v1/canvas/compile',
         'POST /api/v1/canvas/fix', 'POST /api/v1/canvas/save', 'POST /api/v1/canvas/import',
+        'POST /api/v1/canvas/repair-prompt', 'POST /api/v1/canvas/update-prompt',
+        'GET  /api/v1/designs/{id}/versions', 'GET  /api/v1/designs/{id}/versions/{revision}', 'POST /api/v1/designs/{id}/restore',
         'GET  /api/v1/designs/{id}/fixes', 'POST /api/v1/designs/{id}/fixes/apply', 'POST /api/v1/designs/{id}/fixes/auto',
         'GET  /api/v1/designs/{id}/layout2d?preset=A3&margin=10&spacing=5&rotation=orthogonal&kerf=1',
         'GET  /api/v1/designs/{id}/export/pdf|svg|dxf?sheet=1&preset=A3&paper=A4&kerf=1&force=0',

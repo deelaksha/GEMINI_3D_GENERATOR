@@ -8,6 +8,7 @@ from .cutpaths import generate_cut_paths, sheet_dxf, sheet_svg
 from .manufacturing import manufacturing_report
 from .model import Plate, edge_frame, tab_geometry, feature_polygon
 from .nesting import nest
+from .support import support_report
 from .validation import component_states, validate_design
 
 
@@ -85,11 +86,14 @@ def production_package(design, opts=None):
                              include_labels=opts.get('labels', True))
     # Geometry can be valid and still not be makeable: fasteners, drilling, assembly order, stock limits
     mfg = manufacturing_report(design, compensate_kerf=bool(opts.get('compensate_kerf', False)))
+    support = support_report(design)     # a board that nothing holds must never reach the cutting files
     blocking = [i for i in report['issues'] if i['severity'] == 'error'] + \
         [i for i in nesting['issues'] if i['severity'] == 'error'] + cut['issues'] + \
         [dict(u, severity='error') for u in nesting['unplaced']] + \
-        [i for i in mfg['issues'] if i['severity'] == 'error']
-    return {'design': design, 'validation': report, 'nesting': nesting, 'cut': cut, 'manufacturing': mfg,
+        [i for i in mfg['issues'] if i['severity'] == 'error'] + \
+        [i for i in support['issues'] if i['severity'] == 'error'] + \
+        [dict(i, severity='error') for i in report['issues'] if i['code'] == 'JOINT_NOT_JOINED']   # a connection that failed / broke
+    return {'design': design, 'validation': report, 'nesting': nesting, 'cut': cut, 'manufacturing': mfg, 'support': support,
             'cut_list': cut_list(design, mfg), 'ready_for_production': not blocking, 'blocking_issues': blocking}
 
 

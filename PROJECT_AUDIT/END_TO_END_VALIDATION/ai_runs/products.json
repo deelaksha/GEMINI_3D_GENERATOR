@@ -1,0 +1,4 @@
+{"A": {"title": "Three-column bookshelf", "requirements": "1200 mm wide, 1800 mm high, 300 mm deep. Three columns with three shelves each, a plinth at the bottom and a 6 mm back panel.", "material": "plywood", "thickness": 18, "joinery": "interlocking"},
+ "B": {"title": "Cabinet with a door and two drawers", "requirements": "900 mm wide, 800 mm high, 580 mm deep. Left bay: a hinged door. Right bay: two drawers.", "material": "plywood", "thickness": 18, "joinery": "glue_allowed"},
+ "C": {"title": "Wall shelf", "requirements": "A 600 mm wide, 200 mm deep shelf that is screwed to the wall, held by two triangular brackets.", "material": "plywood", "thickness": 18, "joinery": "interlocking"},
+ "D": {"title": "Toy car", "requirements": "A 200 mm long wooden toy car with four wheels on axles and a rounded roof.", "material": "plywood", "thickness": 6, "joinery": "interlocking"}}

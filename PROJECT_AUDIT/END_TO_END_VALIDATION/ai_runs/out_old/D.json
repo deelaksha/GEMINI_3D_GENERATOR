@@ -1,0 +1,79 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Toy car",
+    "description": "Glue-free 6 mm plywood toy car: profiled body sides with a rounded roof on a floor, two axle rails, two axles and four wheels.",
+    "overall": {"length": 200, "height": 126, "depth": 72}
+  },
+  "material": {"name": "Birch plywood 6 mm", "type": "plywood", "thickness": 6},
+  "joinery": "interlocking",
+  "boards": [
+    {"id": "FLOOR", "name": "Floor", "group": "Body", "position": [0, 40, 10], "size": [200, 6, 52], "grain": "x"},
+    {
+      "id": "SIDE-B", "name": "Body side (back)", "group": "Body",
+      "position": [0, 46, 16], "size": [200, 80, 6], "grain": "x",
+      "profile": {"shape": "path", "start": [0, 0], "segments": [
+        {"line": [200, 0]},
+        {"line": [200, 30]},
+        {"line": [150, 36]},
+        {"line": [140, 38]},
+        {"arc": {"to": [30, 38], "radius": 57.82}},
+        {"line": [0, 34]},
+        {"line": [0, 0]}
+      ]},
+      "openings": [
+        {"id": "window-b", "kind": "opening", "shape": "arch", "center": [85, 101, 19], "size": [60, 36]}
+      ]
+    },
+    {
+      "id": "SIDE-F", "name": "Body side (front)", "group": "Body",
+      "position": [0, 46, 50], "size": [200, 80, 6], "grain": "x",
+      "profile": {"shape": "path", "start": [0, 0], "segments": [
+        {"line": [200, 0]},
+        {"line": [200, 30]},
+        {"line": [150, 36]},
+        {"line": [140, 38]},
+        {"arc": {"to": [30, 38], "radius": 57.82}},
+        {"line": [0, 34]},
+        {"line": [0, 0]}
+      ]},
+      "openings": [
+        {"id": "window-f", "kind": "opening", "shape": "arch", "center": [85, 101, 53], "size": [60, 36]}
+      ]
+    },
+    {"id": "BULK-REAR", "name": "Rear bulkhead", "group": "Body", "position": [8, 46, 22], "size": [6, 28, 28], "grain": "y"},
+    {"id": "BULK-FRONT", "name": "Front bulkhead", "group": "Body", "position": [186, 46, 22], "size": [6, 28, 28], "grain": "y"},
+    {"id": "RAIL-B", "name": "Axle rail (back)", "group": "Chassis", "position": [20, 22, 28], "size": [160, 18, 6], "grain": "x"},
+    {"id": "RAIL-F", "name": "Axle rail (front)", "group": "Chassis", "position": [20, 22, 38], "size": [160, 18, 6], "grain": "x"},
+    {"id": "AXLE-R", "name": "Rear axle", "group": "Axles", "position": [37, 12, 6], "size": [6, 20, 60], "grain": "z"},
+    {"id": "AXLE-F", "name": "Front axle", "group": "Axles", "position": [157, 12, 6], "size": [6, 20, 60], "grain": "z"},
+    {"id": "WHEEL-RB", "name": "Rear wheel (back)", "group": "Wheels", "position": [18, 0, 0], "size": [44, 44, 6],
+      "profile": {"shape": "circle", "center": [22, 22], "diameter": 44}},
+    {"id": "WHEEL-RF", "name": "Rear wheel (front)", "group": "Wheels", "position": [18, 0, 66], "size": [44, 44, 6],
+      "profile": {"shape": "circle", "center": [22, 22], "diameter": 44}},
+    {"id": "WHEEL-FB", "name": "Front wheel (back)", "group": "Wheels", "position": [138, 0, 0], "size": [44, 44, 6],
+      "profile": {"shape": "circle", "center": [22, 22], "diameter": 44}},
+    {"id": "WHEEL-FF", "name": "Front wheel (front)", "group": "Wheels", "position": [138, 0, 66], "size": [44, 44, 6],
+      "profile": {"shape": "circle", "center": [22, 22], "diameter": 44}}
+  ],
+  "connections": [
+    {"id": "SB-FLOOR", "type": "tab_slot", "board": "SIDE-B", "into": "FLOOR", "tabs": 3},
+    {"id": "SF-FLOOR", "type": "tab_slot", "board": "SIDE-F", "into": "FLOOR", "tabs": 3},
+    {"id": "BR-SB", "type": "tab_slot", "board": "BULK-REAR", "into": "SIDE-B", "tabs": 1},
+    {"id": "BR-SF", "type": "tab_slot", "board": "BULK-REAR", "into": "SIDE-F", "tabs": 1},
+    {"id": "BR-FLOOR", "type": "tab_slot", "board": "BULK-REAR", "into": "FLOOR", "tabs": 1},
+    {"id": "BF-SB", "type": "tab_slot", "board": "BULK-FRONT", "into": "SIDE-B", "tabs": 1},
+    {"id": "BF-SF", "type": "tab_slot", "board": "BULK-FRONT", "into": "SIDE-F", "tabs": 1},
+    {"id": "BF-FLOOR", "type": "tab_slot", "board": "BULK-FRONT", "into": "FLOOR", "tabs": 1},
+    {"id": "RB-FLOOR", "type": "tab_slot", "board": "RAIL-B", "into": "FLOOR", "tabs": 2},
+    {"id": "RF-FLOOR", "type": "tab_slot", "board": "RAIL-F", "into": "FLOOR", "tabs": 2},
+    {"id": "AR-RB", "type": "cross_lap", "board": "AXLE-R", "into": "RAIL-B"},
+    {"id": "AR-RF", "type": "cross_lap", "board": "AXLE-R", "into": "RAIL-F"},
+    {"id": "AF-RB", "type": "cross_lap", "board": "AXLE-F", "into": "RAIL-B"},
+    {"id": "AF-RF", "type": "cross_lap", "board": "AXLE-F", "into": "RAIL-F"},
+    {"id": "AR-WRB", "type": "tab_slot", "board": "AXLE-R", "into": "WHEEL-RB", "tabs": 1, "edge": "-z"},
+    {"id": "AR-WRF", "type": "tab_slot", "board": "AXLE-R", "into": "WHEEL-RF", "tabs": 1, "edge": "+z"},
+    {"id": "AF-WFB", "type": "tab_slot", "board": "AXLE-F", "into": "WHEEL-FB", "tabs": 1, "edge": "-z"},
+    {"id": "AF-WFF", "type": "tab_slot", "board": "AXLE-F", "into": "WHEEL-FF", "tabs": 1, "edge": "+z"}
+  ]
+}

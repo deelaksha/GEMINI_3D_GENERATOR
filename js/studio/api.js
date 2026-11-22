@@ -13,7 +13,8 @@ export class ApiError extends Error {
 
 const failure = (status, message) => new ApiError(status, { error: { message } });
 
-async function request(method, path, payload, { timeout = 0 } = {}) {
+// Every request gives up eventually (the UI must never wait forever); the server's own time budget (90 s) answers first.
+async function request(method, path, payload, { timeout = 150000 } = {}) {
   const ctl = timeout ? new AbortController() : null;
   const timer = ctl && setTimeout(() => ctl.abort(), timeout);
   let res;
@@ -57,6 +58,7 @@ export const Api = {
   checkJoint: (id, joint) => request('POST', `/designs/${enc(id)}/joints/check`, { joint }),
   join: (id, joint, autoRepair) => request('POST', `/designs/${enc(id)}/joints`, { joint, auto_repair: autoRepair }),
   unjoin: (id, jid) => request('DELETE', `/designs/${enc(id)}/joints/${enc(jid)}`),
+  operations: (id, ops, extra = {}) => request('POST', `/designs/${enc(id)}/operations`, { operations: ops, ...extra }),
   applyFix: (id, fixId) => request('POST', `/designs/${enc(id)}/fixes/apply`, { fix_id: fixId }),
   autoFix: (id) => request('POST', `/designs/${enc(id)}/fixes/auto`, {}),
   rebuildBoat: (id) => request('POST', '/designs/examples/boat', { id, overwrite: true }),
@@ -65,6 +67,8 @@ export const Api = {
   canvasPrompt: (opts) => request('POST', '/canvas/prompt', opts),
   canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }, { timeout: 120000 }),
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
+  canvasRepairPrompt: (source) => request('POST', '/canvas/repair-prompt', { source }, { timeout: 120000 }),
+  canvasUpdatePrompt: (source, change) => request('POST', '/canvas/update-prompt', { source, change }, { timeout: 120000 }),
   canvasSave: (source, name, designId) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined }),
   canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),
   createBoat: (id, name, params) => request('POST', '/designs/examples/boat', { id, params }).then(async (r) => {

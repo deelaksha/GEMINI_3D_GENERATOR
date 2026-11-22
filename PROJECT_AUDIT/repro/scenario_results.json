@@ -1,0 +1,745 @@
+[
+ {
+  "name": "01-guitar",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "CONNECTION_OVERLAP",
+   "NO_CONTACT"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Connection 'neck-body': no end face of 'NECK' meets a broad face of 'BODY'. For tab_slot, an edge of 'NECK' must sit against the flat face of 'BODY' (they must overlap side-on, and 'BODY''s thickness axis must point at 'NECK').",
+   "Connection 'head-neck': 'HEAD' runs 12.00 mm into 'NECK' along z \u2014 boards overlap."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "02-chair",
+  "ok": true,
+  "secs": 0.4,
+  "summary": {
+   "boards": 5,
+   "joints": 8,
+   "joined": 8,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [],
+  "first_errors": [],
+  "sheets": 1,
+  "efficiency": 23.58,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "03a-table",
+  "ok": true,
+  "secs": 0.65,
+  "summary": {
+   "boards": 5,
+   "joints": 13,
+   "joined": 13,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 38.35,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "03b-table-leg-mistake",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "CONNECTION_OVERLAP"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Connection 'LEG-L-TOP': 'LEG-L' runs 18.00 mm into 'TOP' along y \u2014 exactly its thickness: account for the board thickness (e.g. leg height = overall height \u2212 top thickness).",
+   "Connection 'LEG-R-TOP': 'LEG-R' runs 18.00 mm into 'TOP' along y \u2014 exactly its thickness: account for the board thickness (e.g. leg height = overall height \u2212 top thickness)."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "04-bookshelf-auto",
+  "ok": true,
+  "secs": 4.04,
+  "summary": {
+   "boards": 9,
+   "joints": 38,
+   "joined": 38,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [
+   "CONNECTIONS_INFERRED"
+  ],
+  "first_errors": [],
+  "sheets": 3,
+  "efficiency": 41.61,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "05-cabinet-door",
+  "ok": true,
+  "secs": 0.91,
+  "summary": {
+   "boards": 7,
+   "joints": 27,
+   "joined": 27,
+   "errors": 0,
+   "warnings": 2
+  },
+  "errors": [],
+  "warnings": [
+   "CONNECTION_REVERSED",
+   "NEAR_MISS_GAP"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 41.98,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "06-boat-punt",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "NO_CONTACT"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Connection 'sb': no straight edge of 'SIDE-B' sits flat against a face of 'BOTTOM'. With \"rotate\", an edge of 'SIDE-B' must be parallel to a broad face of 'BOTTOM' and run over it (e.g. a gable's sloped top edge under a roof panel tilted to",
+   "Connection 'sf': no straight edge of 'SIDE-F' sits flat against a face of 'BOTTOM'. With \"rotate\", an edge of 'SIDE-F' must be parallel to a broad face of 'BOTTOM' and run over it (e.g. a gable's sloped top edge under a roof panel tilted to"
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "07-storage-box",
+  "ok": true,
+  "secs": 0.54,
+  "summary": {
+   "boards": 6,
+   "joints": 8,
+   "joined": 8,
+   "errors": 0,
+   "warnings": 1
+  },
+  "errors": [],
+  "warnings": [
+   "FLOATING_COMPONENT"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 1,
+  "efficiency": 8.75,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "08-computer-desk",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "NO_CONTACT"
+  ],
+  "warnings": [
+   "CONNECTION_TYPE_CHANGED"
+  ],
+  "info": [],
+  "first_errors": [
+   "Connection 'tray-top': no end face of 'TRAY' meets a broad face of 'TOP'. For tab_slot, an edge of 'TRAY' must sit against the flat face of 'TOP' (they must overlap side-on, and 'TOP''s thickness axis must point at 'TRAY')."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "09-toy-car",
+  "ok": false,
+  "secs": 0.22,
+  "summary": {
+   "boards": 5,
+   "joints": 2,
+   "joined": 2,
+   "errors": 4,
+   "warnings": 4
+  },
+  "errors": [
+   "COLLISION"
+  ],
+  "warnings": [
+   "FLOATING_COMPONENT",
+   "OVERALL_MISMATCH"
+  ],
+  "info": [],
+  "first_errors": [
+   "Solid material of 'SIDE-B' and 'AXLE-1' occupies the same space (1.0 mm) near [40.0, 17.8, 23.0]. Add a joint (slot) or move one of them. They cross each other: connect them with a cross_lap (egg-crate notches).",
+   "Solid material of 'SIDE-B' and 'AXLE-1' occupies the same space (1.5 mm) near [40.0, 22.5, 23.0]. Add a joint (slot) or move one of them. They cross each other: connect them with a cross_lap (egg-crate notches).",
+   "Solid material of 'SIDE-F' and 'AXLE-1' occupies the same space (6.0 mm) near [40.0, 20.2, 77.0]. Add a joint (slot) or move one of them. They cross each other: connect them with a cross_lap (egg-crate notches).",
+   "Solid material of 'WHEEL-1' and 'AXLE-1' occupies the same space (6.0 mm) near [40.0, 20.2, 14.0]. Add a joint (slot) or move one of them. They cross each other: connect them with a cross_lap (egg-crate notches)."
+  ],
+  "sheets": 1,
+  "efficiency": 1.15,
+  "ready_for_production": false,
+  "blocking": [
+   "COLLISION",
+   "PART_BELOW_MIN_SIZE"
+  ],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "10-wardrobe",
+  "ok": false,
+  "secs": 2.55,
+  "summary": {
+   "boards": 14,
+   "joints": 46,
+   "joined": 40,
+   "errors": 9,
+   "warnings": 6
+  },
+  "errors": [
+   "COLLISION",
+   "SLOT_ALREADY_USED"
+  ],
+  "warnings": [
+   "UNJOINED_TAB"
+  ],
+  "info": [],
+  "first_errors": [
+   "Connection 'shr0a' could not be joined (rejected): Slot 'slot-shl0b-t1' on 'MID' already receives joint 'shl0b-t1'.",
+   "Connection 'shr0a' could not be joined (rejected): Slot 'slot-shl0b-t2' on 'MID' already receives joint 'shl0b-t2'.",
+   "Connection 'shr1a' could not be joined (rejected): Slot 'slot-shl1b-t1' on 'MID' already receives joint 'shl1b-t1'.",
+   "Connection 'shr1a' could not be joined (rejected): Slot 'slot-shl1b-t2' on 'MID' already receives joint 'shl1b-t2'."
+  ],
+  "sheets": 5,
+  "efficiency": 63.92,
+  "ready_for_production": false,
+  "blocking": [
+   "COLLISION"
+  ],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E01-invalid-json",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "JSON_SYNTAX"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Expecting ',' delimiter (line 1, column 75)."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E02-javascript",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "JSON_SYNTAX"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Expecting property name enclosed in double quotes (line 1, column 3). This looks like JavaScript. The canvas only accepts the declarative JSON format (nothing is executed) \u2014 ask the AI to return JSON only."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E03-prose-plus-fence",
+  "ok": true,
+  "secs": 0.1,
+  "summary": {
+   "boards": 5,
+   "joints": 13,
+   "joined": 13,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 38.35,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E04-trailing-commas-comments",
+  "ok": true,
+  "secs": 0.11,
+  "summary": {
+   "boards": 5,
+   "joints": 13,
+   "joined": 13,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 38.35,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E05-missing-material",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "MATERIAL_MISSING"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Add a \"material\" object with at least \"thickness\" (mm)."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E06-no-dimensions-size",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "BOARD_GEOMETRY"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Board 'TOP': size must be [x, y, z] numbers in mm."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E07-conflicting-overall",
+  "ok": true,
+  "secs": 0.11,
+  "summary": {
+   "boards": 5,
+   "joints": 13,
+   "joined": 13,
+   "errors": 0,
+   "warnings": 1
+  },
+  "errors": [],
+  "warnings": [
+   "OVERALL_MISMATCH"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 38.35,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E08-thickness-mismatch",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "THICKNESS_MISMATCH"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Board 'TOP': none of size [1200, 20, 600] equals its thickness 18 mm. Boards are flat panels: exactly one of size[x, y, z] must be the board thickness."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E09-unknown-type",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "CONNECTION_TYPE"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "LEG-L-TOP: type 'glue' is not known; use one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'].",
+   "LEG-R-TOP: type 'glue' is not known; use one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'].",
+   "MOD-TOP: type 'glue' is not known; use one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'].",
+   "MOD-L: type 'glue' is not known; use one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre']."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E10-alias-types-names",
+  "ok": true,
+  "secs": 0.72,
+  "summary": {
+   "boards": 5,
+   "joints": 19,
+   "joined": 19,
+   "errors": 0,
+   "warnings": 3
+  },
+  "errors": [],
+  "warnings": [
+   "BOARD_REFERENCE_NORMALISED",
+   "CONNECTION_KEYS_NORMALISED",
+   "CONNECTION_TYPE_NORMALISED"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 38.35,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E11-long-ids-auto",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "COMPILER_ERROR"
+  ],
+  "warnings": [
+   "PRODUCT_NAME"
+  ],
+  "info": [
+   "CONNECTIONS_INFERRED"
+  ],
+  "first_errors": [
+   "Internal compiler error: TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E12-small-hole-sawkerf",
+  "ok": true,
+  "secs": 0.01,
+  "summary": {
+   "boards": 1,
+   "joints": 0,
+   "joined": 0,
+   "errors": 0,
+   "warnings": 1
+  },
+  "errors": [],
+  "warnings": [
+   "PRODUCT_NAME"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 1,
+  "efficiency": 2.02,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2,
+  "hole_radius": [
+   -0.1
+  ]
+ },
+ {
+  "name": "E13-hinge-count-out-of-range",
+  "ok": false,
+  "secs": 0.07,
+  "summary": null,
+  "errors": [
+   "SCHEMA_ERROR"
+  ],
+  "warnings": [
+   "CONNECTION_REVERSED"
+  ],
+  "info": [],
+  "first_errors": [
+   "joint.count must be an integer 1..8"
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E14-duplicate-boards",
+  "ok": false,
+  "secs": 0.56,
+  "summary": {
+   "boards": 6,
+   "joints": 13,
+   "joined": 13,
+   "errors": 8,
+   "warnings": 1
+  },
+  "errors": [
+   "COLLISION"
+  ],
+  "warnings": [
+   "FLOATING_COMPONENT"
+  ],
+  "info": [],
+  "first_errors": [
+   "Solid material of 'TOP' and 'TOP-2' occupies the same space (706080.0 mm\u00b2) near [600.2, 741.0, 295.6]. Add a joint (slot) or move one of them.",
+   "Solid material of 'LEG-L' and 'TOP-2' occupies the same space (131.5 mm) near [59.0, 741.0, 169.0]. Add a joint (slot) or move one of them.",
+   "Solid material of 'LEG-L' and 'TOP-2' occupies the same space (131.5 mm) near [59.0, 741.0, 431.0]. Add a joint (slot) or move one of them.",
+   "Solid material of 'LEG-R' and 'TOP-2' occupies the same space (131.5 mm) near [1141.0, 741.0, 169.0]. Add a joint (slot) or move one of them."
+  ],
+  "sheets": 2,
+  "efficiency": 50.44,
+  "ready_for_production": false,
+  "blocking": [
+   "COLLISION"
+  ],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E15-floating-board",
+  "ok": true,
+  "secs": 0.11,
+  "summary": {
+   "boards": 6,
+   "joints": 13,
+   "joined": 13,
+   "errors": 0,
+   "warnings": 2
+  },
+  "errors": [],
+  "warnings": [
+   "FLOATING_COMPONENT",
+   "OVERALL_MISMATCH"
+  ],
+  "info": [],
+  "first_errors": [],
+  "sheets": 2,
+  "efficiency": 39.86,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E16-opening-outside-board",
+  "ok": false,
+  "secs": 0.46,
+  "summary": {
+   "boards": 5,
+   "joints": 13,
+   "joined": 13,
+   "errors": 1,
+   "warnings": 0
+  },
+  "errors": [
+   "FEATURE_OUTSIDE_OUTLINE"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Hole 'x' on 'TOP' is not fully inside the outline (it would cut an open notch)."
+  ],
+  "sheets": 2,
+  "efficiency": 38.33,
+  "ready_for_production": false,
+  "blocking": [
+   "FEATURE_OUTSIDE_OUTLINE"
+  ],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E17-empty",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "EMPTY_SOURCE"
+  ],
+  "warnings": [],
+  "info": [],
+  "first_errors": [
+   "Paste the design JSON returned by the AI."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ },
+ {
+  "name": "E18-native-format",
+  "ok": true,
+  "secs": 0.0,
+  "summary": {
+   "boards": 1,
+   "joints": 0,
+   "joined": 0,
+   "errors": 0,
+   "warnings": 0
+  },
+  "errors": [],
+  "warnings": [],
+  "info": [],
+  "first_errors": [],
+  "sheets": 1,
+  "efficiency": 1.04,
+  "ready_for_production": true,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": 0.15
+ },
+ {
+  "name": "E19-huge-thin-board",
+  "ok": false,
+  "secs": 0.0,
+  "summary": {
+   "boards": 1,
+   "joints": 0,
+   "joined": 0,
+   "errors": 1,
+   "warnings": 1
+  },
+  "errors": [
+   "PART_EXCEEDS_SHEET"
+  ],
+  "warnings": [
+   "PRODUCT_NAME"
+  ],
+  "info": [],
+  "first_errors": [
+   "'BIG' (3000.0 x 1500.0 mm) does not fit on the 2440 x 1220 mm sheet."
+  ],
+  "sheets": 0,
+  "efficiency": 0.0,
+  "ready_for_production": false,
+  "blocking": [
+   "PART_EXCEEDS_SHEET"
+  ],
+  "cut_issues": [],
+  "cut_kerf": 3.2
+ },
+ {
+  "name": "E20-thickness-not-standard",
+  "ok": false,
+  "secs": 0.0,
+  "summary": null,
+  "errors": [
+   "CONNECTION_GAP"
+  ],
+  "warnings": [
+   "NON_STANDARD_THICKNESS"
+  ],
+  "info": [],
+  "first_errors": [
+   "Connection 'MOD-L': 'MODESTY' stops 1.00 mm short of 'LEG-L' along x \u2014 an unintended gap.",
+   "Connection 'SHELF-L': 'SHELF' stops 1.00 mm short of 'LEG-L' along x \u2014 an unintended gap."
+  ],
+  "sheets": null,
+  "efficiency": null,
+  "ready_for_production": null,
+  "blocking": [],
+  "cut_issues": [],
+  "cut_kerf": null
+ }
+]

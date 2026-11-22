@@ -1,0 +1,177 @@
+{
+ "cases": [
+  {
+   "id": "SP-01",
+   "case": "Wall-mounted shelf (mounting: wall)",
+   "expected": "WALL_MOUNTED, no tip-over",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "support_codes": [
+     "WALL_MOUNTED"
+    ],
+    "stable": null,
+    "margin": null,
+    "status": {
+     "RAIL": "anchored",
+     "BRK-L": "anchored",
+     "BRK-R": "anchored",
+     "SHELF": "anchored"
+    }
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-02",
+   "case": "Same shelf without \"mounting\"",
+   "expected": "judged as standing on the floor -> TIP_OVER",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "support_codes": [
+     "TIP_OVER"
+    ],
+    "stable": false,
+    "margin": -47.57,
+    "status": {
+     "RAIL": "anchored",
+     "BRK-L": "anchored",
+     "BRK-R": "anchored",
+     "SHELF": "joined"
+    }
+   },
+   "pass": true,
+   "note": "shows why the mounting field is needed: stood on the floor, the bracket tips cannot hold it"
+  },
+  {
+   "id": "SP-03",
+   "case": "Suspended wall cabinet with a hanging (hinged) door",
+   "expected": "door joined; cabinet wall-anchored",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "support_codes": [
+     "WALL_MOUNTED"
+    ],
+    "stable": null,
+    "margin": null,
+    "status": {
+     "BACK": "anchored",
+     "SIDE-L": "anchored",
+     "SIDE-R": "anchored",
+     "BOT": "anchored",
+     "DOOR": "joined"
+    }
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-04",
+   "case": "Loose box / drawer standing on a shelf",
+   "expected": "resting (removable), production allowed",
+   "actual": {
+    "status": "resting",
+    "compiled": true
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-05",
+   "case": "Cantilever: both legs at one end of a 1200 mm top",
+   "expected": "TIP_OVER + CANTILEVER",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "support_codes": [
+     "CANTILEVER",
+     "TIP_OVER"
+    ],
+    "stable": false,
+    "margin": -100.5,
+    "status": {
+     "TOP": "joined",
+     "L1": "anchored",
+     "L2": "anchored"
+    }
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-06",
+   "case": "Moderate overhang (top 100 mm past each leg)",
+   "expected": "stable, no warnings",
+   "actual": {
+    "compiled": true,
+    "errors": [],
+    "support_codes": [],
+    "stable": true,
+    "margin": 260.0,
+    "status": {
+     "TOP": "joined",
+     "L1": "anchored",
+     "L2": "anchored"
+    }
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-07",
+   "case": "Unsupported horizontal board in mid-air",
+   "expected": "UNSUPPORTED_COMPONENT error",
+   "actual": {
+    "errors": [
+     "UNSUPPORTED_COMPONENT"
+    ]
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-08",
+   "case": "Vertical board suspended under the top by tabs only",
+   "expected": "joined (hanging load on tabs not assessed)",
+   "actual": {
+    "status": "joined",
+    "compiled": true
+   },
+   "pass": true,
+   "note": "LIMITATION: geometric hold only; whether the tabs carry the hanging load is not calculated"
+  },
+  {
+   "id": "SP-09",
+   "case": "Plank resting on the top, two thirds hanging over its edge",
+   "expected": "RESTING_OFF_SUPPORT error (it falls off)",
+   "actual": {
+    "status": "resting",
+    "codes": [
+     "RESTING_COMPONENT",
+     "RESTING_OFF_SUPPORT"
+    ]
+   },
+   "pass": true,
+   "note": ""
+  },
+  {
+   "id": "SP-10",
+   "case": "Component attached at a single small point (one 80 mm hanger, one tab)",
+   "expected": "flagged as weakly attached",
+   "actual": {
+    "status": "joined",
+    "compiled": true,
+    "codes": [],
+    "errors": []
+   },
+   "pass": false,
+   "note": "NOT IMPLEMENTED: no single-attachment check; reported as an open gap"
+  }
+ ],
+ "summary": {
+  "pass": 9,
+  "total": 10
+ }
+}

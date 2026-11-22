@@ -7,9 +7,9 @@ The bundled example is compiled by the test-suite and must produce zero errors.
 """
 import json
 
-from .canvas import CONNECTION_TYPES, FORMAT
+from .canvas import CONNECTION_TYPES, FORMAT, pretty_json
 from .manufacturing import FASTENERS, MATERIALS
-from .model import DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MATERIAL_TYPES
+from .model import DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MATERIAL_TYPES, MOUNTINGS
 from .validation import HINGE, NEAR_MISS as NEAR, TOL
 
 # A complete, valid study table (1200 x 600 x 750, 18 mm plywood, glue-free tab & slot)
@@ -698,7 +698,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 ```
 {{
   "format": "{FORMAT}",
-  "product":  {{"name": str, "description": str, "overall": {{"length": mm, "height": mm, "depth": mm}}}},
+  "product":  {{"name": str, "description": str, "overall": {{"length": mm, "height": mm, "depth": mm}},
+               "mounting"?: one of {list(MOUNTINGS)} (default "floor"; "wall" = screwed to the wall behind it, z = 0 side)}},
   "material": {{"name": str, "type": one of {list(MATERIAL_TYPES)}, "thickness": mm, "kerf"?: mm, "clearance"?: mm}},
   "joinery":  one of {list(JOINERY_MODES)}   (optional; "interlocking" = glue-free: tab_slot, finger and cross_lap
               only; "glue_allowed" also permits butt, hinge and mitre. Derived from the connections when omitted),
@@ -713,18 +714,21 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 
 ## board
 ```
-{{"id": str, "name": str, "group": str, "position": [x, y, z], "size": [sx, sy, sz],
+{{"id": str, "name": str, "group": str (sub-assembly, e.g. "Carcass", "Drawer 1", "Door"), "position": [x, y, z], "size": [sx, sy, sz],
   "thickness"?: mm (default material.thickness), "material"?: {{"name", "type"}}, "grain"?: "x"|"y"|"z",
   "openings"?: [ {{"id", "kind": "opening"|"hole", "shape": "circle", "center": [x, y, z], "diameter": mm}}
                | {{"id", "kind": "opening"|"hole", "shape": "rect", "center": [x, y, z], "size": [a, b]}} ],
   "edge_banding"?: [{{"edge": "+x"|"-x"|"+y"|"-y"|"+z"|"-z", "thickness": mm, "material"?: str}}],
   "profile"?: shape, "engravings"?: [...], "rotate"?: {{...}}   (see "Complex cuts and tilted boards")}}
 ```
-- `id` must match `{ID_RE.pattern}` and be unique (e.g. `TOP`, `SIDE-L`, `SHELF-2`).
+- `id` must match `{ID_RE.pattern}`, be unique and at most 24 characters (e.g. `TOP`, `SIDE-L`, `SHELF-2`).
+- `group` names the sub-assembly a board belongs to (product → group → board). Give every drawer, door, module or
+  lid its own group so the parts list and assembly steps follow the product's structure.
 - Opening `center` is a world point inside the board; rect `size` is along the board's two in-plane axes in x, y, z order.
   `opening` = intentional design opening (never filled), `hole` = functional hole (cable, dowel). Openings and
   engravings may carry `"note"`: str (shown in the drawings). Keep ≥ {tol['min_edge_margin']:g} mm
   (recommended {tol['rec_edge_margin']:g} mm) of material between any opening/slot and an edge, and ≥ {tol['min_feature_spacing']:g} mm between cut-outs.
+  Every opening and hole must be wider than the material's kerf (table below): at least twice the kerf is safe.
 
 ## Complex cuts and tilted boards (optional)
 Face coordinates `[u, v]`: millimetres from the board box's **minimum corner**, along the board's two in-plane axes in
@@ -800,7 +804,11 @@ Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …)
   carcass, its back face 0..`gap` mm (default {HINGE['default_gap']:g}) from the carcass front edges, covering the front edge of the board it
   hangs on (flush with that board's outer face; overhanging it is a warning). The door must be ≥
   {HINGE['cup_depth'] + HINGE['min_remaining']:g} mm thick for the {HINGE['cup_diameter']:g} mm hinge cups. Do not connect the door to anything else.
-- `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required. `"bevel"`
+- `mitre` — corner where two edges meet: `"edge"` (side of A) and `"into_edge"` (side of B), both required.
+  **Draw each board up to the other board's mid-plane** (not to the outside corner): e.g. an 18 mm side
+  `"position": [0, 0, 0], "size": [18, 141, 200]` and a top `"position": [9, 132, 0], "size": [291, 18, 200]` meet
+  in a mitre with `"edge": "+y"` on the side and `"into_edge": "-x"` on the top. Drawn to the outside corner the two
+  edges do not coincide and the joint is rejected. `"bevel"`
   defaults to **true** (both edges cut at half the corner angle, saw / CNC only); set `"bevel": false` for a plain corner.
   Optional `"fasteners"` as for butt.
 
@@ -821,6 +829,40 @@ One valid line per type:
 - `"connections": "auto"` (or leaving it out) infers every connection from where boards touch or cross; with a list,
   `"auto_connect": true` adds the ones you missed. Listing them yourself gives control over tabs and edges.
 - Use the exact keys `"board"` / `"into"`, exact type names and exact board ids: near-misses are accepted but reported.
+
+- Fasteners (`butt` / `mitre`): the screw, confirmat or dowel goes through B's face into A's **edge**, so A's edge must
+  leave ≥ {min(v['edge_wall'] for v in MATERIALS.values() if v['edge_wall']):g}–{max(v['edge_wall'] for v in MATERIALS.values() if v['edge_wall']):g} mm of material each side of the bore (no fasteners into the edge of 6 mm boards or of hardboard /
+  cardboard) and the fastener must be long enough to engage A after passing through B. Where two butt joints meet at
+  the same corner their fasteners collide: stagger them with `"end"` (distance of the first/last fastener from the
+  contact ends) or use a tab_slot / finger joint for one of them. Thin back panels are better as `tab_slot` / `finger`.
+- Two boards must never tab into the same board at the same place from opposite sides (e.g. shelves on both sides
+  of a centre divider, or a leg below and a riser above the same top): their tabs would need the same through-slot.
+  Offset them by at least 60 mm (or 4 × the board thickness, whichever is larger).
+
+### Joint names
+Only the types above exist. A requested "dovetail" or "box joint" is made as a straight `finger` joint; "mortise and
+tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cross lap" / "egg-crate" is `cross_lap`
+(the word "lap" alone also means `cross_lap`); "screwed" / "dowelled" is `butt` with `"fasteners"`. Dado, rabbet
+(rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
+`finger`, or a `butt` with fasteners, and say so in the description.
+
+## What this generator cannot build (do not attempt; use the alternative)
+- Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
+  no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
+- Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its pitch
+  (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
+- Round or bent parts: dowels, axles, rods, wheels on axles, curved or kerf-bent panels. For a purchased dowel or axle,
+  add a `"hole"` opening where it passes and leave the rod itself out of the design.
+- Moving parts other than hinged doors: drawers on runners, sliding trays, wheels, folding mechanisms. Draw a drawer as
+  a fixed box standing on its runner board; draw a folding product in its open position.
+
+## Support and stability (checked)
+- Every board must be held: joined to the product (directly or through others), or **resting on top of** a held board
+  (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
+- A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
+  A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
+  `"product": {{"mounting": "wall"}}` and give the product a back rail or back panel at z = 0.
+- These checks are geometric only; they do not prove strength under load.
 
 ## Geometry rules the generator validates (violations are compile errors)
 1. **Touching, not overlapping:** for every connection A's end face must lie exactly on B's face (|gap| ≤ {tol['contact']:g} mm).
@@ -856,12 +898,12 @@ Return **one** fenced ```json code block containing only the design object — n
 
 ## Complete valid example with complex cuts (gabled cottage: pitched profiles, arched door, heart, 35° roof)
 ```json
-{json.dumps(COMPLEX_EXAMPLE, indent=2)}
+{pretty_json(COMPLEX_EXAMPLE)}
 ```
 
 ## Complete valid example with several structures (desk organiser: finger corners, egg-crate, tabs)
 ```json
-{json.dumps(STRUCTURES_EXAMPLE, indent=2)}
+{pretty_json(STRUCTURES_EXAMPLE)}
 ```
 """
 
@@ -890,19 +932,102 @@ REQUIREMENTS:
 {req_block}
 
 INSTRUCTIONS:
-1. Decide the boards (panels) the product needs and give each a unique, readable id.
-2. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
-3. Account for board thickness everywhere so boards touch exactly and never overlap.
-4. Inset boards that tab into another board by at least the board thickness from that board's edges; where two
-   boards meet at an edge (box corner) use "finger", and boards that cross each other use "cross_lap".
+1. Read the requirements. If a dimension is missing, choose a standard value for this product; if two requirements
+   conflict, follow the explicit number. Write every such decision in "product.description" as "Assumptions: …".
+   If the product needs something listed under "What this generator cannot build", build the closest supported
+   version and say what was left out in the description.
+2. Decompose the product into every board it needs (nothing implied, nothing missing). Give each a short unique id
+   (at most 24 characters) and put the boards of each sub-assembly in the same "group".
+3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
+4. Account for board thickness everywhere so boards touch exactly and never overlap
+   (leg height = overall height − top thickness; inner width = overall width − 2 × side thickness).
+5. Choose each joint from the geometry: end face on a face away from the edges → "tab_slot" (inset at least the board
+   thickness from the receiving board's edges); at an edge (box corner) → "finger"; boards crossing → "cross_lap".
    For curved or angled parts use a "profile" / shaped openings; tilt roof or sloped panels with "rotate".
-5. Define a connection for every place two boards meet, so the whole product is connected.
-6. Use only the fields, types and values listed in the specification; do not invent functions or fields.
-7. Check overall dimensions against the requirements before answering.
-8. Return ONLY one ```json code block with the complete design.
+6. Never let two boards tab into the same board at the same place from opposite sides: offset them by ≥ 60 mm.
+7. Make every hole and opening at least twice the material's kerf across.
+8. Define a connection for every place two boards meet, so every board is held (loose lids / drawers rest on top of
+   a held board).
+9. Use only the fields, types and values listed in the specification; do not invent functions or fields.
+10. SELF-CHECK before answering and correct the JSON if any answer is "no":
+    a. Does exactly one of each board's three sizes equal its thickness?
+    b. For every connection, does the end face of "board" lie exactly on a face of "into" (gap 0)?
+    c. Do the boards' combined extents equal product.overall in length, height and depth?
+    d. Is any space occupied by two boards (other than boards joined with cross_lap)?
+    e. Are all ids unique and at most 24 characters? Is every board held?
+11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
 
 HOW THIS WILL BE USED: the user pastes your JSON into the "AI Design Canvas" of their board generator and clicks
 Compile. The generator reports any error with the board id and an exact correction, so precise dimensions matter.
+"""
+
+
+def _problem_lines(diagnostics, limit=60):
+    """One line per problem; repeats of the same code on the same board / connection are merged (with a count) so
+    the AI sees every distinct problem instead of a truncated list."""
+    groups = {}
+    for d in diagnostics:
+        if d.get('severity') not in ('error', 'warning'):
+            continue
+        key = (d['severity'], d['code'], d.get('board') or (d.get('components') or [None])[0], d.get('connection'))
+        groups.setdefault(key, []).append(d)
+    rows = []
+    for (sev, code, board, conn), ds in groups.items():
+        d = ds[0]
+        where = ', '.join(x for x in (f"board {board}" if board else '', f"connection {conn}" if conn else '',
+                                      f"line {d['line']}" if d.get('line') else '') if x)
+        fix = (d.get('fixes') or [{}])[0].get('title')
+        rows.append(f"- [{sev.upper()} {code}] {d['message']}" + (f" ({where})" if where else '')
+                    + (f" (and {len(ds) - 1} more like this)" if len(ds) > 1 else '') + (f" Suggested fix: {fix}." if fix else ''))
+    more = len(rows) - limit
+    return '\n'.join(rows[:limit] + ([f'- … and {more} more distinct problems'] if more > 0 else [])) or '- (none)'
+
+
+def build_repair_prompt(source, diagnostics, blocking=()):
+    """Follow-up prompt: hand the generator's diagnostics (and the production blockers: fasteners, stock, cut paths)
+    back to the AI and ask for a minimal correction."""
+    seen = {d['message'] for d in diagnostics}
+    diagnostics = list(diagnostics) + [dict(b, severity='error') for b in blocking if b.get('message') not in seen]
+    return f"""The board design generator compiled your JSON and reported the problems below.
+
+Return the COMPLETE corrected design as one ```json code block. Change only what is needed to fix these problems:
+keep every other board, id, dimension and connection exactly as it is. Where a problem names a suggested fix,
+apply it. Then run the self-check from the specification again before answering.
+
+PROBLEMS:
+{_problem_lines(diagnostics)}
+
+YOUR PREVIOUS JSON:
+```json
+{(source or '').strip()}
+```
+"""
+
+
+def build_update_prompt(source, change, diagnostics=()):
+    """Follow-up prompt for an incremental change: modify only the affected boards of an existing design."""
+    issues = [d for d in diagnostics if d.get('severity') == 'error']
+    return f"""Here is an existing, working design in the `{FORMAT}` format (the specification you used before still
+applies). Apply this CHANGE REQUEST to it:
+
+CHANGE REQUEST:
+{(change or '').strip()}
+
+RULES FOR THE UPDATE:
+1. Identify the boards and connections the change affects, including dependent ones (e.g. a wider product means
+   longer tops, shelves and back panels, and moved side panels).
+2. Change only those. Keep every unaffected board's id, position, size and every unaffected connection exactly as it
+   is — do not rename, re-order or re-generate the rest of the design.
+3. Recompute every dependent dimension explicitly (no formulas) so boards still touch exactly and never overlap.
+4. Update "product.overall" and the "Assumptions" in "product.description" if they change.
+5. If the request is ambiguous or conflicts with the existing design, make the smallest reasonable interpretation
+   and state it in the description.
+6. Run the self-check from the specification, then return the COMPLETE updated design as one ```json code block.
+{chr(10) + "The current design still has these problems; fix them too:" + chr(10) + _problem_lines(issues) + chr(10) if issues else ''}
+CURRENT DESIGN:
+```json
+{(source or '').strip()}
+```
 """

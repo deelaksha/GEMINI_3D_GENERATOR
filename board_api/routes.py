@@ -7,12 +7,14 @@ humans and agents). Responses use one envelope:
   success: {"ok": true, "revision": n, ...payload, "validation": {...}}
   failure: {"ok": false, "error": {"status", "message", "issues": [...] , ...}}
 """
+import functools
 import logging
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from board_engine.autofix import plan_fixes
 from board_engine.cutlist import cut_list
+from board_engine.deadline import TimeBudgetExceeded, time_budget
 from board_engine.examples.boat import build_design as build_boat
 from board_engine.examples.furniture import PRODUCTS as FURNITURE, build as build_furniture, product_params
 from board_engine.manufacturing import manufacturing_report
@@ -39,6 +41,20 @@ def fail(status, code, message, **extra):
     return jsonify({'ok': False, 'error': dict({'status': code, 'message': message}, **extra)}), status
 
 
+def budget():
+    """Seconds a request may spend in geometry checks (validation, nesting, compile) before it is stopped."""
+    return current_app.config.get('BOARD_TIME_BUDGET', 90)
+
+
+def budgeted(fn):
+    """Read-only heavy endpoints: stop with 503 instead of running on (nothing is written by these routes)."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        with time_budget(budget()):
+            return fn(*a, **kw)
+    return wrapper
+
+
 def body():
     data = request.get_json(silent=True)
     if data is None:
@@ -61,6 +77,11 @@ def summarize(report, full=True, design=None):
                              for i in report['issues']]
             out['fixes'], out['unfixable'] = plan['fixes'], plan['unfixable']
     return out
+
+
+@bp.errorhandler(TimeBudgetExceeded)
+def _timeout(e):
+    return fail(503, 'time_budget_exceeded', f'{e}; split the design into smaller parts or retry')
 
 
 @bp.errorhandler(SchemaError)
@@ -233,6 +254,30 @@ def rename_design(did):
     return mutate(did, fn, 'rename')
 
 
+@bp.get('/designs/<did>/versions')
+@require('viewer')
+def list_versions(did):
+    store().get(did)
+    return jsonify({'ok': True, 'design_id': did, 'versions': store().versions(did)})
+
+
+@bp.get('/designs/<did>/versions/<int:rev>')
+@require('viewer')
+def get_version(did, rev):
+    return jsonify({'ok': True, 'design': store().get_version(did, rev)})
+
+
+@bp.post('/designs/<did>/restore')
+@require('editor')
+def restore_version(did):
+    """Make an earlier revision current again. Non-destructive: it is saved as a NEW revision."""
+    rev = body().get('revision')
+    if isinstance(rev, bool) or not isinstance(rev, int):
+        raise SchemaError('revision must be an integer', 'revision')
+    old = store().get_version(did, rev)
+    return mutate(did, lambda d: (dict(old, id=did), {'restored_revision': rev}), 'restore', detail={'revision': rev})
+
+
 @bp.post('/designs/<did>/duplicate')
 @require('editor')
 def duplicate_design(did):
@@ -261,6 +306,7 @@ def history(did):
 
 @bp.post('/designs/<did>/validate')
 @require('viewer')
+@budgeted
 def validate(did):
     d = store().get(did)
     return jsonify({'ok': True, 'revision': d['revision'], 'validation': summarize(validate_design(d), design=d)})
@@ -268,6 +314,7 @@ def validate(did):
 
 @bp.get('/designs/<did>/model3d')
 @require('viewer')
+@budgeted
 def get_model3d(did):
     d = store().get(did)
     return jsonify(dict(model3d(d), ok=True))
@@ -463,6 +510,7 @@ def _prod_opts():
 
 @bp.get('/designs/<did>/layout2d')
 @require('viewer')
+@budgeted
 def layout2d(did):
     d = store().get(did)
     pkg = production_package(d, _prod_opts())
@@ -473,6 +521,7 @@ def layout2d(did):
 
 @bp.get('/designs/<did>/manufacturing')
 @require('viewer')
+@budgeted
 def manufacturing(did):
     d = store().get(did)
     report = manufacturing_report(d, compensate_kerf=request.args.get('kerf') in ('1', 'true')
@@ -482,6 +531,7 @@ def manufacturing(did):
 
 @bp.get('/designs/<did>/cutlist')
 @require('viewer')
+@budgeted
 def cutlist(did):
     d = store().get(did)
     return jsonify(dict(cut_list(d), ok=True, revision=d['revision']))
@@ -489,6 +539,7 @@ def cutlist(did):
 
 @bp.get('/designs/<did>/export/<fmt>')
 @require('viewer')
+@budgeted
 def export_file(did, fmt):
     d = store().get(did)
     pkg = production_package(d, _prod_opts())
@@ -548,12 +599,42 @@ def canvas_prompt():
                                                         data.get('joinery') or None)})
 
 
+@bp.post('/canvas/repair-prompt')
+@require('viewer')
+def canvas_repair_prompt():
+    """Follow-up prompt that hands this source's diagnostics back to the external AI for a minimal correction."""
+    from board_engine.canvas import compile_source
+    from board_engine.canvas_prompt import build_repair_prompt
+    src = body().get('source')
+    res = compile_source(src, run_production=True, time_budget=budget())
+    blocking = (res.get('layout') or {}).get('blocking_issues', [])
+    prompt = build_repair_prompt(src, res['diagnostics'], blocking)
+    return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
+                    'problems': prompt.count('\n- [')})
+
+
+@bp.post('/canvas/update-prompt')
+@require('viewer')
+def canvas_update_prompt():
+    """Follow-up prompt asking the external AI to change only what a change request affects."""
+    from board_engine.canvas import compile_source
+    from board_engine.canvas_prompt import build_update_prompt
+    data = body()
+    change = data.get('change')
+    if not isinstance(change, str) or not change.strip():
+        raise SchemaError('change (the requested modification) is required', 'change')
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget())
+    if res.get('format') is None:
+        return fail(422, 'compile_failed', 'the current code is not a design yet; generate it first', issues=res['diagnostics'])
+    return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'])})
+
+
 @bp.post('/canvas/compile')
 @require('viewer')
 def canvas_compile():
     from board_engine.canvas import compile_source
     data = body()
-    res = compile_source(data.get('source'), run_production=bool(data.get('production', True)))
+    res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget())
     if not data.get('include_design'):
         res.pop('design', None)
     # envelope 'ok' = the request worked; 'compiled' = the design compiled without errors
@@ -581,7 +662,7 @@ def canvas_save():
     from board_engine.canvas import compile_source
     data = body()
     src = data.get('source')
-    res = compile_source(src, run_production=False)
+    res = compile_source(src, run_production=False, time_budget=budget())
     if res.get('design') is None:
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     design = res['design']
@@ -596,7 +677,8 @@ def canvas_save():
             return fail(409, 'not_a_canvas_design',
                         f"'{target}' was not created by the AI Design Canvas; save as a new project instead")
         design['id'] = target
-        saved = store().create(design, actor=g.principal['id'], overwrite=True)
+        saved, _r, _w = store().mutate(target, lambda d: (dict(design, created=d.get('created')), None), 'canvas_update',
+                                        actor=g.principal['id'])
     else:
         design['id'] = _canvas_slug(design['name'])
         saved = store().create(design, actor=g.principal['id'])
@@ -611,7 +693,7 @@ def canvas_import():
     from board_engine.canvas import compile_source
     data = body()
     target = check_id(data.get('target'), 'target')
-    res = compile_source(data.get('source'), run_production=False)
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget())
     if res.get('design') is None:
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     src_design = res['design']

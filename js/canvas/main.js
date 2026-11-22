@@ -45,7 +45,7 @@ const cm = CodeMirror($('#editor'), {
   styleActiveLine: true, tabSize: 2, indentUnit: 2, lineWrapping: false, gutters: ['cv-marks', 'CodeMirror-linenumbers'],
   extraKeys: {
     'Ctrl-Enter': () => compile(true), 'Cmd-Enter': () => compile(true),
-    'Shift-Alt-F': () => formatCode(), 'Ctrl-S': () => save(), 'Cmd-S': () => save()
+    'Shift-Alt-F': () => formatCode(), 'Ctrl-S': () => save(!!S.savedId), 'Cmd-S': () => save(!!S.savedId)
   },
   placeholder: 'Paste the JSON the AI returned here…'
 });
@@ -177,6 +177,35 @@ async function generatePrompt() {
   } catch (e) { reportError(e); }
 }
 
+function showPrompt(prompt, meta) {
+  $('#out-prompt').value = prompt;
+  $('#btn-copy-prompt').disabled = false;
+  $('#prompt-meta').innerHTML = meta;
+  if (narrow.matches) setPane('prompt');
+}
+
+async function repairPrompt() {
+  const source = cm.getValue();
+  if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
+  try {
+    const r = await Api.canvasRepairPrompt(source);
+    showPrompt(r.prompt, `Follow-up prompt with ${r.problems} problem(s). Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`);
+    toast(r.problems ? 'Fix prompt ready — copy it into your AI' : 'No problems to fix');
+  } catch (e) { reportError(e); }
+}
+
+async function changePrompt() {
+  const source = cm.getValue();
+  const change = $('#in-req').value.trim();
+  if (!source.trim()) return toast('Paste or open the current design in the editor first', true);
+  if (!change) { $('#in-req').focus(); return toast('Describe the change in the requirements box', true); }
+  try {
+    const r = await Api.canvasUpdatePrompt(source, change);
+    showPrompt(r.prompt, 'Change prompt: the AI is asked to modify only the affected boards and keep the rest. Paste its reply into the editor and click <b>Compile</b>.');
+    toast('Change prompt ready — copy it into your AI');
+  } catch (e) { reportError(e); }
+}
+
 async function copyText(text, what) {
   try { await navigator.clipboard.writeText(text); toast(`${what} copied`); }
   catch (e) {
@@ -223,7 +252,7 @@ function showStatus(r) {
 async function compile(production = true) {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
-  if (S.compiling) return;
+  if (S.compiling) { S.recompile = production || S.recompile || false; S.pending = true; return; }   // run again when done
   S.compiling = true;
   setStatus('busy');
   $('#btn-compile').disabled = true;
@@ -234,7 +263,7 @@ async function compile(production = true) {
     S.result = first;
     S.compiledSource = source;
     render(sameDesign);
-    showStatus(first);
+    if (cm.getValue() === source) showStatus(first); else setStatus('dirty');
     if (production && first.model3d && narrow.matches) setPane('preview');
     if (production && first.model3d) {
       setStatus(first.compiled ? 'ok' : 'err', `${$('#compile-status').innerText} · preparing cut sheets…`);
@@ -247,7 +276,15 @@ async function compile(production = true) {
       }
     }
   } catch (e) { setStatus('err', 'Compile failed'); reportError(e); }
-  finally { S.compiling = false; $('#btn-compile').disabled = false; }
+  finally {
+    S.compiling = false;
+    $('#btn-compile').disabled = false;
+    if (S.pending) {            // the text changed while compiling: compile the latest version
+      const prod = S.recompile;
+      S.pending = S.recompile = false;
+      compile(prod);
+    }
+  }
 }
 
 function render(keepCamera = false) {
@@ -494,6 +531,8 @@ bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() 
 bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 $('#btn-gen-prompt').onclick = generatePrompt;
+$('#btn-change-prompt').onclick = changePrompt;
+$('#btn-repair-prompt').onclick = repairPrompt;
 $('#btn-copy-prompt').onclick = () => copyText($('#out-prompt').value, 'Prompt');
 $('#btn-compile').onclick = () => compile(true);
 $('#btn-format').onclick = formatCode;

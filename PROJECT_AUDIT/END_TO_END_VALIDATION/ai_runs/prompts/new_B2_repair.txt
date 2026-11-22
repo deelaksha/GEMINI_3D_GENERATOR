@@ -1,0 +1,92 @@
+The board design generator compiled your JSON and reported the problems below.
+
+Return the COMPLETE corrected design as one ```json code block. Change only what is needed to fix these problems:
+keep every other board, id, dimension and connection exactly as it is. Where a problem names a suggested fix,
+apply it. Then run the self-check from the specification again before answering.
+
+PROBLEMS:
+- [ERROR FASTENER_COLLISION] 'SHELF-DIV/dowel2' and 'RUN-DIV/dowel1' pass 1.0 mm apart (need 10.0 mm): the bores run into each other. Stagger one joint's fasteners (set its 'end' distance), use a different fastener, or offset the boards. (board DIV)
+- [ERROR TOOL_ACCESS_BLOCKED] The head of 'PLF-BOT/screw1' cannot be reached: D1-BOT is in the way of the driver and is fitted before this joint can be fastened. (board PLINTH-F) (and 1 more like this)
+- [ERROR TOOL_ACCESS_BLOCKED] The head of 'D1-BOT-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened. (board D1-BOT) (and 2 more like this)
+- [ERROR TOOL_ACCESS_BLOCKED] The head of 'D1-BK-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened. (board D1-BACK) (and 1 more like this)
+- [ERROR TOOL_ACCESS_BLOCKED] The head of 'D2-BOT-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened. (board D2-BOT) (and 2 more like this)
+- [ERROR TOOL_ACCESS_BLOCKED] The head of 'D2-BK-SL/screw1' cannot be reached: DIV is in the way of the driver and is fitted before this joint can be fastened. (board D2-BACK) (and 1 more like this)
+
+YOUR PREVIOUS JSON:
+```json
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Cabinet with door and two drawers",
+    "description": "18 mm plywood cabinet, confirmat/dowel/screw butt joints. Left bay: overlay door on two hinges with an inner shelf. Right bay: two drawers drawn as fixed boxes, the lower one standing on the cabinet bottom and the upper one on a runner board; each drawer's overlay front is its front wall. Assumptions: carcass depth 559 mm plus a 3 mm hinge gap and 18 mm door/drawer fronts = 580 mm overall; 80 mm recessed plinth (front and rear plinth boards); 6 mm back panel set between sides, top and bottom and glued along its edges (its 6 mm edges are too thin for screws); the divider, shelf and runner are screwed through the back panel with 3 x 25 mm screws; centre divider splits the inner width into two 423 mm bays; drawer boxes 240 mm high with 5 mm side clearance; drawer runners/slides are not modelled (moving parts not supported), drawers are drawn closed and rest on their supporting boards; 4 mm gaps between door and drawer fronts.",
+    "overall": {"length": 900, "height": 800, "depth": 580}
+  },
+  "material": {"name": "Birch plywood 18 mm", "type": "plywood", "thickness": 18},
+  "joinery": "glue_allowed",
+  "boards": [
+    {"id": "SIDE-L", "name": "Left side", "group": "Carcass", "position": [0, 0, 0], "size": [18, 800, 559], "grain": "y"},
+    {"id": "SIDE-R", "name": "Right side", "group": "Carcass", "position": [882, 0, 0], "size": [18, 800, 559], "grain": "y"},
+    {"id": "TOP", "name": "Top", "group": "Carcass", "position": [18, 782, 0], "size": [864, 18, 559], "grain": "x"},
+    {"id": "BOTTOM", "name": "Bottom", "group": "Carcass", "position": [18, 80, 0], "size": [864, 18, 559], "grain": "x"},
+    {"id": "BACK", "name": "Back panel 6 mm", "group": "Carcass", "position": [18, 98, 0], "size": [864, 684, 6], "thickness": 6, "material": {"name": "Birch plywood 6 mm", "type": "plywood"}},
+    {"id": "DIV", "name": "Centre divider", "group": "Carcass", "position": [441, 98, 6], "size": [18, 684, 553], "grain": "y"},
+    {"id": "SHELF", "name": "Door bay shelf", "group": "Carcass", "position": [18, 430, 6], "size": [423, 18, 533], "grain": "x"},
+    {"id": "RUNNER", "name": "Drawer runner board", "group": "Carcass", "position": [459, 431, 6], "size": [423, 18, 553], "grain": "x"},
+    {"id": "PLINTH-F", "name": "Front plinth", "group": "Plinth", "position": [18, 0, 480], "size": [864, 80, 18], "grain": "x"},
+    {"id": "PLINTH-B", "name": "Rear plinth", "group": "Plinth", "position": [18, 0, 20], "size": [864, 80, 18], "grain": "x"},
+    {"id": "DOOR", "name": "Door", "group": "Door", "position": [0, 80, 562], "size": [448, 720, 18], "grain": "y"},
+    {"id": "D1-FRONT", "name": "Lower drawer front", "group": "Drawer 1", "position": [452, 80, 562], "size": [448, 358, 18], "grain": "x"},
+    {"id": "D1-SL", "name": "Lower drawer left side", "group": "Drawer 1", "position": [464, 98, 30], "size": [18, 240, 532]},
+    {"id": "D1-SR", "name": "Lower drawer right side", "group": "Drawer 1", "position": [859, 98, 30], "size": [18, 240, 532]},
+    {"id": "D1-BACK", "name": "Lower drawer back", "group": "Drawer 1", "position": [482, 98, 30], "size": [377, 240, 18]},
+    {"id": "D1-BOT", "name": "Lower drawer bottom", "group": "Drawer 1", "position": [482, 98, 48], "size": [377, 18, 514]},
+    {"id": "D2-FRONT", "name": "Upper drawer front", "group": "Drawer 2", "position": [452, 442, 562], "size": [448, 358, 18], "grain": "x"},
+    {"id": "D2-SL", "name": "Upper drawer left side", "group": "Drawer 2", "position": [464, 449, 30], "size": [18, 240, 532]},
+    {"id": "D2-SR", "name": "Upper drawer right side", "group": "Drawer 2", "position": [859, 449, 30], "size": [18, 240, 532]},
+    {"id": "D2-BACK", "name": "Upper drawer back", "group": "Drawer 2", "position": [482, 449, 30], "size": [377, 240, 18]},
+    {"id": "D2-BOT", "name": "Upper drawer bottom", "group": "Drawer 2", "position": [482, 449, 48], "size": [377, 18, 514]}
+  ],
+  "connections": [
+    {"id": "TOP-SL", "type": "butt", "board": "TOP", "into": "SIDE-L", "fasteners": {"kind": "confirmat", "count": 3}},
+    {"id": "TOP-SR", "type": "butt", "board": "TOP", "into": "SIDE-R", "fasteners": {"kind": "confirmat", "count": 3}},
+    {"id": "BOT-SL", "type": "butt", "board": "BOTTOM", "into": "SIDE-L", "fasteners": {"kind": "confirmat", "count": 3}},
+    {"id": "BOT-SR", "type": "butt", "board": "BOTTOM", "into": "SIDE-R", "fasteners": {"kind": "confirmat", "count": 3}},
+    {"id": "BACK-SL", "type": "butt", "board": "BACK", "into": "SIDE-L"},
+    {"id": "BACK-SR", "type": "butt", "board": "BACK", "into": "SIDE-R"},
+    {"id": "BACK-TOP", "type": "butt", "board": "BACK", "into": "TOP"},
+    {"id": "BACK-BOT", "type": "butt", "board": "BACK", "into": "BOTTOM"},
+    {"id": "DIV-TOP", "type": "butt", "board": "DIV", "into": "TOP", "fasteners": {"kind": "dowel", "count": 3}},
+    {"id": "DIV-BOT", "type": "butt", "board": "DIV", "into": "BOTTOM", "fasteners": {"kind": "dowel", "count": 3}},
+    {"id": "DIV-BACK", "type": "butt", "board": "DIV", "into": "BACK", "fasteners": {"kind": "screw", "count": 3, "diameter": 3, "length": 25}},
+    {"id": "SHELF-SL", "type": "butt", "board": "SHELF", "into": "SIDE-L", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "SHELF-DIV", "type": "butt", "board": "SHELF", "into": "DIV", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "SHELF-BACK", "type": "butt", "board": "SHELF", "into": "BACK", "fasteners": {"kind": "screw", "count": 2, "diameter": 3, "length": 25}},
+    {"id": "RUN-DIV", "type": "butt", "board": "RUNNER", "into": "DIV", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "RUN-SR", "type": "butt", "board": "RUNNER", "into": "SIDE-R", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "RUN-BACK", "type": "butt", "board": "RUNNER", "into": "BACK", "fasteners": {"kind": "screw", "count": 2, "diameter": 3, "length": 25}},
+    {"id": "PLF-SL", "type": "butt", "board": "PLINTH-F", "into": "SIDE-L", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "PLF-SR", "type": "butt", "board": "PLINTH-F", "into": "SIDE-R", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "PLF-BOT", "type": "butt", "board": "PLINTH-F", "into": "BOTTOM", "fasteners": {"kind": "screw", "count": 4}},
+    {"id": "PLB-SL", "type": "butt", "board": "PLINTH-B", "into": "SIDE-L", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "PLB-SR", "type": "butt", "board": "PLINTH-B", "into": "SIDE-R", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "PLB-BOT", "type": "butt", "board": "PLINTH-B", "into": "BOTTOM", "fasteners": {"kind": "screw", "count": 4}},
+    {"id": "DOOR-HNG", "type": "hinge", "board": "DOOR", "into": "SIDE-L", "edge": "-x", "count": 2, "gap": 3},
+    {"id": "D1-SL-F", "type": "butt", "board": "D1-SL", "into": "D1-FRONT", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "D1-SR-F", "type": "butt", "board": "D1-SR", "into": "D1-FRONT", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "D1-BOT-F", "type": "butt", "board": "D1-BOT", "into": "D1-FRONT", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D1-BOT-SL", "type": "butt", "board": "D1-BOT", "into": "D1-SL", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D1-BOT-SR", "type": "butt", "board": "D1-BOT", "into": "D1-SR", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D1-BOT-BK", "type": "butt", "board": "D1-BOT", "into": "D1-BACK", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "D1-BK-SL", "type": "butt", "board": "D1-BACK", "into": "D1-SL", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "D1-BK-SR", "type": "butt", "board": "D1-BACK", "into": "D1-SR", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "D2-SL-F", "type": "butt", "board": "D2-SL", "into": "D2-FRONT", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "D2-SR-F", "type": "butt", "board": "D2-SR", "into": "D2-FRONT", "fasteners": {"kind": "dowel", "count": 2}},
+    {"id": "D2-BOT-F", "type": "butt", "board": "D2-BOT", "into": "D2-FRONT", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D2-BOT-SL", "type": "butt", "board": "D2-BOT", "into": "D2-SL", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D2-BOT-SR", "type": "butt", "board": "D2-BOT", "into": "D2-SR", "fasteners": {"kind": "screw", "count": 3}},
+    {"id": "D2-BOT-BK", "type": "butt", "board": "D2-BOT", "into": "D2-BACK", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "D2-BK-SL", "type": "butt", "board": "D2-BACK", "into": "D2-SL", "fasteners": {"kind": "screw", "count": 2}},
+    {"id": "D2-BK-SR", "type": "butt", "board": "D2-BACK", "into": "D2-SR", "fasteners": {"kind": "screw", "count": 2}}
+  ]
+}
+```

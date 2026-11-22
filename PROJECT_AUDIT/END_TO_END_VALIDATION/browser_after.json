@@ -1,0 +1,45 @@
+{
+ "root": "/home/sonic-claude2/deelaksha/MCLAG_#1",
+ "cases": [
+  {
+   "id": "BR-01",
+   "case": "Studio loads",
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-02",
+   "case": "Canvas loads",
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-03",
+   "case": "Compile the example",
+   "status": "Compiled \u00b7 5 boards \u00b7 13/13 joints",
+   "problems": "0",
+   "canvas_elements": 1,
+   "pass": true,
+   "console_errors": []
+  },
+  {
+   "id": "BR-04",
+   "case": "Edit during a running compile",
+   "status": "1 error(s) \u2014 not compiled",
+   "compile_running_when_edited": true,
+   "pass": true,
+   "note": "the latest (broken) text must be compiled and its error shown",
+   "diagnostics_excerpt": "JSON_SYNTAX \u00b7 line 1\nExpecting value (line 1, column 43)."
+  },
+  {
+   "id": "BR-05",
+   "case": "Save then Ctrl-S twice",
+   "projects_created": 1,
+   "pass": true
+  }
+ ],
+ "summary": {
+  "pass": 5,
+  "total": 5
+ }
+}

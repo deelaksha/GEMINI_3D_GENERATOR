@@ -1,0 +1,50 @@
+Here is an existing, working design in the `board-design/v1` format (the specification you used before still
+applies). Apply this CHANGE REQUEST to it:
+
+CHANGE REQUEST:
+Make the shelf 250 mm deep instead of 200 mm. Keep everything else the same.
+
+RULES FOR THE UPDATE:
+1. Identify the boards and connections the change affects, including dependent ones (e.g. a wider product means
+   longer tops, shelves and back panels, and moved side panels).
+2. Change only those. Keep every unaffected board's id, position, size and every unaffected connection exactly as it
+   is — do not rename, re-order or re-generate the rest of the design.
+3. Recompute every dependent dimension explicitly (no formulas) so boards still touch exactly and never overlap.
+4. Update "product.overall" and the "Assumptions" in "product.description" if they change.
+5. If the request is ambiguous or conflicts with the existing design, make the smallest reasonable interpretation
+   and state it in the description.
+6. Run the self-check from the specification, then return the COMPLETE updated design as one ```json code block.
+
+CURRENT DESIGN:
+```json
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Wall shelf",
+    "description": "Glue-free 18 mm plywood wall shelf: a 600 x 200 mm shelf board finger-jointed to a vertical back rail that is screwed to the wall, supported by two triangular brackets tabbed into both the shelf and the back rail. Assumptions: overall height 200 mm (back rail 182 mm + shelf 18 mm); brackets are 182 x 182 mm right triangles set 80 mm in from each end; two 8 mm screw holes in the back rail for wall fixing (screws not modelled).",
+    "overall": {"length": 600, "height": 200, "depth": 200},
+    "mounting": "wall"
+  },
+  "material": {"name": "Birch plywood 18 mm", "type": "plywood", "thickness": 18},
+  "joinery": "interlocking",
+  "boards": [
+    {"id": "BACK", "name": "Back rail (wall mount)", "group": "Shelf", "position": [0, 0, 0], "size": [600, 182, 18], "grain": "x",
+      "openings": [
+        {"id": "screw-l", "kind": "hole", "shape": "circle", "center": [40, 91, 9], "diameter": 8, "note": "wall screw"},
+        {"id": "screw-r", "kind": "hole", "shape": "circle", "center": [560, 91, 9], "diameter": 8, "note": "wall screw"}
+      ]},
+    {"id": "SHELF", "name": "Shelf board", "group": "Shelf", "position": [0, 182, 0], "size": [600, 18, 200], "grain": "x"},
+    {"id": "BRK-L", "name": "Left bracket", "group": "Brackets", "position": [80, 0, 18], "size": [18, 182, 182],
+      "profile": {"shape": "polygon", "points": [[0, 0], [182, 0], [182, 182]]}},
+    {"id": "BRK-R", "name": "Right bracket", "group": "Brackets", "position": [502, 0, 18], "size": [18, 182, 182],
+      "profile": {"shape": "polygon", "points": [[0, 0], [182, 0], [182, 182]]}}
+  ],
+  "connections": [
+    {"id": "BACK-SHELF", "type": "finger", "board": "BACK", "into": "SHELF"},
+    {"id": "BRKL-SHELF", "type": "tab_slot", "board": "BRK-L", "into": "SHELF", "tabs": 2},
+    {"id": "BRKL-BACK", "type": "tab_slot", "board": "BRK-L", "into": "BACK", "tabs": 2},
+    {"id": "BRKR-SHELF", "type": "tab_slot", "board": "BRK-R", "into": "SHELF", "tabs": 2},
+    {"id": "BRKR-BACK", "type": "tab_slot", "board": "BRK-R", "into": "BACK", "tabs": 2}
+  ]
+}
+```

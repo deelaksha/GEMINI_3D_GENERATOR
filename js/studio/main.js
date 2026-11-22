@@ -46,6 +46,11 @@ function toast(msg, err = false) {
 
 function reportError(e) {
   console.error(e);
+  if (e instanceof ApiError && e.status === 409 && e.body?.error?.status === 'conflict') {
+    toast('This design was changed elsewhere — reloaded the latest version; please repeat your edit.', true);
+    refresh().catch((err) => console.error(err));
+    return;
+  }
   if (e instanceof ApiError) {
     const first = e.issues.find((i) => i.severity === 'error') || e.issues[0];
     toast(`${e.message}${first?.message ? ' — ' + first.message : ''}`, true);
@@ -416,7 +421,8 @@ function renderInspector(body) {
     if ([...placement.position, ...placement.rotation].some((x) => !Number.isFinite(x))) return toast('Enter numbers only', true);
     ev.currentTarget.disabled = true;
     try {
-      const r = await save(() => Api.updateComponent(S.designId, c.id, { placement }, { detach_broken_joints: $('#chk-detach').checked }));
+      const r = await save(() => Api.updateComponent(S.designId, c.id, { placement },
+        { detach_broken_joints: $('#chk-detach').checked, expected_revision: S.model.revision }));
       const det = r.result.detached_joints || [];
       toast(det.length ? `Moved; detached ${det.join(', ')} — open Check to fix` : 'Position applied and validated');
     } catch (e) { reportError(e); renderPanel(); }
@@ -433,9 +439,11 @@ function renderInspector(body) {
     const j = S.model.joints.find((x) => x.id === b.dataset.rejoin);
     b.disabled = true;
     try {
-      await save(async () => { await Api.unjoin(S.designId, j.id); await Api.join(S.designId, jointSpec(j), true); });
+      // one all-or-nothing batch: if the join fails the joint is kept as it was
+      await save(() => Api.operations(S.designId, [{ op: 'unjoin', joint_id: j.id }, { op: 'join', joint: jointSpec(j), auto_repair: true }],
+        { expected_revision: S.model.revision }));
       toast(`${j.id} re-joined`);
-    } catch (e) { reportError(e); await refresh(); }
+    } catch (e) { reportError(e); refresh().catch((err) => console.error(err)); }
   }));
 }
 
