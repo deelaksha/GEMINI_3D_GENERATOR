@@ -11,8 +11,8 @@ import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
-import { CompileLoader } from './compile-loader.js?v=2.14';
-import { AssemblyPreview } from './assembly-preview.js?v=2.14';
+import { CompileLoader } from './compile-loader.js?v=2.15';
+import { AssemblyPreview } from './assembly-preview.js?v=2.15';
 import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -27,12 +27,12 @@ const S = { spec: null, result: null, compiledSource: '', selected: null, savedI
 // ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
-function toast(msg, err = false) {
+function toast(msg, err = false, ms = err ? 6500 : 2800) {
   const t = $('#toast');
   t.textContent = msg;
   t.className = `toast show${err ? ' err' : ''}`;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => (t.className = 'toast'), err ? 6500 : 2800);
+  toast._t = setTimeout(() => (t.className = 'toast'), ms);
 }
 function reportError(e) {
   console.error(e);
@@ -248,7 +248,9 @@ async function copyText(text, what) {
 // ---------------------------------------------------------------------------
 // Compile
 // ---------------------------------------------------------------------------
-const view3d = new Viewport3D($('#canvas3d'), { onSelect: (id) => select(id, 'view'), onHover: (id, e) => tip($('#tip-3d'), id, e) });
+// while compiling, the view shows the live assembly: picking would hit the (hidden) previous model
+const view3d = new Viewport3D($('#canvas3d'), { onSelect: (id) => !loader.active && select(id, 'view'),
+  onHover: (id, e) => tip($('#tip-3d'), loader.active ? null : id, e) });
 const sheet2d = new Sheet2D($('#svg2d'), { onSelect: (id) => select(id, 'view'), onHover: (id, e) => tip($('#tip-2d'), id, e), scalebar: $('#scalebar-2d') });
 
 function tip(el, id, e) {
@@ -279,7 +281,7 @@ function showStatus(r) {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const preview = new AssemblyPreview(view3d);
-const loader = new CompileLoader($('.cv-preview'), { onCancel: () => cancelCompile(), onHide: () => preview.end() });
+const loader = new CompileLoader($('.view-3d'), { onCancel: () => cancelCompile(), onHide: () => preview.end() });
 let compileJob = null;
 
 /** First compile phase, streamed: a Web Worker runs the request and parses the reply, posting the compiler's
@@ -287,7 +289,7 @@ let compileJob = null;
  *  Api.canvasCompile(source, false). */
 function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.14', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./compile-worker.js?v=2.15', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
     let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
@@ -331,8 +333,17 @@ function compileFailure(r) {
 /** Two short requests instead of one long one: geometry + validation first (3D and problems appear right
  *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result.
  *  An explicit compile (production) shows the compile loader over the preview; background recompiles (auto-fix) only use the status pill. */
+/** Replace the editor text with a repaired version (one undoable change) and flash the lines that changed. */
+function applySyntaxRepair(fix) {
+  cm.replaceRange(fix.source, cm.posFromIndex(0), cm.posFromIndex(cm.getValue().length));
+  const lines = [...new Set(fix.changes.map((c) => c.line - 1))].filter((l) => l < cm.lineCount());
+  const marks = lines.map((l) => cm.addLineClass(l, 'background', 'cm-fixed-line'));
+  setTimeout(() => marks.forEach((h) => cm.removeLineClass(h, 'background', 'cm-fixed-line')), 4000);
+  toast(`Fixed the JSON syntax automatically — ${fix.summary}. Press Ctrl+Z to undo.`, false, 7000);
+}
+
 async function compile(production = true) {
-  const source = cm.getValue();
+  let source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
   if (S.compiling) {
     if (source === S.compilingSource) return;    // this exact code is already compiling: never send it twice
@@ -348,12 +359,24 @@ async function compile(production = true) {
     loader.start();
     preview.begin();             // the design assembles in the 3D view as the compiler works through it
     if (narrow.matches) setPane('preview');
+    setPreview('3d');
+    // full screen for the assembly when the user started the compile (browsers allow it only after a click / key)
+    if (navigator.userActivation?.isActive ?? true) fs3d.enter();
   }
   try {
-    let serverT = 0;
-    const first = await compileStream(source,
-      (ev) => { serverT = ev.t; if (show) { preview.event(ev); loader.progress(ev, preview.detail(ev)); } },
-      (p) => { if (show && loader.active) { preview.show(p); loader.assembling(p.ids.length); } });
+    let serverT = 0, first, repaired = false;
+    while (true) {
+      first = await compileStream(source,
+        (ev) => { serverT = ev.t; if (show) { preview.event(ev); loader.progress(ev, preview.detail(ev)); } },
+        (p) => { if (show && loader.active) { preview.show(p); loader.assembling(p.ids.length); } });
+      // a JSON syntax error the compiler can repair is fixed in the editor and compiled again, once
+      const fix = !first.model3d && !repaired && first.diagnostics[0]?.code === 'JSON_SYNTAX' &&
+        first.diagnostics[0].fixes?.find((f) => f.kind === 'repair_json');
+      if (!fix || cm.getValue() !== source) break;
+      repaired = true;
+      applySyntaxRepair(fix);
+      source = S.compilingSource = cm.getValue();
+    }
     if (show && first.model3d) {
       loader.rendering(serverT);
       await nextFrame();         // let "Rendering" paint before the WebGL build blocks the main thread
@@ -373,7 +396,7 @@ async function compile(production = true) {
       } else {
         preview.markErrors(first.diagnostics.filter((d) => d.severity === 'error' && d.board).map((d) => d.board));
         loader.fail({ ...compileFailure(first), actions: [['close', 'Close', false, close],
-          ['problems', 'Show problems', true, () => { loader.hide(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
+          ['problems', 'Show problems', true, () => { loader.hide(); fs3d.exit(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
       }
     }
     if (production && first.model3d && narrow.matches) setPane('preview');
@@ -722,7 +745,7 @@ $$('#pv-seg button').forEach((b) => (b.onclick = () => setPreview(b.dataset.pv))
 $$('[data-cam]').forEach((b) => (b.onclick = () => view3d.view(b.dataset.cam)));
 $('#btn-fit-3d').onclick = () => view3d.view('iso');
 $('#btn-fit-2d').onclick = () => sheet2d.fit();
-bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
+const fs3d = bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
 bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 $('#btn-gen-prompt').onclick = generatePrompt;
@@ -756,9 +779,12 @@ $('#sel-example').onchange = (e) => {
   e.target.value = '';
 };
 narrow.addEventListener('change', () => setPane(document.body.dataset.pane));
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && loader.busy && !document.querySelector('dialog[open]')) { e.preventDefault(); cancelCompile(); }
-});
+// Esc cancels a compile; in full screen the first Esc only leaves full screen
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !loader.busy || document.querySelector('dialog[open]')) return;
+  e.preventDefault();
+  if (fs3d.isOn()) fs3d.exit(); else cancelCompile();
+}, true);
 
 (async () => {
   try {

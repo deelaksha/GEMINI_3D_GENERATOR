@@ -44,7 +44,7 @@ export class CompileLoader {
           <div class="cl-time mono" title="Elapsed time">00:00.0</div>
         </div>
         <div class="cl-bar" role="progressbar" aria-label="Compile progress" aria-valuemin="0" aria-valuemax="100"><div class="cl-fill"></div></div>
-        <div class="cl-meta"><span class="cl-pct mono">0%</span><span class="cl-hint">Press <kbd>Esc</kbd> to cancel</span></div>
+        <div class="cl-meta"><span class="cl-pct mono">0%</span><span class="cl-hint">Press <kbd>Esc</kbd> to <span class="if-max">exit full screen</span><span class="if-min">cancel</span></span></div>
         <ol class="cl-stages">${STAGES.map(([id, label]) => `<li data-st="${id}"><span class="cl-ico"></span><span class="cl-lbl">${label}</span><span class="cl-det mono"></span></li>`).join('')}</ol>
         <div class="cl-fail" hidden><div class="cl-fail-msg"></div></div>
         <div class="cl-actions"><button class="btn small" data-act="cancel">Cancel</button></div>

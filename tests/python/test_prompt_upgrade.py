@@ -123,3 +123,26 @@ def test_repair_prompt_groups_repeats_instead_of_truncating():
     diags += [{'severity': 'error', 'code': f'OTHER_{i}', 'message': f'problem {i}', 'board': f'B{i}'} for i in range(20)]
     p = build_repair_prompt('{}', diags)
     assert p.count('\n- [') == 21 and '(and 29 more like this)' in p and 'more distinct problems' not in p
+
+
+def test_every_prompt_demands_code_only():
+    """AIs answered the fix prompt with explanations: every prompt states the output contract up front, repeats it
+    as its last line, and the follow-ups carry the specification so they also work in a fresh chat."""
+    from board_engine.canvas_prompt import (FINAL_REMINDER, OUTPUT_CONTRACT, build_integer_fix_prompt, build_repair_prompt,
+                                            build_update_prompt)
+    bad = json.loads(json.dumps(EXAMPLE))
+    next(b for b in bad['boards'] if b['id'] == 'LEG-R')['position'][1] = -6
+    src = json.dumps(bad, indent=2)
+    diags = compile_source(src)['diagnostics']
+    prompts = {'generate': build_prompt('Cabinet'), 'repair': build_repair_prompt(src, diags),
+               'integer': build_integer_fix_prompt(src, [{'board': 'TOP', 'field': 'size[0]', 'value': 1200.4, 'suggested': 1200,
+                                                          'message': 'x'}]),
+               'update': build_update_prompt(src, 'Add a second shelf.')}
+    for name, p in prompts.items():
+        assert OUTPUT_CONTRACT in p and p.index(OUTPUT_CONTRACT) < 1200, name          # stated before the task details
+        assert p.rstrip().endswith(FINAL_REMINDER), name                               # and as the very last line
+    for name in ('generate', 'repair', 'update'):
+        assert spec_markdown() in prompts[name], name
+    # suggested fixes carry the exact values the compiler computed
+    assert 'boards["LEG-R"].position = [1132, 0, 20]' in prompts['repair'] or 'boards["LEG-R"].size' in prompts['repair']
+    assert 'boards["TOP"].size[0]: 1200.4 → 1200' in prompts['integer']

@@ -909,6 +909,26 @@ Return **one** fenced ```json code block containing only the design object — n
 """
 
 
+# Every prompt's reply is pasted straight into the compiler, so each one states the same output contract at the start
+# and repeats it as its last line (where chat models look last).
+OUTPUT_CONTRACT = """OUTPUT CONTRACT (strict — your reply is pasted straight into a compiler, not read by a person):
+- Reply with exactly ONE ```json code block that contains the COMPLETE design, and nothing else.
+- No text before or after the code block: no greeting, explanation, summary, list of changes, notes or questions.
+- Output every board and every connection in full. Never abbreviate: no "...", no "// unchanged", no "rest stays the
+  same", no placeholders, no references to an earlier answer.
+- Strict JSON: double quotes, no comments, no trailing commas, no formulas or expressions — only literal numbers.
+- Anything you want to tell the user (assumptions, what changed, what could not be done) goes ONLY in the
+  "product.description" string.
+- Never ask a question or refuse: if something cannot be met exactly, return the best complete design and explain the
+  limitation in "product.description"."""
+
+FINAL_REMINDER = 'FINAL REMINDER: your entire reply is one ```json code block with the complete design — no other text.'
+
+INTEGER_RULE = ('All sizes, positions, product.overall values and profile / opening / engraving coordinates are whole '
+                'millimetres (integers such as 30, 38, 150 — never 30.27). Only the material thickness and clearance '
+                'may have decimals.')
+
+
 def build_prompt(title, requirements='', material=None, thickness=None, joinery=None):
     title = (title or '').strip() or 'Board product'
     req = (requirements or '').strip()
@@ -920,27 +940,30 @@ def build_prompt(title, requirements='', material=None, thickness=None, joinery=
     if joinery:
         extra.append(f"- Joinery: {joinery} ({'glue-free tab & slot only' if joinery == 'interlocking' else 'screws / dowels / hinges allowed'})")
     req_block = '\n'.join(filter(None, [req, *extra])) or '- Choose sensible standard dimensions for this product.'
-    return f"""You are an expert furniture / product designer and CAD engineer.
+    return f"""You are an expert furniture / product designer and CAD engineer working as the design step of an automated
+board-design pipeline.
 
-TASK: Design the product below as a flat-board design in the exact JSON format specified further down.
-It will be pasted into a board design generator that compiles it, renders it in 3D, validates every joint,
-gap and overlap, nests the boards on stock sheets and produces cutting files. Invented fields are ignored and
-invalid geometry is rejected, so follow the specification exactly.
+TASK: Design the product below as a flat-board design in the exact JSON format `{FORMAT}` specified further down.
+It is compiled automatically: rendered in 3D, every joint, gap and overlap validated, boards nested on stock sheets
+and cutting files produced. Invented fields are ignored and invalid geometry is rejected, so follow the
+specification exactly.
+
+{OUTPUT_CONTRACT}
 
 PRODUCT: {title}
 
 REQUIREMENTS:
 {req_block}
 
-INSTRUCTIONS:
+INSTRUCTIONS (follow every one):
 1. Read the requirements. If a dimension is missing, choose a standard value for this product; if two requirements
    conflict, follow the explicit number. Write every such decision in "product.description" as "Assumptions: …".
    If the product needs something listed under "What this generator cannot build", build the closest supported
-   version and say what was left out in the description.
+   version and say what was left out in the description. Do not ask questions — decide and record the assumption.
 2. Decompose the product into every board it needs (nothing implied, nothing missing). Give each a short unique id
    (at most 24 characters) and put the boards of each sub-assembly in the same "group".
 3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
-   CRITICAL INTEGER RULE: Because millimetres are already small units (1 mm, 2 mm), all board dimensions (width, height, length), positions (X, Y, Z), and overall sizes MUST BE ROUND INTEGER NUMBERS (e.g. 30, 38, 150), NEVER fractional/floating decimals (e.g. avoid 30.27, 38.41). The only decimals allowed are material thickness (e.g. 1.0, 2.0, 3.0) and manufacturing clearance offsets (e.g. +0.1mm for receiver slots).
+   CRITICAL INTEGER RULE: {INTEGER_RULE}
 4. Account for board thickness everywhere so boards touch exactly and never overlap
    (leg height = overall height − top thickness; inner width = overall width − 2 × side thickness).
 5. Choose each joint from the geometry: end face on a face away from the edges → "tab_slot" (inset at least the board
@@ -957,13 +980,32 @@ INSTRUCTIONS:
     c. Do the boards' combined extents equal product.overall in length, height and depth?
     d. Is any space occupied by two boards (other than boards joined with cross_lap)?
     e. Are all ids unique and at most 24 characters? Is every board held?
+    f. Is every size and position a whole number of millimetres?
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
 
-HOW THIS WILL BE USED: the user pastes your JSON into the "AI Design Canvas" of their board generator and clicks
-Compile. The generator reports any error with the board id and an exact correction, so precise dimensions matter.
+{FINAL_REMINDER}
 """
+
+
+def _whole(v):
+    """Numbers that are whole written as integers (1132, not 1132.0), as the prompts require."""
+    if isinstance(v, list):
+        return [_whole(x) for x in v]
+    return int(v) if isinstance(v, float) and v.is_integer() else v
+
+
+def _fix_text(fix):
+    """A suggested fix as the AI should apply it: its title plus the exact values the compiler computed."""
+    parts = []
+    for e in (fix.get('edits') or [])[:3]:
+        v = e.get('value')
+        if isinstance(v, list) and any(isinstance(x, dict) for x in v):
+            continue                       # a whole rewritten list: the title says what to do
+        where = f'boards["{e["board"]}"].' if e.get('board') else ''
+        parts.append(f'{where}{e["field"]} = {json.dumps(_whole(v))}')
+    return fix['title'] + (f" — set {'; '.join(parts)}" if parts else '')
 
 
 def _problem_lines(diagnostics, limit=60):
@@ -980,37 +1022,42 @@ def _problem_lines(diagnostics, limit=60):
         d = ds[0]
         where = ', '.join(x for x in (f"board {board}" if board else '', f"connection {conn}" if conn else '',
                                       f"line {d['line']}" if d.get('line') else '') if x)
-        fix = (d.get('fixes') or [{}])[0].get('title')
+        fix = (d.get('fixes') or [None])[0]
         rows.append(f"- [{sev.upper()} {code}] {d['message']}" + (f" ({where})" if where else '')
-                    + (f" (and {len(ds) - 1} more like this)" if len(ds) > 1 else '') + (f" Suggested fix: {fix}." if fix else ''))
+                    + (f" (and {len(ds) - 1} more like this)" if len(ds) > 1 else '')
+                    + (f" Suggested fix: {_fix_text(fix)}." if fix and fix.get('kind') != 'repair_json' else ''))
     more = len(rows) - limit
     return '\n'.join(rows[:limit] + ([f'- … and {more} more distinct problems'] if more > 0 else [])) or '- (none)'
 
 
 def build_repair_prompt(source, diagnostics, blocking=()):
     """Follow-up prompt: hand the generator's diagnostics (and the production blockers: fasteners, stock, cut paths)
-    back to the AI and ask for a minimal correction."""
+    back to the AI and ask for a minimal correction, returned as code only."""
     seen = {d['message'] for d in diagnostics}
     diagnostics = list(diagnostics) + [dict(b, severity='error') for b in blocking if b.get('message') not in seen]
-    
-    # Check for floating-point non-integer dimensions
-    float_diags = [d for d in diagnostics if d.get('code') == 'NON_INTEGER_DIMENSION']
-    float_notice = ""
-    if float_diags:
-        float_notice = f"""
-NON-INTEGER FLOATING-POINT DIMENSIONS DETECTED ({len(float_diags)} items):
-The following dimensions violate the integer requirement because they contain decimal fractions:
-{chr(10).join(f"- {d['message']}" for d in float_diags[:20])}
+    syntax = any(d.get('code') == 'JSON_SYNTAX' for d in diagnostics)
+    floats = sum(1 for d in diagnostics if d.get('code') == 'NON_INTEGER_DIMENSION')
+    return f"""You are the repair step of an automated board-design pipeline. The compiler checked the design below (format
+`{FORMAT}`) and found the problems listed. Return the corrected design as code only.
 
-UPDATE INSTRUCTION FOR NON-INTEGER DIMENSIONS:
-Update the existing design ONLY for these specific dimensions so they become clean ROUND INTEGER NUMBERS in millimetres (e.g. 7, 12, 17, 30, 38 mm). Keep every other board, id, position, and connection unchanged.
-"""
-    return f"""The board design generator compiled your JSON and reported the problems below.
+{OUTPUT_CONTRACT}
 
-Return the COMPLETE corrected design as one ```json code block. Change only what is needed to fix these problems:
-keep every other board, id, dimension and connection exactly as it is. Where a problem names a suggested fix,
-apply it. Ensure all board dimensions, sizes and positions remain clean ROUND INTEGER NUMBERS in millimetres (e.g. 30, 38, 150 mm; never use fractional decimals like 30.27). Then run the self-check from the specification again before answering.
-{float_notice}
+REPAIR RULES (follow every one):
+1. Fix every [ERROR]. Fix every [WARNING] too, unless the fix would change what the product is meant to be; then leave
+   it and add one sentence about it to "product.description".
+2. Where a problem gives a "Suggested fix", apply exactly those values — the compiler computed them.
+3. Make the smallest change that fixes each problem: keep every other board, id, dimension and connection exactly as
+   it is — same ids, same order, same names and groups. Do not add, remove or rename boards or connections unless a
+   problem requires it.
+4. When you move or resize a board, update the boards and connections that depend on it so every mating face still
+   touches exactly (gap 0) and no two boards overlap.
+5. Line numbers in the problems refer to YOUR PREVIOUS JSON below.
+6. {INTEGER_RULE}{f" {floats} dimension(s) below break this rule: round each to the nearest whole millimetre and keep the boards that touch them touching." if floats else ''}
+{"7. The previous reply was not valid JSON: rewrite it as strict, complete JSON (every bracket closed, commas between items, double-quoted keys and strings) with the same content." + chr(10) if syntax else ''}
+SELF-CHECK before answering: every problem below is resolved; each board has exactly one size equal to its
+thickness; every connection's faces touch (gap 0); no two boards occupy the same space; ids are unique; all sizes and
+positions are whole millimetres.
+
 PROBLEMS:
 {_problem_lines(diagnostics)}
 
@@ -1018,59 +1065,81 @@ YOUR PREVIOUS JSON:
 ```json
 {(source or '').strip()}
 ```
+
+SPECIFICATION (reference for every field and rule):
+{spec_markdown()}
+
+{FINAL_REMINDER}
 """
 
 
 def build_integer_fix_prompt(source, non_integer_issues):
-    """Specialized follow-up prompt: request the external AI to update ONLY the specific
-    dimensions that have floating-point values so they become clean integer millimetres."""
+    """Follow-up prompt: the external AI updates ONLY the dimensions that have decimal fractions, to whole millimetres."""
     lines = []
     for issue in non_integer_issues:
-        lines.append(f"- {issue.get('message', str(issue))}")
+        target = f'boards["{issue["board"]}"].{issue["field"]}' if issue.get('board') else issue.get('id') or issue.get('field')
+        if 'value' in issue and 'suggested' in issue:
+            lines.append(f"- {target}: {issue['value']:g} → {issue['suggested']:g}   ({issue.get('message', '')})")
+        else:
+            lines.append(f"- {issue.get('message', str(issue))}")
     problem_list = '\n'.join(lines) if lines else "- (no non-integer dimensions found)"
+    return f"""You are the number-cleanup step of an automated board-design pipeline.
+The values listed below do NOT meet the integer millimetre requirement because they contain decimal fractions.
 
-    return f"""The following dimensions in your board design do NOT meet the integer millimetre requirement because they contain floating-point numbers with decimal fractions:
+{OUTPUT_CONTRACT}
 
+VALUES TO CHANGE (current → required):
 {problem_list}
 
-REQUIREMENT:
-All board dimensions (width, height, thickness), coordinates (X, Y, Z), profiles, opening cutouts, tab sizes and gap margins must be clean ROUND INTEGER NUMBERS in millimetres (e.g. 7, 12, 17, 30, 38 mm). Never use fractional decimals like 6.7, 16.6, 3.9, 28.2 mm.
-
-UPDATE INSTRUCTION:
-Update the existing design ONLY for these specific dimensions to match clean integer millimetres (round each to the nearest sensible integer, e.g. 6.7 -> 7 mm, 16.6 -> 17 mm, 3.9 -> 4 mm). Keep every other board, id, position, and connection exactly as it is.
-
-Return the COMPLETE updated design as one ```json code block.
+RULES (follow every one):
+1. Update the existing design ONLY for these specific dimensions: replace each listed value with the required whole
+   number. Keep every other board, id, position, size and connection exactly as it is.
+2. If rounding a size or position opens a gap or an overlap with a board it touches, move or resize that neighbouring
+   board by the same whole-millimetre amount so the faces touch exactly again.
+3. Update "product.overall" if the outer dimensions change.
+4. {INTEGER_RULE}
 
 CURRENT DESIGN:
 ```json
 {(source or '').strip()}
 ```
+
+{FINAL_REMINDER}
 """
 
 
 def build_update_prompt(source, change, diagnostics=()):
     """Follow-up prompt for an incremental change: modify only the affected boards of an existing design."""
     issues = [d for d in diagnostics if d.get('severity') == 'error']
-    return f"""Here is an existing, working design in the `{FORMAT}` format (the specification you used before still
-applies). Apply this CHANGE REQUEST to it:
+    return f"""You are the change step of an automated board-design pipeline. Below is an existing, working design in the
+`{FORMAT}` format. Apply the CHANGE REQUEST to it and return the updated design as code only.
+
+{OUTPUT_CONTRACT}
 
 CHANGE REQUEST:
 {(change or '').strip()}
 
-RULES FOR THE UPDATE:
+RULES FOR THE UPDATE (follow every one):
 1. Identify the boards and connections the change affects, including dependent ones (e.g. a wider product means
    longer tops, shelves and back panels, and moved side panels).
 2. Change only those. Keep every unaffected board's id, position, size and every unaffected connection exactly as it
    is — do not rename, re-order or re-generate the rest of the design.
 3. Recompute every dependent dimension explicitly (no formulas) so boards still touch exactly and never overlap.
+   New boards get new unique ids (at most 24 characters) and a connection for every board they touch.
 4. Update "product.overall" and the "Assumptions" in "product.description" if they change.
 5. If the request is ambiguous or conflicts with the existing design, make the smallest reasonable interpretation
-   and state it in the description.
-6. Run the self-check from the specification, then return the COMPLETE updated design as one ```json code block.
-7. Ensure all modified board dimensions, sizes and positions remain clean ROUND INTEGER NUMBERS in millimetres (e.g. 30, 38, 150 mm; never use fractional decimals like 30.27).
+   and state it in "product.description".
+6. {INTEGER_RULE}
+7. SELF-CHECK before answering: each board has exactly one size equal to its thickness; every connection's faces touch
+   (gap 0); no two boards occupy the same space; ids are unique; every board is held.
 {chr(10) + "The current design still has these problems; fix them too:" + chr(10) + _problem_lines(issues) + chr(10) if issues else ''}
 CURRENT DESIGN:
 ```json
 {(source or '').strip()}
 ```
+
+SPECIFICATION (reference for every field and rule):
+{spec_markdown()}
+
+{FINAL_REMINDER}
 """

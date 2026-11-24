@@ -38,6 +38,7 @@ from .manufacturing import FASTENERS, MATERIALS
 from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
                     SchemaError, cut_outline, edge_frame, feature_polygon, normalize_design, thickness_of)
 from .nesting import SHEET_PRESETS
+from .json_repair import repair_json, summarize as _summarize_repair
 from .progress import active as _reporting, report as _progress
 from .shapes import ShapeError, arc_sweep, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
@@ -153,6 +154,20 @@ def _strip_trailing_commas(src):
     return ''.join(out)
 
 
+def _syntax_fix(text, body, off):
+    """A code fix that repairs the JSON syntax of `body` (the design inside `text`), or None."""
+    res = repair_json(body, lambda s: json.loads(_strip_comments(s)))
+    if res is None:
+        return None
+    fixed, changes = res
+    changes = [dict(c, line=c['line'] + off) for c in changes]
+    start = text.find(body)
+    n = len(changes)
+    return {'id': 'repair-json', 'kind': 'repair_json', 'title': f"Repair the JSON syntax ({n} change{'s' if n != 1 else ''})",
+            'safe': True, 'summary': _summarize_repair(changes), 'changes': changes[:50],
+            'source': text[:start] + fixed + text[start + len(body):], 'edits': []}
+
+
 def parse_source(text):
     """-> (data, json_text, line_offset, diagnostics)."""
     if not isinstance(text, str) or not text.strip():
@@ -164,12 +179,16 @@ def parse_source(text):
     try:
         data = json.loads(_strip_comments(body))
     except json.JSONDecodeError as e:
-        hint = ''
+        hint, fixes = '', None
         if re.search(r'\b(function|const|let|var|=>|import|export)\b', text[:4000]):
             hint = (' This looks like JavaScript. The canvas only accepts the declarative JSON format '
                     '(nothing is executed) — ask the AI to return JSON only.')
+        else:
+            fix = _syntax_fix(text, body, off)
+            if fix:
+                hint, fixes = f" It can be repaired automatically: {fix['summary']}.", [fix]
         return None, body, off, [diag('error', 'JSON_SYNTAX', f'{e.msg} (line {e.lineno + off}, column {e.colno}).{hint}',
-                                      line=e.lineno + off, column=e.colno)]
+                                      line=e.lineno + off, column=e.colno, fixes=fixes)]
     if not isinstance(data, dict):
         return None, body, off, [diag('error', 'NOT_AN_OBJECT', 'The design must be a JSON object { ... }.', line=1 + off)]
     return data, body, off, []
@@ -1639,7 +1658,14 @@ def _finish(design, result, boards, run_production, raw_conns=None):
 
 
 def apply_code_fix(text, fix):
-    """Apply a fix's edits to the source (re-serialised, 2-space indent). Used by tests and the API."""
+    """Apply a fix's edits to the source (re-serialised, 2-space indent). Used by tests and the API.
+    A syntax repair is re-run on `text` itself, so it always matches the code it is applied to."""
+    if fix.get('kind') == 'repair_json':
+        d = parse_source(text)[3]
+        repair = next((f for f in (d[0].get('fixes') or []) if f.get('kind') == 'repair_json'), None) if d else None
+        if not repair:
+            raise CompileError('the code no longer has a repairable syntax error')
+        return repair['source']
     data, _src, _off, diags = parse_source(text)
     if data is None:
         raise CompileError(diags[0]['message'])

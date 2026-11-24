@@ -112,13 +112,17 @@
 
 /* compile loader (js/canvas/compile-loader.js): a status card over the 3D view, which shows the design itself
    assembling while it compiles (js/canvas/assembly-preview.js) */
-.cl { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; container-type: size; opacity: 0; transition: opacity .35s ease; }
+.cl { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; container-type: size; opacity: 0; transition: opacity .35s ease;
+  pointer-events: none; }                       /* the assembly behind can be orbited; only the card takes clicks */
+.cl-info { pointer-events: auto; }
 .cl.show { opacity: 1; }
 .cl-stage { flex: 1 1 52%; min-height: 120px; position: relative; display: grid; place-items: center; }
 .cl-hud { position: absolute; font-size: 10px; letter-spacing: .14em; color: var(--muted); }
 .cl-hud.tl { top: 14px; left: 16px; }
 .cl-wait { color: var(--muted); font-size: 13px; animation: pulse 1.4s ease-in-out infinite; }
-.cl-busy .view-tools, .cl-busy .explode-ctl, .cl-busy .empty-note { visibility: hidden; }
+.cl-busy .view-tools > :not(#btn-full-3d), .cl-busy .explode-ctl, .cl-busy .empty-note { visibility: hidden; }
+body.view-maximized .cl-hint .if-min, body:not(.view-maximized) .cl-hint .if-max { display: none; }
+.cm-fixed-line { background: rgba(52, 199, 123, .14); transition: background .6s; }
 .cl-info { flex: 0 1 auto; width: min(460px, calc(100% - 24px)); margin: 0 auto 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 0;
   background: rgba(18, 22, 29, .9); border: 1px solid var(--border-strong); border-radius: var(--r); box-shadow: var(--shadow); }
 .cl-head { display: flex; align-items: flex-end; gap: 12px; }

@@ -17,7 +17,9 @@ export function bindFullscreen(view, button, onChange) {
     button.title = on ? 'Exit full screen (Esc)' : 'Full screen';
     button.setAttribute('aria-label', button.title);
     button.classList.toggle('on', on);
-    document.body.classList.toggle('view-maximized', on);
+    // any view of the page may be the maximized one (each binding syncs on every fullscreenchange)
+    document.body.classList.toggle('view-maximized', !!(document.fullscreenElement || document.webkitFullscreenElement ||
+      document.querySelector('.is-max')));
     onChange?.(on);
   };
 
@@ -28,8 +30,8 @@ export function bindFullscreen(view, button, onChange) {
     sync();
   };
 
-  button.onclick = async () => {
-    if (isOn()) return exit();
+  const enter = async () => {
+    if (isOn()) return;
     if (native) {
       try {
         await (view.requestFullscreen ? view.requestFullscreen() : view.webkitRequestFullscreen());
@@ -40,9 +42,10 @@ export function bindFullscreen(view, button, onChange) {
     sync();
   };
 
+  button.onclick = () => (isOn() ? exit() : enter());
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && view.classList.contains('is-max')) exit(); });
   sync();
-  return { exit, isOn };
+  return { enter, exit, isOn };
 }

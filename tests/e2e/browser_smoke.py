@@ -88,6 +88,9 @@ def run(root):
                 pg.wait_for_function('!document.querySelector("#btn-compile").disabled', timeout=60000)
                 time.sleep(0.5)
                 pg.wait_for_function('!document.querySelector("#btn-compile").disabled', timeout=60000)
+                # a compile opens the 3D view full screen; leave it so the editor can be used again
+                pg.evaluate('() => document.fullscreenElement && document.exitFullscreen()')
+                time.sleep(0.2)
 
             set_code(json.dumps(EXAMPLE, indent=2))
             pg.click('#btn-compile')
@@ -108,14 +111,19 @@ def run(root):
                                  "material": {"type": "plywood", "thickness": 6}, "boards": boards, "connections": "auto"}))
             pg.click('#btn-compile')
             set_code('{"format": "board-design/v1", "boards": [ broken')
+            pg.evaluate('() => document.fullscreenElement && document.exitFullscreen()')   # back to the editor
+            time.sleep(0.2)
             pg.click('.CodeMirror')                  # the shortcut is an editor key binding
             running = pg.evaluate('() => document.querySelector("#btn-compile").disabled')
             pg.keyboard.press('Control+Enter')
             settle()
             diag = pg.inner_text('#diag-list')
+            code = pg.evaluate('() => document.querySelector(".CodeMirror").CodeMirror.getValue()')
+            # the broken JSON is either reported, or (the usual case) repaired in the editor and its design error shown
+            latest = 'JSON_SYNTAX' in diag or ('"broken"' in code and 'not compiled' in status() and 'grid' not in code)
             rows.append({'id': 'BR-04', 'case': 'Edit during a running compile', 'status': status(),
                          'compile_running_when_edited': running,
-                         'pass': 'JSON_SYNTAX' in diag, 'note': 'the latest (broken) text must be compiled and its error shown',
+                         'pass': latest, 'note': 'the latest (broken) text must be compiled and its error shown',
                          'diagnostics_excerpt': diag[:200]})
 
             # BUG-013: save, then Ctrl-S twice -> still one project
