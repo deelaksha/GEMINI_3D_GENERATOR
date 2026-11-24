@@ -297,6 +297,51 @@ def test_canvas_api_workflow(client):
     assert client.post('/api/v1/canvas/compile', headers=VW, json={'source': fixed['source'], 'production': False}).json['compiled']
 
 
+def _stream(client, source):
+    r = client.post('/api/v1/canvas/compile-stream', headers=VW, json={'source': source, 'production': False})
+    assert r.status_code == 200 and r.mimetype == 'application/x-ndjson'
+    return [json.loads(line) for line in r.data.decode().splitlines()]
+
+
+def _no_timestamps(res):
+    for j in res.get('model3d', {}).get('joints', []):
+        j.pop('joined_at', None)
+    return res
+
+
+def test_compile_stream_reports_real_stages_then_the_same_result(client):
+    from board_api.routes import COMPILE_STAGES
+    events = [e for e in _stream(client, json.dumps(EXAMPLE)) if e['type'] != 'heartbeat']
+    progress, final = events[:-1], events[-1]
+    assert final['type'] == 'result' and all(e['type'] == 'progress' for e in progress)
+    order = [COMPILE_STAGES.index(e['stage']) for e in progress]
+    assert order == sorted(order) and set(order) == set(range(len(COMPILE_STAGES)))      # every stage, in order
+    assert all(0 <= e['done'] <= e['total'] for e in progress)
+    plain = client.post('/api/v1/canvas/compile', headers=VW, json={'source': json.dumps(EXAMPLE), 'production': False}).json
+    assert _no_timestamps(final['result']) == _no_timestamps(plain)
+
+
+def test_compile_stream_stops_after_a_syntax_error(client):
+    events = _stream(client, '{"boards": [')
+    assert [e['type'] for e in events] == ['result']
+    assert events[0]['result']['diagnostics'][0]['code'] == 'JSON_SYNTAX' and not events[0]['result']['compiled']
+
+
+def test_compile_stream_is_cancelled_when_the_client_disconnects(client):
+    import os
+    import threading
+    import time
+    src = open(os.path.join(os.path.dirname(__file__), 'fixtures', 'village_house.json')).read()
+    r = client.post('/api/v1/canvas/compile-stream', headers=VW, json={'source': src, 'production': False}, buffered=False)
+    it = iter(r.response)
+    assert json.loads(next(it))['type'] in ('progress', 'heartbeat')
+    r.close()                                   # what the server sees when the browser aborts the request
+    deadline = time.time() + 5
+    while any(t.name == 'canvas-compile' for t in threading.enumerate()) and time.time() < deadline:
+        time.sleep(0.05)
+    assert not any(t.name == 'canvas-compile' for t in threading.enumerate())
+
+
 def test_import_selected_boards_into_existing_design(client):
     client.post('/api/v1/designs', headers=ED, json={'id': 'host', 'name': 'Host', 'sheet': {'width': 2440, 'height': 1220}})
     r = client.post('/api/v1/canvas/import', headers=ED, json={'source': json.dumps(EXAMPLE), 'target': 'host',

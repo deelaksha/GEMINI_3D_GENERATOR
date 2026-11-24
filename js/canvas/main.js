@@ -11,6 +11,7 @@ import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
+import { CompileLoader } from './compile-loader.js?v=2.10';
 import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -286,23 +287,89 @@ function showStatus(r) {
   else setStatus('err', `${s.errors} error(s)`);
 }
 
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const loader = new CompileLoader($('.cv-preview'), { onCancel: () => cancelCompile(), onHide: () => { view3d.paused = false; } });
+let compileJob = null;
+
+/** First compile phase, streamed: a Web Worker runs the request and parses the reply, posting the compiler's
+ *  real stage events as they arrive. Resolves with the same result as Api.canvasCompile(source, false). */
+function compileStream(source, onProgress) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./compile-worker.js?v=2.7', import.meta.url));
+    const end = () => { worker.terminate(); compileJob = null; };
+    compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'progress') return onProgress(data);
+      end();
+      if (data.type === 'result') resolve(data.result);
+      else reject(new ApiError(data.status, { error: { message: data.message } }));
+    };
+    worker.onerror = (e) => { e.preventDefault(); end(); reject(new ApiError(0, { error: { message: 'The compile worker could not start.' } })); };
+    worker.postMessage({ source, production: false, timeout: 120000 });
+  });
+}
+
+function cancelCompile() {
+  if (!compileJob || !loader.busy) return;
+  S.pending = S.recompile = false;
+  compileJob.cancel();
+}
+
+/** Why a compile produced no model, as the loader's failure panel shows it. */
+function compileFailure(r) {
+  const errs = r.diagnostics.filter((d) => d.severity === 'error');
+  const first = errs[0] || r.diagnostics[0];
+  const title = first?.code === 'COMPILE_TIMEOUT' ? 'Compilation timed out'
+    : first?.code === 'JSON_SYNTAX' ? 'The code is not valid JSON'
+      : `${errs.length} error${errs.length === 1 ? '' : 's'} stopped the compile`;
+  return { title, message: first ? `${first.line ? `Line ${first.line}: ` : ''}${first.message}` : '' };
+}
+
 /** Two short requests instead of one long one: geometry + validation first (3D and problems appear right
- *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result. */
+ *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result.
+ *  An explicit compile (production) shows the compile loader over the preview; live preview only uses the status pill. */
 async function compile(production = true) {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
-  if (S.compiling) { S.recompile = production || S.recompile || false; S.pending = true; return; }   // run again when done
+  if (S.compiling) {
+    if (source === S.compilingSource) return;    // this exact code is already compiling: never send it twice
+    S.recompile = production || S.recompile || false; S.pending = true; return;   // run again when done
+  }
   S.compiling = true;
+  S.compilingSource = source;
   setStatus('busy');
   $('#btn-compile').disabled = true;
+  const show = production;
+  const close = () => { loader.hide(); if (narrow.matches && !S.result?.model3d) setPane('code'); };
+  if (show) {
+    loader.start();
+    view3d.paused = true;        // the loader covers the 3D view: stop redrawing it until the new model is in
+    if (narrow.matches) setPane('preview');
+  }
   try {
-    const first = await Api.canvasCompile(source, false);
+    let serverT = 0;
+    const first = await compileStream(source, (ev) => { serverT = ev.t; if (show) loader.progress(ev); });
+    if (show && first.model3d) {
+      loader.rendering(serverT);
+      await nextFrame();         // let "Rendering" paint before the WebGL build blocks the main thread
+    }
     const sameDesign = S.result?.model3d && first.model3d &&
       S.result.model3d.components.map((c) => c.id).join() === first.model3d.components.map((c) => c.id).join();
     S.result = first;
     S.compiledSource = source;
+    if (first.model3d) view3d.paused = false;
     render(sameDesign);
     if (cm.getValue() === source) showStatus(first); else setStatus('dirty');
+    if (show) {
+      if (first.model3d) {
+        await nextFrame();       // the model has been drawn once: reveal it
+        const s = first.summary;
+        loader.complete(s.errors ? `Compiled with ${s.errors} error${s.errors === 1 ? '' : 's'}` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
+      } else {
+        loader.fail({ ...compileFailure(first), actions: [['close', 'Close', false, close],
+          ['problems', 'Show problems', true, () => { loader.hide(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
+      }
+    }
     if (production && first.model3d && narrow.matches) setPane('preview');
     if (production && first.model3d) {
       setStatus(first.compiled ? 'ok' : 'err', `${$('#compile-status').innerText} · preparing cut sheets…`);
@@ -314,9 +381,22 @@ async function compile(production = true) {
         toast(`3D and checks are ready, but the cut sheets could not be prepared: ${e.message}`, true);
       }
     }
-  } catch (e) { setStatus('err', 'Compile failed'); reportError(e); }
-  finally {
+  } catch (e) {
+    if (e.cancelled) {
+      loader.hide();
+      if (S.result && cm.getValue() === S.compiledSource) showStatus(S.result); else setStatus('dirty');
+      toast('Compilation cancelled');
+    } else {
+      setStatus('err', 'Compile failed');
+      if (show) {
+        console.error(e);
+        loader.fail({ title: e.status === 408 ? 'Compilation timed out' : 'Compilation failed', message: e.message,
+          actions: [['close', 'Close', false, close], ['retry', 'Retry', true, () => { loader.hide(); compile(true); }]] });
+      } else reportError(e);
+    }
+  } finally {
     S.compiling = false;
+    S.compilingSource = null;
     $('#btn-compile').disabled = false;
     if (S.pending) {            // the text changed while compiling: compile the latest version
       const prod = S.recompile;
@@ -670,6 +750,9 @@ $('#sel-example').onchange = (e) => {
   e.target.value = '';
 };
 narrow.addEventListener('change', () => setPane(document.body.dataset.pane));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && loader.busy && !document.querySelector('dialog[open]')) { e.preventDefault(); cancelCompile(); }
+});
 
 (async () => {
   try {

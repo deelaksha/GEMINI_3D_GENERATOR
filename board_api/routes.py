@@ -666,6 +666,73 @@ def canvas_compile():
     return jsonify(dict(res, ok=True, compiled=res['ok']))
 
 
+COMPILE_STAGES = ('parse', 'geometry', 'joints', 'dimensions', 'joint_validation', 'collisions', 'model')
+
+
+@bp.post('/canvas/compile-stream')
+@require('viewer')
+def canvas_compile_stream():
+    """Same compile as /canvas/compile, streamed as NDJSON: {"type":"progress",...} lines at real stage boundaries,
+    then one {"type":"result",...} line. If the client disconnects, the compile is cancelled at the next progress point."""
+    import json
+    import queue
+    import threading
+    import time
+    from board_engine.canvas import compile_source
+    from board_engine.progress import CompileCancelled, reporting
+    data = body()
+    source, production, seconds = data.get('source'), bool(data.get('production', True)), budget()
+    include_design = bool(data.get('include_design'))
+    events, cancelled = queue.Queue(), threading.Event()
+    state = {'stage': -1, 'sent': 0.0}
+    t0 = time.monotonic()
+
+    def reporter(stage, done, total):
+        if cancelled.is_set():
+            raise CompileCancelled()
+        idx = COMPILE_STAGES.index(stage)
+        if idx < state['stage']:
+            return                      # nested work reporting an earlier stage: keep the stream monotonic
+        now = time.monotonic()
+        finished = done is not None and done >= total
+        if idx == state['stage'] and not finished and now - state['sent'] < 0.05:
+            return                      # throttle inner-loop updates to ~20/s
+        state['stage'], state['sent'] = idx, now
+        events.put({'type': 'progress', 'stage': stage, 'done': done, 'total': total, 't': round(now - t0, 3)})
+
+    def work():
+        try:
+            with reporting(reporter):
+                res = compile_source(source, run_production=production, time_budget=seconds)
+            if not include_design:
+                res.pop('design', None)
+            events.put({'type': 'result', 'result': dict(res, ok=True, compiled=res['ok']), 't': round(time.monotonic() - t0, 3)})
+        except CompileCancelled:
+            log.info('canvas compile cancelled by the client')
+        except BaseException as e:      # never leave the stream hanging
+            log.exception('canvas compile stream failed')
+            events.put({'type': 'error', 'message': f'Internal compiler error: {type(e).__name__}'})
+        finally:
+            events.put(None)
+
+    def stream():
+        threading.Thread(target=work, daemon=True, name='canvas-compile').start()
+        try:
+            while True:
+                try:
+                    ev = events.get(timeout=1.0)
+                except queue.Empty:
+                    yield '{"type":"heartbeat"}\n'      # also how a disconnected client is noticed
+                    continue
+                if ev is None:
+                    return
+                yield json.dumps(ev, separators=(',', ':')) + '\n'
+        finally:
+            cancelled.set()
+
+    return Response(stream(), mimetype='application/x-ndjson', headers={'X-Accel-Buffering': 'no'})
+
+
 @bp.post('/canvas/fix')
 @require('viewer')
 def canvas_fix():

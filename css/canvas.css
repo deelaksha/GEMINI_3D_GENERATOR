@@ -110,3 +110,88 @@
   .cv-tb-group .tool span { display: none; }
   .cv-diag { height: 40%; }
 }
+
+/* compile loader (js/canvas/compile-loader.js): only transform / opacity animate, so the browser keeps the
+   scene moving on the compositor even while the main thread builds the 3D model */
+.cl { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; container-type: size; opacity: 0; transition: opacity .4s ease;
+  background: radial-gradient(ellipse at 50% 32%, #2a313c 0%, #0e1117 70%); }
+.cl.show { opacity: 1; }
+.cl-stage { flex: 1 1 52%; min-height: 150px; position: relative; overflow: hidden; display: grid; place-items: center; }
+.cl-hud { position: absolute; font-size: 10px; letter-spacing: .14em; color: var(--faint); }
+.cl-hud.tl { top: 14px; left: 16px; } .cl-hud.tr { top: 14px; right: 16px; }
+.cl-scene { width: 0; height: 0; perspective: 900px; transform: scale(var(--cl-scale, 1)) translateY(-6px); }
+.cl-world { position: relative; transform-style: preserve-3d; will-change: transform; animation: cl-spin 18s linear infinite; }
+.cl-world div, .cl-world i { position: absolute; transform-style: preserve-3d; }
+@keyframes cl-spin { from { transform: rotateX(-24deg) rotateY(0deg); } to { transform: rotateX(-24deg) rotateY(360deg); } }
+.cl-face { display: block; left: 0; top: 0; border: 1px dashed rgba(106, 161, 255, .55); background: rgba(76, 141, 255, .035); backface-visibility: visible;
+  transition: background .5s ease, border-color .5s ease; }
+.cl-part { transform: translate3d(calc(var(--x) + var(--fx)), calc(var(--y) + var(--fy)), calc(var(--z) + var(--fz)));
+  transition: transform .9s cubic-bezier(.2, .8, .2, 1); }
+.cl-float { animation: cl-bob 3.2s ease-in-out infinite; }
+@keyframes cl-bob { 50% { transform: translate3d(0, -9px, 0) rotateY(6deg); } }
+.cl-part.placed { transform: translate3d(var(--x), var(--y), var(--z)); }
+.cl-part.placed .cl-float { animation: none; }
+.cl-part.placed .cl-face { border: 1px solid rgba(217, 185, 139, .85); background: rgba(217, 185, 139, .16); }
+.cl-part.placed .cl-face.fz { background: rgba(217, 185, 139, .22); }
+.cl-bounds .cl-face { border: 1px dashed rgba(106, 161, 255, .16); background: none; }
+.cl-grid { width: 420px; height: 420px; left: -210px; top: -210px; transform: translateY(66px) rotateX(90deg);
+  background-image: linear-gradient(rgba(106, 161, 255, .16) 1px, transparent 1px), linear-gradient(90deg, rgba(106, 161, 255, .16) 1px, transparent 1px);
+  background-size: 21px 21px; -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 68%); mask-image: radial-gradient(circle, #000 25%, transparent 68%); }
+.cl-ring { width: 300px; height: 300px; left: -150px; top: -150px; border-radius: 50%; border: 1px solid rgba(106, 161, 255, .28);
+  border-top-color: var(--accent-2); transform: translateY(66px) rotateX(90deg); animation: cl-ring 6s linear infinite; }
+.cl-ring.r2 { width: 340px; height: 340px; left: -170px; top: -170px; border: 1px dashed rgba(106, 161, 255, .14); animation-duration: 14s; animation-direction: reverse; }
+@keyframes cl-ring { from { transform: translateY(66px) rotateX(90deg) rotateZ(0deg); } to { transform: translateY(66px) rotateX(90deg) rotateZ(360deg); } }
+.cl-scan { width: 236px; height: 132px; left: -118px; top: -66px; border: 1px solid rgba(106, 161, 255, .45);
+  background: linear-gradient(90deg, transparent, rgba(76, 141, 255, .16), transparent); animation: cl-scan 2.8s ease-in-out infinite alternate; }
+@keyframes cl-scan { from { transform: translateY(-72px) rotateX(90deg); opacity: .15; } 50% { opacity: .9; } to { transform: translateY(66px) rotateX(90deg); opacity: .15; } }
+.cl.ok .cl-scan, .cl.err .cl-scan { animation: none; opacity: 0; }
+.cl.err .cl-world { animation-play-state: paused; }
+.cl.err .cl-part:not(.placed) .cl-face { border-color: rgba(242, 85, 93, .5); }
+
+.cl-info { flex: 0 1 auto; width: min(460px, 100%); margin: 0 auto; padding: 0 18px 18px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.cl-head { display: flex; align-items: flex-end; gap: 12px; }
+.cl-head-text { flex: 1; min-width: 0; }
+.cl-title { font-size: 15px; font-weight: 650; }
+.cl-sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 19px; }
+.cl-time { font-size: 18px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.cl-bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; box-shadow: inset 0 0 0 1px var(--border); }
+.cl-fill { height: 100%; transform-origin: 0 50%; transform: scaleX(0); transition: transform .35s ease-out;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); box-shadow: 0 0 12px rgba(76, 141, 255, .6); }
+.cl.ok .cl-fill { background: var(--ok); box-shadow: 0 0 12px rgba(52, 199, 123, .55); }
+.cl.err .cl-fill { background: var(--err); box-shadow: none; }
+.cl-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: -4px; }
+.cl-pct { color: var(--text); font-variant-numeric: tabular-nums; }
+.cl-stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; overflow: auto; min-height: 0; }
+.cl-stages li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--faint); min-width: 0; height: 24px; }
+.cl-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-det { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.cl-ico { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-strong); flex: none; position: relative; }
+.cl-stages li.active { color: var(--text); }
+.cl-stages li.active .cl-ico { border-color: rgba(106, 161, 255, .25); border-top-color: var(--accent-2); animation: cl-rot .8s linear infinite; }
+@keyframes cl-rot { to { transform: rotate(360deg); } }
+.cl-stages li.done { color: var(--muted); }
+.cl-stages li.done .cl-ico { border-color: var(--ok); background: var(--ok); }
+.cl-stages li.done .cl-ico::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 3px; height: 6px; border: solid #0c0f14; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
+.cl-stages li.failed { color: #ffb0b4; }
+.cl-stages li.failed .cl-ico { border-color: var(--err); background: var(--err); }
+.cl-stages li.failed .cl-ico::after { content: '!'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #0c0f14; line-height: 1; }
+.cl-stages li.skipped { opacity: .55; }
+.cl-stages li.skipped .cl-ico { border-style: dashed; }
+.cl-fail { border: 1px solid rgba(242, 85, 93, .35); background: rgba(242, 85, 93, .08); border-radius: var(--r-sm); padding: 9px 12px; font-size: 12.5px; }
+.cl-fail-msg { color: var(--text); overflow-wrap: anywhere; max-height: 6.2em; overflow: auto; }
+.cl-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.cl-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* short and wide: scene beside the details; very small: drop the stage list */
+@container (min-aspect-ratio: 5 / 4) and (max-height: 560px) {
+  .cl { flex-direction: row; align-items: center; }
+  .cl-stage { align-self: stretch; }
+  .cl-info { flex: 0 1 420px; margin: 0; padding: 18px; }
+}
+@container (max-height: 420px) { .cl-stages { display: none; } }
+@container (max-width: 360px) { .cl-stages { grid-template-columns: 1fr; } .cl-hud { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .cl-world { animation: none; transform: rotateX(-24deg) rotateY(-35deg); }
+  .cl-float, .cl-ring, .cl-scan { animation: none; }
+  .cl-part { transition-duration: .01s; }
+}

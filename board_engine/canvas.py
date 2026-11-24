@@ -38,6 +38,7 @@ from .manufacturing import FASTENERS, MATERIALS
 from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
                     SchemaError, cut_outline, edge_frame, normalize_design)
 from .nesting import SHEET_PRESETS
+from .progress import report as _progress
 from .shapes import ShapeError, arc_sweep, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
 
@@ -1246,6 +1247,7 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
         return result
+    _progress('parse', 1, 1)
     try:
         with _budget(time_budget):
             if 'components' in data and 'boards' not in data:
@@ -1270,7 +1272,9 @@ def _compile_native(data, design_id, result, run_production):
     design = normalize_design(d)
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
-    for spec in pending:
+    _progress('geometry', 1, 1)
+    for n, spec in enumerate(pending):
+        _progress('joints', n, len(pending))
         res = join(design, spec, auto_repair=True, whole_design_check=False)
         if res['accepted']:
             design = res['design']
@@ -1310,7 +1314,10 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                           board=fi.get('board'), line=fi.get('line'),
                           fixes=[fi['fix']] if fi.get('fix') else None))
 
-    comps = {bid: _component(bd, mat, diags) for bid, bd in boards.items()}
+    comps = {}
+    for n, (bid, bd) in enumerate(boards.items()):
+        _progress('geometry', n, len(boards))
+        comps[bid] = _component(bd, mat, diags)
     comps0 = copy.deepcopy(comps)      # unrotated: edge directions ("+x", ...) always refer to the unrotated box
     for bid, bd in boards.items():
         if bd.rot:
@@ -1338,6 +1345,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                               line=_key_line(src, 'connections', off)))
         norm += inferred
     _classify_connections(norm, boards, diags)
+    _progress('geometry', len(boards), len(boards))
     types = {c['type'] for c in norm}
     joinery = data.get('joinery') or ('interlocking' if types <= GLUE_FREE_TYPES else 'glue_allowed')
     if joinery not in JOINERY_MODES:
@@ -1497,7 +1505,8 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     design['sheet'] = _auto_sheet(design, mat, data)
     design['source'] = {'format': FORMAT, 'code': None}
 
-    for j, c, cid, cline in joints:
+    for n, (j, c, cid, cline) in enumerate(joints):
+        _progress('joints', n, len(joints))
         try:
             res = join(design, j, auto_repair=True, whole_design_check=False)
         except SchemaError as e:      # connection options out of range (hinge count, gap, fasteners, ...)
@@ -1521,6 +1530,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                           connection=cid, board=j['a'], line=cline or boards[j['a']].line, fixes=fixes or None))
         design['joints'].append(dict(j, status='detached', detached_reason=first['code']))
 
+    _progress('joints', len(joints), len(joints))
     # Overall dimensions (the classic AI mistake: forgetting to subtract board thickness)
     ov = product.get('overall') if isinstance(product.get('overall'), dict) else {}
     corners = [_frame(cm).to_world([x, y, z]) for cm in design['components'] for x, y in cm['outline']
@@ -1548,7 +1558,9 @@ def _finish(design, result, boards, run_production, raw_conns=None):
     from .views import model3d, production_package
     diags = result['diagnostics']
     report = validate_design(design)
+    _progress('model', 0, 2)
     support = support_report(design)
+    _progress('model', 1, 2)
     known = {(d.get('connection'), d['code']) for d in diags}
     held = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
     for i in report['issues']:
@@ -1585,6 +1597,7 @@ def _finish(design, result, boards, run_production, raw_conns=None):
     result['design'] = design
     result['validation'] = {'valid': report['valid'], 'complete': report['complete'], 'summary': report['summary']}
     result['model3d'] = model3d(design, report)
+    _progress('model', 2, 2)
     if run_production and design['components']:
         try:
             pkg = production_package(design, {'compensate_kerf': True})

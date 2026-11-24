@@ -142,8 +142,10 @@ export class Viewport3D {
     this._bindPointer();
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    this.paused = false;          // set while the view is covered (e.g. by the canvas compile loader)
     const loop = () => {
       requestAnimationFrame(loop);
+      if (this.paused) return;
       this.controls.update();
       r.render(this.scene, this.camera);
     };

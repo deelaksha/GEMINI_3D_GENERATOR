@@ -24,6 +24,7 @@ import math
 
 from . import geometry as G
 from .deadline import check as check_budget
+from .progress import report as progress
 from .model import (INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
                     find_component, material_of, thickness_of)
 
@@ -1319,9 +1320,12 @@ def find_collisions(design, plates, only=None, tol=TOL):
         if j.get('status') == 'joined' and j['type'] == 'edge_mitre' and j.get('bevel') and j['a'] in plates \
                 and j['b'] in plates and j['a_edge'] < len(plates[j['a']].outline):
             bevelled.setdefault(frozenset((j['a'], j['b'])), []).append(_edge_world(plates[j['a']], j['a_edge']))
+    pairs, done = len(ids) * (len(ids) - 1) // 2, 0
     for i in range(len(ids)):
         for k in range(i + 1, len(ids)):
             check_budget()
+            progress('collisions', done, pairs)
+            done += 1
             a, b = plates[ids[i]], plates[ids[k]]
             if only and a.id not in only and b.id not in only:
                 continue
@@ -1379,7 +1383,8 @@ def validate_design(design, tol=TOL):
             sigs[s] = c['id']
 
     broken_geometry = set()
-    for c in comps:
+    for n, c in enumerate(comps):
+        progress('dimensions', n, len(comps))
         ci = validate_component(design, c, tol)
         if any(i['code'] in ('DEGENERATE_OUTLINE', 'OUTLINE_SELF_INTERSECTION') for i in ci):
             broken_geometry.add(c['id'])
@@ -1392,7 +1397,9 @@ def validate_design(design, tol=TOL):
     used_slots, used_tabs = set(), set()
     joined_adj = {c['id']: set() for c in comps}
     joint_results = {}
-    for j in design['joints']:
+    progress('dimensions', len(comps), len(comps))
+    for n, j in enumerate(design['joints']):
+        progress('joint_validation', n, len(design['joints']))
         key = (j['type'], j['a'], j['b'], j.get('tab'), j.get('a_edge'), j.get('b_edge'))
         rkey = (j['type'], j['b'], j['a'], j.get('tab'), j.get('b_edge'), j.get('a_edge'))
         if key in keys or (j['type'] in ('face_lap', 'edge_mitre') and rkey in keys):
@@ -1437,6 +1444,7 @@ def validate_design(design, tol=TOL):
                                     f"Tab '{t['id']}' on '{c['id']}' is not joined to anything.",
                                     [c['id']], feature=t['id']))
 
+    progress('joint_validation', len(design['joints']), len(design['joints']))
     # Connectivity of the assembly
     if len(comps) > 1:
         groups, seen_ids = [], set()
@@ -1462,6 +1470,7 @@ def validate_design(design, tol=TOL):
 
     issues.extend(find_collisions(design, plates, tol=tol))
     issues.extend(find_near_misses(design, plates, tol=tol))
+    progress('collisions', 1, 1)
 
     errors = sum(1 for i in issues if i['severity'] == 'error')
     warnings = sum(1 for i in issues if i['severity'] == 'warning')
