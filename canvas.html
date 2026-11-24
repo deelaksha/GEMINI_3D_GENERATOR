@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
   <link rel="stylesheet" href="css/studio.css?v=2.5" />
-  <link rel="stylesheet" href="css/canvas.css?v=2.10" />
+  <link rel="stylesheet" href="css/canvas.css?v=2.11" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -65,14 +65,7 @@
             <textarea class="input textarea" id="in-req" rows="6" placeholder="Overall dimensions, number of shelves, style, special joining needs…
 e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole in the left leg."></textarea>
           </label>
-          <label>Material<select class="input" id="in-material"></select></label>
-          <label>Board thickness<select class="input" id="in-thickness"></select></label>
-          <label class="full">Joining
-            <select class="input" id="in-joinery">
-              <option value="interlocking">Glue-free · tab &amp; slot only</option>
-              <option value="glue_allowed">Screws, dowels, hinges allowed</option>
-            </select>
-          </label>
+          <label class="full">Board thickness (mm)<select class="input" id="in-thickness"></select></label>
           <button class="btn primary full" id="btn-gen-prompt">Generate AI prompt</button>
           <button class="btn full" id="btn-change-prompt" title="Uses the code in the editor as the current design and the requirements text above as the change request">Prompt for a change to the current design</button>
         </div>
@@ -103,7 +96,6 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
           <button class="tool" id="btn-clear" title="Clear the editor">Clear</button>
         </div>
         <span class="spacer"></span>
-        <label class="check small" title="Recompile automatically while you type"><input type="checkbox" id="chk-live" /> Live preview</label>
         <button class="btn primary" id="btn-compile" title="Compile (Ctrl+Enter)"><svg><use href="#i-play"/></svg>Compile</button>
       </div>
       <div class="cv-editor" id="editor"></div>
@@ -170,6 +162,6 @@ e.g. Length 1200 mm, width 600 mm, height 750 mm. One storage shelf. Cable hole 
     <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
     <div class="dlg-body" id="import-body"></div></dialog>
   <div class="toast" id="toast" role="status"></div>
-  <script type="module" src="js/canvas/main.js?v=2.10"></script>
+  <script type="module" src="js/canvas/main.js?v=2.13"></script>
 </body>
 </html>

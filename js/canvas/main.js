@@ -21,7 +21,7 @@ const fmt = (v, n = 1) => (Math.round(v * 10 ** n) / 10 ** n).toString();
 const narrow = matchMedia('(max-width: 1100px)');
 const DRAFT_KEY = 'board-canvas-draft';
 
-const S = { spec: null, result: null, compiledSource: '', selected: null, savedId: null, compiling: false, liveTimer: 0, marks: [], draftingMode: 'all' };
+const S = { spec: null, result: null, compiledSource: '', selected: null, savedId: null, compiling: false, marks: [], draftingMode: 'all' };
 
 // ---------------------------------------------------------------------------
 // Feedback
@@ -144,33 +144,22 @@ cm.on('cursorActivity', () => {
 cm.on('change', () => {
   try { localStorage.setItem(DRAFT_KEY, cm.getValue()); } catch (e) { /* ignore */ }
   setStatus('dirty');
-  if ($('#chk-live').checked) {
-    clearTimeout(S.liveTimer);
-    S.liveTimer = setTimeout(() => compile(false), 900);
-  }
 });
 
 // ---------------------------------------------------------------------------
 // Prompt
 // ---------------------------------------------------------------------------
-function fillMaterials() {
-  const mats = S.spec.materials;
-  $('#in-material').innerHTML = Object.keys(mats).map((k) => `<option value="${k}" ${k === 'plywood' ? 'selected' : ''}>${k.replace('_', ' ')}</option>`).join('');
-  const fillT = () => {
-    const ts = mats[$('#in-material').value].thicknesses;
-    const pref = ts.includes(18) ? 18 : ts[Math.floor(ts.length / 2)];
-    $('#in-thickness').innerHTML = ts.map((t) => `<option ${t === pref ? 'selected' : ''}>${t}</option>`).join('');
-  };
-  $('#in-material').onchange = fillT;
-  fillT();
+function fillThickness() {
+  const ts = S.spec.materials.plywood.thicknesses;     // the default material's stock thicknesses
+  $('#in-thickness').innerHTML = ts.map((t) => `<option ${t === 18 ? 'selected' : ''}>${t}</option>`).join('');
 }
 
 async function generatePrompt() {
   const title = $('#in-title').value.trim();
   if (!title) { $('#in-title').focus(); return toast('Enter a product title first', true); }
   try {
-    const r = await Api.canvasPrompt({ title, requirements: $('#in-req').value, material: $('#in-material').value,
-      thickness: parseFloat($('#in-thickness').value), joinery: $('#in-joinery').value });
+    const r = await Api.canvasPrompt({ title, requirements: $('#in-req').value,
+      thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking' });   // always glue-free
     $('#out-prompt').value = r.prompt;
     $('#btn-copy-prompt').disabled = false;
     $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. Paste the AI’s JSON reply into the editor and click <b>Compile</b>.`;
@@ -327,7 +316,7 @@ function compileFailure(r) {
 
 /** Two short requests instead of one long one: geometry + validation first (3D and problems appear right
  *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result.
- *  An explicit compile (production) shows the compile loader over the preview; live preview only uses the status pill. */
+ *  An explicit compile (production) shows the compile loader over the preview; background recompiles (auto-fix) only use the status pill. */
 async function compile(production = true) {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
@@ -757,7 +746,7 @@ document.addEventListener('keydown', (e) => {
 (async () => {
   try {
     S.spec = await Api.canvasSpec();
-    fillMaterials();
+    fillThickness();
     const q = new URLSearchParams(location.search);
     if (q.get('design')) {
       const { design } = await Api.design(q.get('design'));
