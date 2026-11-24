@@ -321,6 +321,22 @@ def test_compile_stream_reports_real_stages_then_the_same_result(client):
     assert _no_timestamps(final['result']) == _no_timestamps(plain)
 
 
+def test_compile_stream_preview_is_the_compilers_own_geometry(client):
+    events = _stream(client, json.dumps(EXAMPLE))
+    preview = [e['preview'] for e in events if 'preview' in e]
+    joins = [e['joins'] for e in events if 'joins' in e]
+    final = {c['id']: c for c in events[-1]['result']['model3d']['components']}
+    assert len(preview) == 1 and {b['id'] for b in preview[0]} == set(final)      # sent once, every board
+    for b in preview[0]:
+        assert b['thickness'] == final[b['id']]['thickness']
+        assert b['matrix_world'] == pytest.approx(final[b['id']]['matrix_world'], abs=1e-5)
+    assert len(joins) == 1 and len(joins[0]) == len(events[-1]['result']['model3d']['joints'])
+    assert all(a in final and b in final for a, b in joins[0])
+    assert any(e.get('a') and e.get('b') for e in events if e.get('stage') == 'collisions')
+    # nothing extra is built when nobody is listening
+    assert 'preview' not in compile_source(json.dumps(EXAMPLE), run_production=False)
+
+
 def test_compile_stream_stops_after_a_syntax_error(client):
     events = _stream(client, '{"boards": [')
     assert [e['type'] for e in events] == ['result']

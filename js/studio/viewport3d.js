@@ -48,7 +48,7 @@ function plyEdgeTexture() {
   return t;
 }
 
-function shapeFromComponent(comp) {
+export function shapeFromComponent(comp) {
   const pts = comp.cut_outline;
   const shape = new THREE.Shape();
   pts.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
@@ -142,10 +142,8 @@ export class Viewport3D {
     this._bindPointer();
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
-    this.paused = false;          // set while the view is covered (e.g. by the canvas compile loader)
     const loop = () => {
       requestAnimationFrame(loop);
-      if (this.paused) return;
       this.controls.update();
       r.render(this.scene, this.camera);
     };
@@ -241,14 +239,13 @@ export class Viewport3D {
     if (!this._framed) { this.view('iso'); this._framed = true; }
   }
 
-  view(kind) {
-    if (!this.model) return;
+  view(kind, b = this.model?.bounds) {
+    if (!b) return;
     // Fit the bounding sphere into the narrower of the vertical / horizontal fields of view
-    const b = this.model.bounds;
     const sphere = new THREE.Vector3(...b.max).sub(new THREE.Vector3(...b.min)).length() / 2;
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
-    const c = this.center, r = (sphere / Math.sin(Math.min(vfov, hfov) / 2)) * 1.08;
+    const c = new THREE.Vector3(...b.center), r = (sphere / Math.sin(Math.min(vfov, hfov) / 2)) * 1.08;
     const dirs = { iso: [1, 0.62, 1.05], front: [0, 0.12, 1], side: [1, 0.12, 0], top: [0, 1, 0.0001] };
     const d = new THREE.Vector3(...(dirs[kind] || dirs.iso)).normalize().multiplyScalar(r);
     this.camera.position.copy(c).add(d);

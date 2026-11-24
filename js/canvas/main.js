@@ -11,7 +11,8 @@ import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
-import { CompileLoader } from './compile-loader.js?v=2.10';
+import { CompileLoader } from './compile-loader.js?v=2.14';
+import { AssemblyPreview } from './assembly-preview.js?v=2.14';
 import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -277,18 +278,31 @@ function showStatus(r) {
 }
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
-const loader = new CompileLoader($('.cv-preview'), { onCancel: () => cancelCompile(), onHide: () => { view3d.paused = false; } });
+const preview = new AssemblyPreview(view3d);
+const loader = new CompileLoader($('.cv-preview'), { onCancel: () => cancelCompile(), onHide: () => preview.end() });
 let compileJob = null;
 
 /** First compile phase, streamed: a Web Worker runs the request and parses the reply, posting the compiler's
- *  real stage events as they arrive. Resolves with the same result as Api.canvasCompile(source, false). */
-function compileStream(source, onProgress) {
+ *  real stage events as they arrive, and the preview geometry built from them. Resolves with the same result as
+ *  Api.canvasCompile(source, false). */
+function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.7', import.meta.url));
+    const worker = new Worker(new URL('./compile-worker.js?v=2.14', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
+    let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
     worker.onmessage = ({ data }) => {
       if (data.type === 'progress') return onProgress(data);
+      if (data.type === 'preview') return onPreview(data);
+      if (data.type === 'preview-done') return settled && worker.terminate();
+      if (data.type === 'result' && !data.result.model3d && data.previewPending) {
+        // a failed compile can finish before its preview is built: let the worker deliver it (the partial
+        // design, errors in red, behind the failure panel); the result is not held back for it
+        settled = true;
+        compileJob = null;
+        setTimeout(() => worker.terminate(), 10000);
+        return resolve(data.result);
+      }
       end();
       if (data.type === 'result') resolve(data.result);
       else reject(new ApiError(data.status, { error: { message: data.message } }));
@@ -332,12 +346,14 @@ async function compile(production = true) {
   const close = () => { loader.hide(); if (narrow.matches && !S.result?.model3d) setPane('code'); };
   if (show) {
     loader.start();
-    view3d.paused = true;        // the loader covers the 3D view: stop redrawing it until the new model is in
+    preview.begin();             // the design assembles in the 3D view as the compiler works through it
     if (narrow.matches) setPane('preview');
   }
   try {
     let serverT = 0;
-    const first = await compileStream(source, (ev) => { serverT = ev.t; if (show) loader.progress(ev); });
+    const first = await compileStream(source,
+      (ev) => { serverT = ev.t; if (show) { preview.event(ev); loader.progress(ev, preview.detail(ev)); } },
+      (p) => { if (show && loader.active) { preview.show(p); loader.assembling(p.ids.length); } });
     if (show && first.model3d) {
       loader.rendering(serverT);
       await nextFrame();         // let "Rendering" paint before the WebGL build blocks the main thread
@@ -346,8 +362,8 @@ async function compile(production = true) {
       S.result.model3d.components.map((c) => c.id).join() === first.model3d.components.map((c) => c.id).join();
     S.result = first;
     S.compiledSource = source;
-    if (first.model3d) view3d.paused = false;
-    render(sameDesign);
+    render(sameDesign || preview.shown);     // the camera the live assembly settled on carries over
+    if (first.model3d) preview.end();         // swapped in the same frame as the final model appears
     if (cm.getValue() === source) showStatus(first); else setStatus('dirty');
     if (show) {
       if (first.model3d) {
@@ -355,6 +371,7 @@ async function compile(production = true) {
         const s = first.summary;
         loader.complete(s.errors ? `Compiled with ${s.errors} error${s.errors === 1 ? '' : 's'}` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
       } else {
+        preview.markErrors(first.diagnostics.filter((d) => d.severity === 'error' && d.board).map((d) => d.board));
         loader.fail({ ...compileFailure(first), actions: [['close', 'Close', false, close],
           ['problems', 'Show problems', true, () => { loader.hide(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
       }

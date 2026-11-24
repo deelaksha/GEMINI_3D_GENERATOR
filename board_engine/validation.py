@@ -1063,7 +1063,8 @@ def _plate_interference(a, b, tol):
             act_p = _station_features(P, base, u, vp_loc, lo, step, n_st)
             act_q = _station_features(Q, base, u, vq_loc, lo, step, n_st)
             for k in range(n_st):
-                w = G.v_add(base, G.v_scale(u, lo + k * step))
+                s_k = lo + k * step
+                w = [base[0] + u[0] * s_k, base[1] + u[1] * s_k, base[2] + u[2] * s_k]
                 pq = Q.frame.to_local(w)
                 ivs = _slab_interval(pq[2], vq_loc[2], Q.t / 2.0 - tol['contact'])   # cheapest test first
                 if ivs:
@@ -1103,17 +1104,18 @@ def _polygon_line_intervals(poly, p, v):
 def _edge_line_intervals(edges, p, v):
     """Even-odd r-intervals from the polygon edges that the line can cross (edges it cannot cross add nothing)."""
     rs = []
-    vv = v[0] * v[0] + v[1] * v[1]
+    vx, vy, px, py = v[0], v[1], p[0], p[1]
+    vv = vx * vx + vy * vy
     for q1, q2 in edges:
         # Half-open side rule (as in point-in-polygon): a vertex lying exactly on the line is counted on
         # one side only, so crossings always pair up even when stations hit vertices or collinear edges.
-        d1 = v[0] * (q1[1] - p[1]) - v[1] * (q1[0] - p[0])
-        d2 = v[0] * (q2[1] - p[1]) - v[1] * (q2[0] - p[0])
+        d1 = vx * (q1[1] - py) - vy * (q1[0] - px)
+        d2 = vx * (q2[1] - py) - vy * (q2[0] - px)
         if (d1 > 0) == (d2 > 0):
             continue
         t = d1 / (d1 - d2)
         x, y = q1[0] + (q2[0] - q1[0]) * t, q1[1] + (q2[1] - q1[1]) * t
-        rs.append(((x - p[0]) * v[0] + (y - p[1]) * v[1]) / vv)
+        rs.append(((x - px) * vx + (y - py) * vy) / vv)
     rs.sort()
     return [(rs[i], rs[i + 1]) for i in range(0, len(rs) - 1, 2)]
 
@@ -1141,10 +1143,11 @@ def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
         k0, k1 = stations(e)
         for k in range(k0, k1 + 1):
             act[k][0].append(e)
-    for (f, poly), (x0, y0, x1, y1) in zip(plate.feature_polys, plate._feature_boxes):
+    for (_f, poly), (x0, y0, x1, y1) in zip(plate.feature_polys, plate._feature_boxes):
         k0, k1 = stations(((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
+        edges = [(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))]   # built once, used per station
         for k in range(k0, k1 + 1):
-            act[k][1].append((f, poly))
+            act[k][1].append(edges)
     return act
 
 
@@ -1159,19 +1162,23 @@ def _material_intervals(plate, p, v, shrink, features=None):
         return []
     if features is None:
         ivs = _polygon_line_intervals(plate.cut, p, v)
-        candidates = zip(plate.feature_polys, plate._feature_boxes)
+        for (_f, poly), box in zip(plate.feature_polys, plate._feature_boxes):
+            if not ivs:
+                break
+            if _line_misses_box(p, v, box):
+                continue
+            holes = _polygon_line_intervals(poly, p, v)
+            if holes:
+                ivs = _subtract(ivs, holes)
     else:
         edges, feats = features
         ivs = _edge_line_intervals(edges, p, v)
-        candidates = ((fp, None) for fp in feats)
-    for (_f, poly), box in candidates:
-        if not ivs:
-            break
-        if box is not None and _line_misses_box(p, v, box):
-            continue
-        holes = _polygon_line_intervals(poly, p, v)
-        if holes:
-            ivs = _subtract(ivs, holes)
+        for hole_edges in feats:
+            if not ivs:
+                break
+            holes = _edge_line_intervals(hole_edges, p, v)
+            if holes:
+                ivs = _subtract(ivs, holes)
     d = shrink / vlen
     return [(r0 + d, r1 - d) for r0, r1 in ivs if r1 - r0 > 2 * d]
 
@@ -1194,6 +1201,17 @@ def _intersect(xs, ys):
 
 def _subtract(xs, holes):
     out = []
+    if len(holes) == 1:                 # the usual case (one cut-out crossed): same result without the inner loops
+        h0, h1 = holes[0]
+        for a0, a1 in xs:
+            if h1 <= a0 or h0 >= a1:
+                out.append((a0, a1))
+                continue
+            if h0 > a0:
+                out.append((a0, h0))
+            if h1 < a1:
+                out.append((h1, a1))
+        return out
     for a0, a1 in xs:
         segs = [(a0, a1)]
         for h0, h1 in holes:
@@ -1324,7 +1342,7 @@ def find_collisions(design, plates, only=None, tol=TOL):
     for i in range(len(ids)):
         for k in range(i + 1, len(ids)):
             check_budget()
-            progress('collisions', done, pairs)
+            progress('collisions', done, pairs, a=ids[i], b=ids[k])
             done += 1
             a, b = plates[ids[i]], plates[ids[k]]
             if only and a.id not in only and b.id not in only:
@@ -1384,7 +1402,7 @@ def validate_design(design, tol=TOL):
 
     broken_geometry = set()
     for n, c in enumerate(comps):
-        progress('dimensions', n, len(comps))
+        progress('dimensions', n, len(comps), board=c['id'])
         ci = validate_component(design, c, tol)
         if any(i['code'] in ('DEGENERATE_OUTLINE', 'OUTLINE_SELF_INTERSECTION') for i in ci):
             broken_geometry.add(c['id'])
@@ -1399,7 +1417,7 @@ def validate_design(design, tol=TOL):
     joint_results = {}
     progress('dimensions', len(comps), len(comps))
     for n, j in enumerate(design['joints']):
-        progress('joint_validation', n, len(design['joints']))
+        progress('joint_validation', n, len(design['joints']), a=j['a'], b=j['b'])
         key = (j['type'], j['a'], j['b'], j.get('tab'), j.get('a_edge'), j.get('b_edge'))
         rkey = (j['type'], j['b'], j['a'], j.get('tab'), j.get('b_edge'), j.get('a_edge'))
         if key in keys or (j['type'] in ('face_lap', 'edge_mitre') and rkey in keys):

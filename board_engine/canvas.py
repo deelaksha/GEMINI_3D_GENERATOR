@@ -36,9 +36,9 @@ from .examples.furniture import DIRS, edge_facing, panel
 from .joining import join
 from .manufacturing import FASTENERS, MATERIALS
 from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
-                    SchemaError, cut_outline, edge_frame, normalize_design)
+                    SchemaError, cut_outline, edge_frame, feature_polygon, normalize_design, thickness_of)
 from .nesting import SHEET_PRESETS
-from .progress import report as _progress
+from .progress import active as _reporting, report as _progress
 from .shapes import ShapeError, arc_sweep, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
 
@@ -1265,6 +1265,26 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
     return result
 
 
+def _preview(comps, design=None):
+    """Lightweight geometry for the live assembly animation: the compiler's own outlines, cut-outs and placement
+    matrices as they stand after geometry generation (nothing is recomputed). A board whose geometry cannot be
+    expressed is left out; the compile itself reports why."""
+    r2 = lambda pts: [[round(x, 2), round(y, 2)] for x, y in pts]
+    out = []
+    for c in comps:
+        try:
+            feats = []
+            for f in c.get('features', []):
+                feats.append({'shape': 'circle', 'center': f['center'], 'diameter': f['diameter']} if f.get('shape') == 'circle'
+                             else {'polygon': r2(feature_polygon(f))})
+            out.append({'id': c['id'], 'cut_outline': r2(c['outline']), 'features': feats,
+                        'thickness': c.get('thickness') or thickness_of(design, c),
+                        'matrix_world': [round(v, 6) for v in _frame(c).matrix4()]})
+        except Exception:
+            continue
+    return out
+
+
 def _compile_native(data, design_id, result, run_production):
     result['format'] = 'native'
     d = dict(data)
@@ -1272,9 +1292,9 @@ def _compile_native(data, design_id, result, run_production):
     design = normalize_design(d)
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
-    _progress('geometry', 1, 1)
+    _progress('geometry', 1, 1, **({'preview': _preview(design['components'], design)} if _reporting() else {}))
     for n, spec in enumerate(pending):
-        _progress('joints', n, len(pending))
+        _progress('joints', n, len(pending), **({'joins': [[s['a'], s['b']] for s in pending]} if n == 0 and _reporting() else {}))
         res = join(design, spec, auto_repair=True, whole_design_check=False)
         if res['accepted']:
             design = res['design']
@@ -1345,7 +1365,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                               line=_key_line(src, 'connections', off)))
         norm += inferred
     _classify_connections(norm, boards, diags)
-    _progress('geometry', len(boards), len(boards))
+    _progress('geometry', len(boards), len(boards), **({'preview': _preview(comps.values())} if _reporting() else {}))
     types = {c['type'] for c in norm}
     joinery = data.get('joinery') or ('interlocking' if types <= GLUE_FREE_TYPES else 'glue_allowed')
     if joinery not in JOINERY_MODES:
@@ -1506,7 +1526,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     design['source'] = {'format': FORMAT, 'code': None}
 
     for n, (j, c, cid, cline) in enumerate(joints):
-        _progress('joints', n, len(joints))
+        _progress('joints', n, len(joints), **({'joins': [[x[0]['a'], x[0]['b']] for x in joints]} if n == 0 and _reporting() else {}))
         try:
             res = join(design, j, auto_repair=True, whole_design_check=False)
         except SchemaError as e:      # connection options out of range (hinge count, gap, fasteners, ...)

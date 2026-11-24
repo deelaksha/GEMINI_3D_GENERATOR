@@ -1,11 +1,10 @@
 /**
- * Compile loader: the overlay shown over the preview while a design compiles.
+ * Compile loader: the status card shown over the 3D view while a design compiles. The view behind it shows the
+ * design itself assembling (assembly-preview.js).
  *
  * Progress is driven only by the compiler's own stage events (see /canvas/compile-stream); each stage's share of
  * the bar is its measured share of compile time (collision checks dominate), and inside a stage the bar follows
- * the compiler's real item counts. The CSS 3D cabinet assembles one board per progress step. Everything that moves
- * continuously is a CSS transform/opacity animation, which the browser runs off the main thread, so the scene keeps
- * moving even while the 3D viewport builds a large model.
+ * the compiler's real item counts.
  */
 const STAGES = [
   // id, label, unit of the compiler's item count, share of the bar (%)
@@ -19,17 +18,6 @@ const STAGES = [
   ['render', 'Rendering', null, 10]
 ];
 
-// CSS 3D cabinet (px, y down). Listed in assembly order; `from` is the exploded offset a board floats at.
-const PARTS = [
-  { c: [0, 61, 0], s: [184, 8, 90], from: [0, 70, 40] },          // bottom
-  { c: [-96, 0, 0], s: [8, 130, 90], from: [-90, -20, 30] },      // left side
-  { c: [96, 0, 0], s: [8, 130, 90], from: [90, -20, 30] },        // right side
-  { c: [0, 0, -41], s: [184, 114, 8], from: [0, -10, -110] },     // back
-  { c: [0, 0, 4], s: [184, 8, 82], from: [50, 10, 110] },         // shelf
-  { c: [0, -30, 4], s: [8, 53, 82], from: [-40, -70, 120] },      // divider
-  { c: [0, -61, 0], s: [200, 8, 96], from: [0, -100, 20] }        // top
-];
-
 const fmtTime = (ms) => {
   const s = ms / 1000;
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(1).padStart(4, '0')}`;
@@ -37,15 +25,9 @@ const fmtTime = (ms) => {
 const fmtDur = (s) => (s < 1 ? `${Math.max(1, Math.round(s * 1000))} ms` : `${s.toFixed(1)} s`);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-function box([w, h, d]) {
-  const f = (cls, fw, fh, tf) => `<i class="cl-face ${cls}" style="width:${fw}px;height:${fh}px;margin:${-fh / 2}px 0 0 ${-fw / 2}px;transform:${tf}"></i>`;
-  return f('fz', w, h, `translateZ(${d / 2}px)`) + f('fz', w, h, `rotateY(180deg) translateZ(${d / 2}px)`)
-    + f('fx', d, h, `rotateY(90deg) translateZ(${w / 2}px)`) + f('fx', d, h, `rotateY(-90deg) translateZ(${w / 2}px)`)
-    + f('fy', w, d, `rotateX(90deg) translateZ(${h / 2}px)`) + f('fy', w, d, `rotateX(-90deg) translateZ(${h / 2}px)`);
-}
-
 export class CompileLoader {
   constructor(host, { onCancel, onHide } = {}) {
+    this.host = host;
     this.onCancel = onCancel;
     this.onHide = onHide;
     this.el = document.createElement('div');
@@ -53,16 +35,8 @@ export class CompileLoader {
     this.el.hidden = true;
     this.el.innerHTML = `
       <div class="cl-stage" aria-hidden="true">
-        <div class="cl-hud tl mono">ASSEMBLY · ${PARTS.length} BOARDS</div>
-        <div class="cl-hud tr mono">ISO · CAD</div>
-        <div class="cl-scene"><div class="cl-world">
-          <div class="cl-grid"></div>
-          <div class="cl-ring"></div><div class="cl-ring r2"></div>
-          <div class="cl-bounds">${box([216, 146, 112])}</div>
-          <div class="cl-scan"></div>
-          ${PARTS.map((p, i) => `<div class="cl-part" style="--x:${p.c[0]}px;--y:${p.c[1]}px;--z:${p.c[2]}px;--fx:${p.from[0]}px;--fy:${p.from[1]}px;--fz:${p.from[2]}px">
-            <div class="cl-float" style="animation-delay:${-i * 0.37}s">${box(p.s)}</div></div>`).join('')}
-        </div></div>
+        <div class="cl-hud tl mono"></div>
+        <div class="cl-wait">Reading the design…</div>
       </div>
       <div class="cl-info">
         <div class="cl-head">
@@ -78,19 +52,12 @@ export class CompileLoader {
       </div>`;
     host.appendChild(this.el);
     this.q = (s) => this.el.querySelector(s);
-    this.parts = [...this.el.querySelectorAll('.cl-part')];
     this.rows = Object.fromEntries([...this.el.querySelectorAll('[data-st]')].map((li) => [li.dataset.st, li]));
     this.q('[data-act="cancel"]').onclick = () => this.onCancel?.();
     this.active = false;
-    new ResizeObserver(() => this._fit()).observe(this.q('.cl-stage'));
   }
 
   get busy() { return this.active && !this.done; }
-
-  _fit() {
-    const r = this.q('.cl-stage').getBoundingClientRect();   // scale so the exploded boards fit
-    this.el.style.setProperty('--cl-scale', Math.max(0.4, Math.min(1.2, r.width / 470, r.height / 380)).toFixed(3));
-  }
 
   start() {
     clearTimeout(this._hideT);
@@ -102,22 +69,32 @@ export class CompileLoader {
     this.failed = false;
     this.el.className = 'cl';
     this.el.hidden = false;
+    this.host.classList.add('cl-busy');
     this.q('.cl-title').textContent = 'Compiling design';
     this.q('.cl-fail').hidden = true;
     this.q('.cl-hint').hidden = false;
+    this.q('.cl-hud').textContent = '';
+    this.q('.cl-wait').hidden = false;
+    this.detail = '';
     this._actions([['cancel', 'Cancel']]);
     Object.values(this.rows).forEach((li) => { li.className = ''; li.querySelector('.cl-det').textContent = ''; });
     this._set('parse', { status: 'active' });
     this._paint();
-    this._fit();
     requestAnimationFrame(() => this.el.classList.add('show'));
     clearInterval(this._tick);
     this._tick = setInterval(() => { this.q('.cl-time').textContent = fmtTime(performance.now() - this.t0); }, 100);
   }
 
-  /** A {stage, done, total, t} event from the compiler. */
-  progress({ stage, done, total, t }) {
+  /** The live assembly is on screen: drop the placeholder and say what is being built. */
+  assembling(boards) {
+    this.q('.cl-wait').hidden = true;
+    this.q('.cl-hud').textContent = `LIVE ASSEMBLY · ${boards} BOARD${boards === 1 ? '' : 'S'}`;
+  }
+
+  /** A {stage, done, total, t} event from the compiler; `detail` names what it is working on. */
+  progress({ stage, done, total, t }, detail = '') {
     if (!this.busy) return;
+    this.detail = detail;
     const i = STAGES.findIndex(([id]) => id === stage);
     if (i < 0) return;
     STAGES.slice(0, i).forEach(([id]) => this.st[id].status !== 'done' && this._finishStage(id, t));
@@ -145,16 +122,16 @@ export class CompileLoader {
     this._paint();
   }
 
-  /** Model on screen: fill the bar, show the outcome briefly, then reveal the model. */
+  /** Model on screen: fill the bar and fade the card out at once (no waiting on animations). */
   complete(summary) {
-    if (!this.busy) return Promise.resolve();
+    if (!this.busy) return;
     Object.assign(this.st.render, { frac: 1, dur: (performance.now() - this.renderT0) / 1000 });
     this._set('render', { status: 'done' });
     this._stop();
     this.el.classList.add('ok');
     this.q('.cl-title').textContent = summary || 'Compiled';
     this._paint();
-    return new Promise((resolve) => { this._hideT = setTimeout(() => { this.hide(); resolve(); }, 650); });
+    this.hide();
   }
 
   /** Show why compiling stopped. actions: [[id, label, primary?, handler]]. */
@@ -180,6 +157,7 @@ export class CompileLoader {
     this._stop();
     this.active = false;
     this.el.classList.remove('show');
+    this.host.classList.remove('cl-busy');
     this.onHide?.();
     this._hideT = setTimeout(() => { this.el.hidden = true; }, 420);
   }
@@ -222,8 +200,6 @@ export class CompileLoader {
     this.q('.cl-fill').style.transform = `scaleX(${pct / 100})`;
     this.q('.cl-pct').textContent = `${p}%`;
     this.q('.cl-bar').setAttribute('aria-valuenow', p);
-    const placed = Math.round((pct / 100) * this.parts.length);
-    this.parts.forEach((el, i) => el.classList.toggle('placed', i < placed));
     for (const [id, , unit] of STAGES) {
       const s = this.st[id];
       const det = this.rows[id].querySelector('.cl-det');
@@ -234,7 +210,8 @@ export class CompileLoader {
     if (act && !this.done) {
       const [id, label, unit] = act;
       const c = this.st[id].count;
-      this.q('.cl-sub').textContent = c && unit ? `${label} · ${unit} ${c[0]} of ${c[1]}` : `${label}…`;
+      const count = c && unit ? `${unit} ${c[0]} of ${c[1]}` : '';
+      this.q('.cl-sub').textContent = [label, this.detail, count].filter(Boolean).join(' · ') + (count || this.detail ? '' : '…');
     } else if (this.done) {
       this.q('.cl-sub').textContent = `${this.failed ? 'Stopped after' : 'Finished in'} ${fmtTime(performance.now() - this.t0)}`;
     }

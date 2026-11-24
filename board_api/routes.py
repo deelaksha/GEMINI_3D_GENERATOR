@@ -673,7 +673,9 @@ COMPILE_STAGES = ('parse', 'geometry', 'joints', 'dimensions', 'joint_validation
 @require('viewer')
 def canvas_compile_stream():
     """Same compile as /canvas/compile, streamed as NDJSON: {"type":"progress",...} lines at real stage boundaries,
-    then one {"type":"result",...} line. If the client disconnects, the compile is cancelled at the next progress point."""
+    then one {"type":"result",...} line. If the client disconnects, the compile is cancelled at the next progress point.
+    Progress lines may carry `board` / `a`, `b` (the boards being worked on), `joins` (the joint order, once) and
+    `preview` (the boards' outlines and placement matrices, once, after geometry generation) for the live animation."""
     import json
     import queue
     import threading
@@ -687,7 +689,7 @@ def canvas_compile_stream():
     state = {'stage': -1, 'sent': 0.0}
     t0 = time.monotonic()
 
-    def reporter(stage, done, total):
+    def reporter(stage, done, total, info):
         if cancelled.is_set():
             raise CompileCancelled()
         idx = COMPILE_STAGES.index(stage)
@@ -695,10 +697,10 @@ def canvas_compile_stream():
             return                      # nested work reporting an earlier stage: keep the stream monotonic
         now = time.monotonic()
         finished = done is not None and done >= total
-        if idx == state['stage'] and not finished and now - state['sent'] < 0.05:
-            return                      # throttle inner-loop updates to ~20/s
+        if idx == state['stage'] and not finished and now - state['sent'] < 0.05 and not info.keys() & {'preview', 'joins'}:
+            return                      # throttle inner-loop updates to ~20/s (the one-off preview / joint list always go)
         state['stage'], state['sent'] = idx, now
-        events.put({'type': 'progress', 'stage': stage, 'done': done, 'total': total, 't': round(now - t0, 3)})
+        events.put(dict(info, type='progress', stage=stage, done=done, total=total, t=round(now - t0, 3)))
 
     def work():
         try:
