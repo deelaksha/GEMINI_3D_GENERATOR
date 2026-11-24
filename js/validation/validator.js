@@ -101,11 +101,12 @@ export const PhysicalValidator = {
     parts.forEach(part => {
       const geo = partGeoMap.get(part.id);
       if (geo.outline && geo.outline.length >= 3 && geo.cutouts && geo.cutouts.length > 0) {
-        // Test fatal edge margin threshold (1.5mm)
+        // Test fatal edge margin threshold (scaled for thin materials <= 1.5mm)
+        const fatalMarginLimit = Math.min(ConnectorStandards.FATAL_MIN_EDGE_MARGIN || 1.5, materialThickness);
         const fatalMarginIssues = ConnectorStandards.checkCutoutEdgeMargins(
           geo.outline,
           geo.cutouts,
-          ConnectorStandards.FATAL_MIN_EDGE_MARGIN || 1.5
+          fatalMarginLimit
         );
 
         fatalMarginIssues.forEach(m => {
@@ -124,7 +125,7 @@ export const PhysicalValidator = {
           ConnectorStandards.RECOMMENDED_EDGE_MARGIN || 3.0
         );
         recMarginIssues.forEach(m => {
-          if (m.minDistance >= (ConnectorStandards.FATAL_MIN_EDGE_MARGIN || 1.5)) {
+          if (m.minDistance >= fatalMarginLimit) {
             issues.push({
               level: 'WARNING',
               code: 'SUBOPTIMAL_EDGE_MARGIN',
@@ -547,11 +548,12 @@ export const PhysicalValidator = {
       const p4 = outline[(i + 3) % outline.length];
 
       // Tab protruding along Y (baseline is along X: p1.y == p4.y, p2.y == p3.y)
+      const minTabDepth = Math.min(0.7, thickness * 0.7);
       const isYTab = Math.abs(p1[1] - p4[1]) < 0.05 &&
                      Math.abs(p2[1] - p3[1]) < 0.05 &&
                      Math.abs(p1[0] - p2[0]) < 0.05 &&
                      Math.abs(p3[0] - p4[0]) < 0.05 &&
-                     Math.abs(p2[1] - p1[1]) >= 1.2 &&
+                     Math.abs(p2[1] - p1[1]) >= minTabDepth &&
                      Math.abs(p2[1] - cy) > Math.abs(p1[1] - cy); // Must protrude outward away from center
 
       if (isYTab) {
@@ -573,7 +575,7 @@ export const PhysicalValidator = {
                      Math.abs(p2[0] - p3[0]) < 0.05 &&
                      Math.abs(p1[1] - p2[1]) < 0.05 &&
                      Math.abs(p3[1] - p4[1]) < 0.05 &&
-                     Math.abs(p2[0] - p1[0]) >= 1.2 &&
+                     Math.abs(p2[0] - p1[0]) >= minTabDepth &&
                      Math.abs(p2[0] - cx) > Math.abs(p1[0] - cx); // Must protrude outward away from center
 
       if (isXTab) {

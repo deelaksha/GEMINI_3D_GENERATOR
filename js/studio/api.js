@@ -68,6 +68,7 @@ export const Api = {
   canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }, { timeout: 120000 }),
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
   canvasRepairPrompt: (source) => request('POST', '/canvas/repair-prompt', { source }, { timeout: 120000 }),
+  canvasIntegerFixPrompt: (source) => request('POST', '/canvas/integer-fix-prompt', { source }, { timeout: 120000 }),
   canvasUpdatePrompt: (source, change) => request('POST', '/canvas/update-prompt', { source, change }, { timeout: 120000 }),
   canvasSave: (source, name, designId) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined }),
   canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),

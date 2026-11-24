@@ -96,8 +96,14 @@ $$\text{Joint} \longrightarrow \text{Connector} \longrightarrow \text{Receiver D
    // VERTICAL SLOT (thickness along X, slot length along Y):
    { x: slotCenterX, y: slotCenterY, w: (t || 3.0) + (clr || 0.10), h: 30 }
    ```
-   - `t`: Material thickness in millimeters (passed into `generate2D`, typically `3.0`, supporting `3.0`, `4.0`, and `5.0`).
-   - `clr`: Kerf & friction-fit clearance tolerance (passed into `generate2D`, typically `0.10`).
+   - `t`: Material thickness in millimeters (passed into `generate2D`, supporting 1.0, 2.0, 3.0, 4.0, and 5.0 mm; default typically `3.0` or active user gauge).
+   - **Supported Material Gauge Profiles**:
+     * **1.0 mm** (Thin Chipboard / Veneer): `t = 1.0`, `kerf = 0.10`, `clr = 0.06` => `1.06 mm` slot opening
+     * **2.0 mm** (Heavy Cardstock): `t = 2.0`, `kerf = 0.12`, `clr = 0.08` => `2.08 mm` slot opening
+     * **3.0 mm** (MDF / Laser Plywood): `t = 3.0`, `kerf = 0.15`, `clr = 0.10` => `3.10 mm` slot opening
+     * **4.0 mm** (Corrugated Board): `t = 4.0`, `kerf = 0.18`, `clr = 0.15` => `4.15 mm` slot opening
+     * **5.0 mm** (Solid Wood / Heavy Acrylic): `t = 5.0`, `kerf = 0.20`, `clr = 0.15` => `5.15 mm` slot opening
+   - `clr`: Kerf & friction-fit clearance tolerance (passed into `generate2D`, typically `0.06` to `0.15`).
    - **NEVER hardcode slot thickness to `3` or `3.0`!** Hardcoding causes physical validator errors when users change sheet thickness.
    - **Center-Based Local Coordinates**: In `cutouts`, `x` and `y` represent the **CENTER** of the cutout rectangle, NOT the top-left corner.
    - **Joinery Slots vs Decorative Openings**: The physical auditor evaluates all `cutouts`. To prevent joint looseness warnings, decorative features (doors, windows, surface patterns) should be drawn in `engravings` or marked with `{ arched: true }`. Dead receiver sockets without a matching declared joint are invalid.
@@ -111,12 +117,13 @@ Every tab that inserts into a mortise slot must match the Joint connector parame
    *(Example tab extending downward along bottom edge $y = -25$ from $x = -15$ to $+15$:)*
    `outline: [ [-25, -25], [-15, -25], [-15, -25 - t], [15, -25 - t], [15, -25], [25, -25], [25, 25], [-25, 25] ]`
 3. **Harmonized Manufacturing Tolerances**:
-   - **Fatal Hard Limits** (Below which wood grain shears or burns during manufacturing):
-     $$\text{MIN\_EDGE\_MARGIN} = 1.5\,\text{mm} \quad (\text{fatal if } < 1.5\,\text{mm})$$
+   - **Fatal Hard Limits** (Below which material shears or burns during manufacturing):
+     * Standard sheet ($t \ge 1.5\,\text{mm}$): $\text{MIN\_EDGE\_MARGIN} = 1.5\,\text{mm}$ ($\text{fatal if } < 1.5\,\text{mm}$)
+     * Thin gauge sheet ($t < 1.5\,\text{mm}$, e.g. 1.0mm): $\text{MIN\_EDGE\_MARGIN} = \min(1.5\,\text{mm}, t)$ ($\text{fatal if } < 1.0\,\text{mm}$ for 1.0mm sheet)
      $$\text{MIN\_SLOT\_SPACING} = 1.0\,\text{mm} \quad (\text{fatal if } < 1.0\,\text{mm})$$
    - **Recommended Durability Guidance** (Advisory best practice warning):
-     $$\text{RECOMMENDED\_EDGE\_MARGIN} = 3.0\,\text{mm} \quad (1.0 \times \text{thickness})$$
-   - Do NOT use 4mm or 5mm as a fatal threshold. Slots placed $\ge 1.5\text{mm}$ from the perimeter pass physical validation.
+     $$\text{RECOMMENDED\_EDGE\_MARGIN} = 1.0 \times \text{thickness} \quad (1.0\,\text{mm at } 1\text{mm}, 2.0\,\text{mm at } 2\text{mm}, 3.0\,\text{mm at } 3\text{mm})$$
+   - Do NOT use 4mm or 5mm as a fatal threshold. Slots placed $\ge 1.5\text{mm}$ (or $\ge 1.0\text{mm}$ on 1mm sheet) from the perimeter pass physical validation.
 
 ---
 
@@ -145,6 +152,12 @@ In real physical manufacturing, two laser-cut sheets cannot occupy the same volu
    - Any point defined at local 2D `(x, y)` retains its exact position in local 3D `(x, y)`.
    - Only the sheet thickness axis ($Z$) is centered around the mid-plane: $[-t/2, +t/2]$.
    - Asymmetric profiles (e.g. tabs only on the bottom edge) maintain their authored local origin with zero drift.
+6. **MANDATORY INTEGER MILLIMETER RULE FOR BOARD SIZES AND POSITIONS**:
+   - Because millimetres are already very small physical units (e.g. 1mm, 2mm, 3mm), all primary board dimensions (`width`, `height`, `length`), outer perimeter sizes, and 3D positioning coordinates `[x, y, z]` MUST BE ROUND INTEGER NUMBERS (e.g. `30`, `38`, `150`, `60`, `24`), NEVER fractional or floating-point decimals (avoid `30.27`, `38.41`, `15.35`).
+   - The ONLY values permitted to have decimal fractions are:
+     1. Sheet material thickness gauge (e.g. `1.0`, `2.0`, `3.0`, `1.5` mm).
+     2. Authoritative joint clearance offsets (e.g. receiver slot width = tab width + `0.1` mm, receiver slot thickness = material thickness + `0.1` mm).
+   - Clean integer millimeter values ensure designs can be marked, measured, and hand-cut accurately with a standard millimeter steel ruler.
 
 ---
 
@@ -203,7 +216,7 @@ When two perpendicular walls meet at a $90^\circ$ corner (e.g. Front Wall along 
 - **Method A (Parametric Clearance Inset)**:
   Shorten the orthogonal wall so its edges stop flush before the intersecting wall's inner face:
   $$\text{Orthogonal Wall Width} = \text{Span} - t \quad (\text{or } \text{Span} - 2t \text{ if between two walls})$$
-  *(Example: For a 40mm wide box with 3mm walls, the East Wall width is $40 - t = 37\text{mm}$ at $3\text{mm}$, $36\text{mm}$ at $4\text{mm}$, and $35\text{mm}$ at $5\text{mm}$. Parametric width guarantees zero corner collision across all thicknesses).*
+  *(Example: For a 40mm wide box with walls of thickness $t$, the East Wall width is $40 - t$ ($39\text{mm}$ at $1\text{mm}$, $38\text{mm}$ at $2\text{mm}$, $37\text{mm}$ at $3\text{mm}$, $36\text{mm}$ at $4\text{mm}$, and $35\text{mm}$ at $5\text{mm}$). Parametric width guarantees zero corner collision across all thicknesses).*
 - **Method B (Corner Mortise & Tenon)**:
   Left Wall features a tab protruding along $+X$ by depth $t$. Front Wall has a matching vertical slot at local $x = -35 + t/2$.
 - **Method C (Alternating Box / Finger Joint)**:
@@ -275,12 +288,12 @@ Before completing your output, verify each item:
 - [x] **Correct export**: Starts with `export const ModelData = { ... };` and ends with `export default ModelData;`.
 - [x] **Authoritative Joint SSOT**: All mechanical connections are defined in `ModelData.joints: [...]`. No independent invention of tab/slot sizes!
 - [x] **Derived cutouts**: Receiver slots are derived from joint definitions (`deriveCutoutsForPart`), matching tab width $+ \text{clr}$ and $t + \text{clr}$.
-- [x] **Parametric thickness**: Geometry, slot thickness, and assembly elevations (`+ t/2`) scale dynamically across $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$.
+- [x] **Parametric thickness**: Geometry, slot thickness, and assembly elevations (`+ t/2`) scale dynamically across $1\text{mm}$, $2\text{mm}$, $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$.
 - [x] **Closed 2D polygon**: `outline` contains $\ge 3$ coordinate pairs `[x, y]`, all finite numbers, forming a closed boundary.
 - [x] **Zero collisions outside joint locus**: Parts do not penetrate each other's solid volumes outside declared joint loci.
 - [x] **Narrow-phase OBB SAT verified**: Rotated parts do not rely on rough AABBs for collision validation.
 - [x] **Orientation alignment**: Tab width vectors and slot length vectors align in 3D world space (no 90-degree crossed joints).
-- [x] **Manufacturing limits respected**: Edge margins $\ge 1.5\text{mm}$, slot spacing $\ge 1.0\text{mm}$ (fatal limits). Recommended margin $\ge 3.0\text{mm}$.
+- [x] **Manufacturing limits respected**: Edge margins $\ge \min(1.5\text{mm}, t)$ (e.g. $\ge 1.0\text{mm}$ for 1mm sheet), slot spacing $\ge 1.0\text{mm}$ (fatal limits). Recommended margin $\ge 1.0 \times \text{thickness}$.
 - [x] **Connection reachability**: Step $N$ parts connect to Step $< N$ parts with clear insertion directions.
 - [x] **No visual patches**: Transforms represent physical seating (e.g. $Y = 15 + t/2$), not arbitrary visual offsets.
 - [x] **Complete code**: NO truncated code, NO `// add remaining parts here` comments. Every single part is 100% written out.
@@ -1524,9 +1537,9 @@ NARROW-PHASE 15-AXIS 3D OBB SAT COLLISION
    ↓
 LOCALIZED JOINT LOCUS PENETRATION AUDIT (Reject COLLISION_OUTSIDE_JOINT_LOCUS)
    ↓
-MANUFACTURING TOLERANCES (Edge Margin ≥ 1.5mm, Slot Spacing ≥ 1.0mm)
+MANUFACTURING TOLERANCES (Edge Margin ≥ min(1.5mm, t), Slot Spacing ≥ 1.0mm)
    ↓
-PARAMETRIC THICKNESS AUDIT (Verify 3mm, 4mm, 5mm Scaling)
+PARAMETRIC THICKNESS AUDIT (Verify 1mm, 2mm, 3mm, 4mm, 5mm Scaling)
    ↓
 HARD-GATE VERDICT: PASS (0 Errors) / FAIL (> 0 Errors)
    ↓
@@ -2125,32 +2138,32 @@ Testing must include more than visual rendering. Every model generator must pass
 1. **Valid Mechanical Joint**: Derived slot matches connector tab plus clearance $\implies$ MUST PASS (0 errors).
 2. **Structural Abutting Contact**: Touching faces with zero solid penetration $\implies$ MUST PASS (0 errors).
 3. **Narrow-Phase Separation**: Rotated $45^\circ$ roofs whose AABBs overlap in air but solids separate $\implies$ MUST PASS (0 errors).
-4. **Parametric Scaling Matrix**: Model tested at $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ sheet thickness $\implies$ MUST PASS (0 errors).
+4. **Parametric Scaling Matrix**: Model tested at $1\text{mm}$, $2\text{mm}$, $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ sheet thickness $\implies$ MUST PASS (0 errors).
 
 ---
 
 # 59. CANONICAL REGRESSION REFERENCE MODELS
 
-The repository maintains authoritative canonical models that MUST remain physically valid at $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ thickness:
+The repository maintains authoritative canonical models that MUST remain physically valid across all supported gauges ($1\text{mm}$, $2\text{mm}$, $3\text{mm}$, $4\text{mm}$, and $5\text{mm}$ thickness):
 
 1. **`MinimalBoxModel`** ([`js/models/templates.js`](file:///d:/downloads/2-3D%20Basic/js/models/templates.js)):
    - 4-part orthogonal interlocking starter box.
    - East Wall `B-04` width parametrically derived as $40 - t$.
    - Wall shoulder elevation parametrically seated at $15 + t/2$.
-   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
+   - Must pass at 1mm, 2mm, 3mm, 4mm, and 5mm with 0 errors.
 
 2. **`SimpleHouseModelData`** ([`js/models/simple-house.js`](file:///d:/downloads/2-3D%20Basic/js/models/simple-house.js)):
    - 12-piece country gable starter house with foundation, walls, and pitched roof.
    - Foundation mortises derived via `deriveCutoutsForPart`.
    - Corner interlocking tabs and roof pitch slopes separated by 3D OBB SAT.
-   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
+   - Must pass at 1mm, 2mm, 3mm, 4mm, and 5mm with 0 errors.
 
 3. **`CathedralModelData`** ([`js/models/cathedral.js`](file:///d:/downloads/2-3D%20Basic/js/models/cathedral.js)):
    - 32-part complex Gothic cathedral puzzle.
    - Wall shoulders elevated to $+t/2$ to seat flush on baseplate without floor sinking.
    - Nave roof ridge interlocking alternating edge finger tabs.
    - Transept roof shortened to 44mm (`[-22, 22]`) to eliminate valley penetration.
-   - Must pass at 3mm, 4mm, and 5mm with 0 errors.
+   - Must pass at 1mm, 2mm, 3mm, 4mm, and 5mm with 0 errors.
 
 Any change to connectors, geometry extrusion, or collision validation must be verified against these canonical models before merging.
 
@@ -2929,7 +2942,7 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   // --- PARAMETRIC 2D CUT CONTOUR GENERATOR ---
   /**
    * Generates the 2D cutting and engraving profile.
-   * @param {number} t - Material thickness (3.0, 4.0, or 5.0 mm)
+   * @param {number} t - Material thickness (1.0, 2.0, 3.0, 4.0, or 5.0 mm)
    * @param {number} kerf - Laser kerf compensation (typically 0.15 mm)
    * @param {number} clr - Slot clearance tolerance (typically 0.10 mm)
    */
@@ -2976,8 +2989,8 @@ To pass the built-in **Physical Feasibility Auditor** ([`validation.html`](file:
    $$\text{Tab Width} = \text{Declared Connector Width}$$
 
 4. **Harmonized Manufacturing Limits**:
-   - **Fatal hard limits**: `MIN_EDGE_MARGIN = 1.5mm`, `MIN_SLOT_SPACING = 1.0mm`.
-   - **Recommended durability guidance**: `RECOMMENDED_EDGE_MARGIN = 3.0mm`.
+   - **Fatal hard limits**: `MIN_EDGE_MARGIN = 1.5mm` (or `min(1.5mm, t)` for thin gauge $t < 1.5\text{mm}$, e.g. $1.0\text{mm}$ for 1mm sheet), `MIN_SLOT_SPACING = 1.0mm`.
+   - **Recommended durability guidance**: `RECOMMENDED_EDGE_MARGIN = 1.0 * thickness` (e.g. 1.0mm for 1mm, 2.0mm for 2mm, 3.0mm for 3mm).
 
 5. **Multi-Phase Collision Verification**:
    - Broad-phase AABB culling is followed by exact 15-axis 3D OBB Separating Axis Theorem (SAT).

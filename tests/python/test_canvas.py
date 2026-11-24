@@ -332,3 +332,58 @@ def test_large_user_design_compiles_quickly():
     assert res['summary']['boards'] == 21 and res['summary']['joined'] == res['summary']['joints'] == 99
     assert res['validation']['valid'] and res['validation']['complete']
     assert elapsed < 30, f'compile took {elapsed:.1f} s'
+
+
+def test_detect_non_integer_dimensions_and_prompt():
+    from board_engine.canvas import find_non_integer_dimensions, compile_source
+    from board_engine.canvas_prompt import build_integer_fix_prompt
+
+    # 1. Design with floating-point dimensions
+    bad_data = {
+        'format': 'board-design/v1',
+        'material': {'type': 'plywood', 'thickness': 1},
+        'boards': [
+            {'id': 'B1', 'size': [30.5, 38, 1], 'position': [0, 0, 0]},
+            {'id': 'B2', 'size': [30, 38.2, 1], 'position': [0, 6.7, 0]}
+        ]
+    }
+    issues = find_non_integer_dimensions(bad_data)
+    assert len(issues) == 3
+    assert any(i['field'] == 'size[0]' and i['board'] == 'B1' and i['value'] == 30.5 for i in issues)
+    assert any(i['field'] == 'size[1]' and i['board'] == 'B2' and i['value'] == 38.2 for i in issues)
+    assert any(i['field'] == 'position[1]' and i['board'] == 'B2' and i['value'] == 6.7 for i in issues)
+
+    # 2. Prompt generation
+    prompt = build_integer_fix_prompt('{}', issues)
+    assert 'do NOT meet the integer millimetre requirement' in prompt
+    assert 'Update the existing design ONLY for these specific dimensions' in prompt
+    assert '30.5' in prompt and '38.2' in prompt
+
+    # 3. Clean integer design has 0 issues
+    clean_data = {
+        'format': 'board-design/v1',
+        'material': {'type': 'plywood', 'thickness': 1},
+        'boards': [
+            {'id': 'B1', 'size': [30, 38, 1], 'position': [0, 0, 0]},
+            {'id': 'B2', 'size': [30, 38, 1], 'position': [0, 7, 0]}
+        ]
+    }
+    assert find_non_integer_dimensions(clean_data) == []
+
+
+def test_canvas_integer_fix_prompt_endpoint(client):
+    import json
+    src = json.dumps({
+        'format': 'board-design/v1',
+        'material': {'type': 'plywood', 'thickness': 1},
+        'boards': [
+            {'id': 'WALL', 'size': [30.2, 38, 1], 'position': [0, 0, 0]}
+        ]
+    })
+    r = client.post('/api/v1/canvas/integer-fix-prompt', headers=VW, json={'source': src})
+    assert r.status_code == 200
+    res = r.json
+    assert res['ok'] is True
+    assert res['count'] >= 1
+    assert 'Update the existing design ONLY for these specific dimensions' in res['prompt']
+

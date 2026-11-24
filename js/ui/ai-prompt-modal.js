@@ -1,7 +1,7 @@
 /**
  * AI Prompt & Contest Context Modal Component
  * Loads, dynamically adapts, and renders the copyable content of ai-prompt.txt.
- * Supports real-time adaptation for 1.0mm, 2.0mm, 3.0mm, and 4.0mm material gauges.
+ * Supports real-time adaptation for 1.0mm, 2.0mm, 3.0mm, 4.0mm, and 5.0mm material gauges.
  */
 
 import { Toast } from './toast.js';
@@ -120,7 +120,7 @@ export class AIPromptModal {
     if (!container) return;
 
     const currentThickness = AppState.getState().materialThickness;
-    const thicknesses = [1.0, 2.0, 3.0, 4.0];
+    const thicknesses = [1.0, 2.0, 3.0, 4.0, 5.0];
 
     container.innerHTML = thicknesses.map(t => {
       const key = t.toFixed(1);
@@ -221,6 +221,9 @@ export class AIPromptModal {
 # • SLOT CLEARANCE TOLERANCE: ${clrVal} mm
 # • PARAMETRIC MORTISE FIT : (t || ${tVal}) + (clr || ${clrVal}) => ${slotFitVal} mm slot opening
 # • MATCHING TENON TAB     : Width = Slot Length | Depth = ${tVal} mm (or t + 0.2 mm)
+# • INTEGER DIMENSIONS ONLY: Millimeters are small units; all board widths, lengths, heights,
+#                            and [X, Y, Z] positions MUST be ROUND INTEGER NUMBERS (e.g. 30, 38, 150),
+#                            NEVER floating decimals (avoid 30.27, 38.41). Only sheet thickness has decimals.
 #
 # 👉 DIRECTIVE FOR AI GENERATION:
 # Please optimize this model's default geometry specifically for ${tVal} mm sheet thickness!

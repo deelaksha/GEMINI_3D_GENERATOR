@@ -11,6 +11,7 @@ import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
+import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -19,7 +20,7 @@ const fmt = (v, n = 1) => (Math.round(v * 10 ** n) / 10 ** n).toString();
 const narrow = matchMedia('(max-width: 1100px)');
 const DRAFT_KEY = 'board-canvas-draft';
 
-const S = { spec: null, result: null, compiledSource: '', selected: null, savedId: null, compiling: false, liveTimer: 0, marks: [] };
+const S = { spec: null, result: null, compiledSource: '', selected: null, savedId: null, compiling: false, liveTimer: 0, marks: [], draftingMode: 'all' };
 
 // ---------------------------------------------------------------------------
 // Feedback
@@ -187,11 +188,42 @@ function showPrompt(prompt, meta) {
 async function repairPrompt() {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
+  const btn = $('#btn-repair-prompt');
+  const btnBanner = $('#btn-banner-copy-repair');
+  if (btn) btn.disabled = true;
+  if (btnBanner) btnBanner.disabled = true;
   try {
     const r = await Api.canvasRepairPrompt(source);
     showPrompt(r.prompt, `Follow-up prompt with ${r.problems} problem(s). Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`);
-    toast(r.problems ? 'Fix prompt ready — copy it into your AI' : 'No problems to fix');
-  } catch (e) { reportError(e); }
+    if (r.problems > 0 || r.prompt) {
+      await copyText(r.prompt, 'Fix prompt');
+      toast(`Copied follow-up fix prompt (${r.problems} issue${r.problems === 1 ? '' : 's'}) to clipboard! Paste it into your AI chat.`);
+    } else {
+      toast('No problems to fix — all checks passed!');
+    }
+  } catch (e) {
+    reportError(e);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnBanner) btnBanner.disabled = false;
+  }
+}
+
+async function integerFixPrompt() {
+  const source = cm.getValue();
+  if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
+  try {
+    const r = await Api.canvasIntegerFixPrompt(source);
+    if (r.count > 0 || r.prompt) {
+      showPrompt(r.prompt, `Follow-up prompt to fix ${r.count} floating-point dimension(s). Paste it into your AI chat to round all dimensions to clean integers.`);
+      await copyText(r.prompt, 'Integer fix prompt');
+      toast(`Copied prompt to fix ${r.count} floating-point dimension(s)! Paste into your AI chat.`);
+    } else {
+      toast('All dimensions in this design are already clean integers!');
+    }
+  } catch (e) {
+    reportError(e);
+  }
 }
 
 async function changePrompt() {
@@ -199,11 +231,18 @@ async function changePrompt() {
   const change = $('#in-req').value.trim();
   if (!source.trim()) return toast('Paste or open the current design in the editor first', true);
   if (!change) { $('#in-req').focus(); return toast('Describe the change in the requirements box', true); }
+  const btn = $('#btn-change-prompt');
+  if (btn) btn.disabled = true;
   try {
     const r = await Api.canvasUpdatePrompt(source, change);
     showPrompt(r.prompt, 'Change prompt: the AI is asked to modify only the affected boards and keep the rest. Paste its reply into the editor and click <b>Compile</b>.');
-    toast('Change prompt ready — copy it into your AI');
-  } catch (e) { reportError(e); }
+    await copyText(r.prompt, 'Update prompt');
+    toast('Copied update prompt to clipboard! Paste into your AI chat.');
+  } catch (e) {
+    reportError(e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function copyText(text, what) {
@@ -314,20 +353,65 @@ function renderDiagnostics() {
   const safe = ds.flatMap((d) => (d.fixes || []).filter((f) => f.safe));
   $('#btn-autofix').disabled = !safe.length;
   $('#btn-autofix').innerHTML = `<svg><use href="#i-wand"/></svg>Auto-fix safe issues${safe.length ? ` (${safe.length})` : ''}`;
+
+  const errCount = ds.filter((d) => d.severity === 'error').length;
+  const btnRepair = $('#btn-repair-prompt');
+  if (btnRepair) {
+    btnRepair.disabled = !ds.length;
+    btnRepair.classList.toggle('primary', errCount > 0);
+    btnRepair.innerHTML = `<svg><use href="#i-copy"/></svg><span>Copy fix prompt${ds.length ? ` (${ds.length})` : ''}</span>`;
+  }
+
   if (!ds.length) {
     list.innerHTML = r?.model3d ? `<div class="dg ok"><span class="dot ok"></span><div><div class="msg">No problems: every board, connection, gap and overlap check passed${r.layout?.ready_for_production ? ', and the design is ready for production' : ''}.</div></div></div>`
       : '<div class="empty">Paste the AI’s code above and click Compile.</div>';
     return;
   }
-  list.innerHTML = ds.map((d, i) => `<div class="dg" data-i="${i}">
+
+  const floatIssues = ds.filter((d) => d.code === 'NON_INTEGER_DIMENSION');
+  const btnIntegerPrompt = $('#btn-integer-prompt');
+  if (btnIntegerPrompt) {
+    btnIntegerPrompt.hidden = !floatIssues.length;
+    btnIntegerPrompt.innerHTML = `<svg><use href="#i-copy"/></svg><span>Fix floats (${floatIssues.length})</span>`;
+  }
+
+  const floatBanner = floatIssues.length ? `
+    <div class="diag-banner warn" style="margin-bottom: 8px; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1);">
+      <div class="diag-banner-text">
+        <span class="dot warn" style="background:#f59e0b; box-shadow:0 0 6px #f59e0b;"></span>
+        <span><b>${floatIssues.length} Non-Integer Dimension(s) Detected:</b> Requirement: dimensions must be clean whole integers in millimetres.</span>
+      </div>
+      <button class="btn small" id="btn-banner-copy-integer-fix" style="background:#f59e0b; color:#0f172a; font-weight:700; border:none; white-space:nowrap;">
+        <svg><use href="#i-copy"/></svg>Copy Prompt to Fix Floats
+      </button>
+    </div>` : '';
+
+  const banner = floatBanner + `
+    <div class="diag-banner ${errCount ? 'err' : 'warn'}">
+      <div class="diag-banner-text">
+        <span class="dot ${errCount ? 'err' : 'warn'}"></span>
+        <span><b>${errCount || ds.length} ${errCount ? 'error(s)' : 'issue(s)'} detected:</b> Copy a follow-up fix prompt containing these error diagnostics to send back to your AI.</span>
+      </div>
+      <button class="btn small primary" id="btn-banner-copy-repair"><svg><use href="#i-copy"/></svg>Copy Fix Prompt for AI</button>
+    </div>`;
+
+  list.innerHTML = banner + ds.map((d, i) => `<div class="dg" data-i="${i}">
     <span class="dot ${d.severity === 'error' ? 'err' : d.severity === 'warning' ? 'warn' : ''}"></span>
     <div><div class="meta">${esc(d.code)}${d.board ? ' · ' + esc(d.board) : ''}${d.line ? ' · line ' + d.line : ''}</div>
       <div class="msg">${esc(d.message)}</div>
       ${d.fixes?.length ? `<div class="fixes">${d.fixes.map((f, k) => `<button class="btn ${f.safe ? 'safe' : ''}" data-fix="${i}:${k}" title="${f.safe ? 'Unambiguous correction' : 'Changes the design — you will be asked to confirm'}">${f.safe ? '✓ ' : ''}${esc(f.title)}</button>`).join('')}</div>` : ''}
     </div></div>`).join('');
+
+  const btnBanner = $('#btn-banner-copy-repair', list);
+  if (btnBanner) btnBanner.onclick = repairPrompt;
+
+  const btnFloatFixBanner = $('#btn-banner-copy-integer-fix', list);
+  if (btnFloatFixBanner) btnFloatFixBanner.onclick = integerFixPrompt;
+
   $$('.dg', list).forEach((el) => (el.onclick = (ev) => {
-    if (ev.target.closest('[data-fix]')) return;
+    if (ev.target.closest('[data-fix]') || ev.target.closest('#btn-banner-copy-repair')) return;
     const d = ds[+el.dataset.i];
+    if (!d) return;
     if (d.line) { cm.focus(); cm.setCursor({ line: d.line - 1, ch: 0 }); cm.scrollIntoView({ line: d.line - 1, ch: 0 }, 80); }
     if (d.board) select(d.board, 'diag');
     if (d.location) view3d.focusPoint(d.location);
@@ -424,15 +508,8 @@ function renderBoard() {
   panel.innerHTML = `
     <div class="section"><div class="title-row"><span class="id">${esc(c.id)}</span><span class="chip ${c.state}">${c.state === 'cut' ? 'not joined' : c.state}</span></div>
       <div class="muted" style="margin-top:2px">${esc(c.name)} · ${esc(c.group)}</div>
-      <dl class="kv" style="margin-top:12px">
-        <dt>Overall incl. tabs</dt><dd>${[0, 1, 2].map((i) => fmt(b.max[i] - b.min[i], 2)).join(' × ')} mm</dd>
-        <dt>Cut size (flat)</dt><dd>${fmt(c.dimensions_2d.width, 2)} × ${fmt(c.dimensions_2d.height, 2)} mm</dd>
-        <dt>Thickness</dt><dd>${c.thickness} mm</dd>
-        <dt>Slots / holes / tabs</dt><dd>${c.features.filter((f) => f.kind === 'slot').length} / ${c.features.filter((f) => f.kind !== 'slot').length} / ${c.tabs.length}</dd>
-        ${cut ? `<dt>Finished part</dt><dd>${fmt(cut.finished.length, 2)} × ${fmt(cut.finished.width, 2)} mm</dd>
-          <dt>Blank to cut</dt><dd>${fmt(cut.blank.length, 2)} × ${fmt(cut.blank.width, 2)} mm</dd>
-          <dt>Machining</dt><dd>${esc(cut.process || '')} · ${(cut.operations?.through_cuts || []).length} cut-out(s) · ${(cut.operations?.tabs || []).length} tab(s) · ${(cut.operations?.drilling || []).length} bore(s)</dd>` : ''}
-      </dl></div>
+      ${renderDraftingGuide(c, S.draftingMode || 'all')}
+    </div>
     ${raw ? `<div class="section"><h4>Edit in code</h4>
       <div class="edit-grid"><span></span><span class="ax">X</span><span class="ax">Y</span><span class="ax">Z</span></div>
       <div class="edit-grid"><label>Position</label>${raw.position.map((v, i) => `<input data-f="position" data-i="${i}" value="${v}" inputmode="decimal" />`).join('')}</div>
@@ -443,6 +520,38 @@ function renderBoard() {
         <span class="muted">${esc(j.type.replace('_', ' '))} ${j.a === c.id ? '→ ' + esc(j.b) : '← ' + esc(j.a)}</span></div>`).join('') || '<p class="lead">No connections.</p>'}</div>
     ${diags.length ? `<div class="section"><h4>Problems <span class="badge ${diags.some((d) => d.severity === 'error') ? 'err' : 'warn'}">${diags.length}</span></h4>
       ${diags.map((d) => `<div class="line" style="align-items:flex-start"><span class="dot ${d.severity === 'error' ? 'err' : 'warn'}" style="margin-top:5px"></span><span>${esc(d.message)}</span></div>`).join('')}</div>` : ''}`;
+
+  // Drafting view mode toggles
+  $$('[data-draft]', panel).forEach((b) => (b.onclick = () => {
+    S.draftingMode = b.dataset.draft;
+    const svg = panel.querySelector('.drafting-svg');
+    if (svg) svg.className.baseVal = `profile drafting-svg mode-${S.draftingMode}`;
+    $$('[data-draft]', panel).forEach((btn) => btn.classList.toggle('on', btn.dataset.draft === S.draftingMode));
+  }));
+
+  // Copy manual cutting specs
+  const btnCopy = $('#btn-copy-specs', panel);
+  if (btnCopy) btnCopy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(formatDraftingSpecsText(c));
+      toast('Copied manual cutting specs to clipboard!');
+    } catch {
+      toast('Failed to copy to clipboard', true);
+    }
+  };
+
+  // Interactive hover highlights between drafting tables and SVG
+  $$('.drafting-table tr[data-edge]', panel).forEach((tr) => {
+    const edgeId = tr.dataset.edge;
+    tr.onmouseenter = () => panel.querySelectorAll(`.drafting-svg [data-edge="${edgeId}"]`).forEach((el) => el.classList.add('highlight'));
+    tr.onmouseleave = () => panel.querySelectorAll(`.drafting-svg [data-edge="${edgeId}"]`).forEach((el) => el.classList.remove('highlight'));
+  });
+  $$('.drafting-table tr[data-slot]', panel).forEach((tr) => {
+    const slotId = tr.dataset.slot;
+    tr.onmouseenter = () => panel.querySelectorAll(`.drafting-svg [data-slot="${slotId}"]`).forEach((el) => el.classList.add('highlight'));
+    tr.onmouseleave = () => panel.querySelectorAll(`.drafting-svg [data-slot="${slotId}"]`).forEach((el) => el.classList.remove('highlight'));
+  });
+  bindCadInspectorEvents(panel, c);
   if (raw) {
     $('#be-reset').onclick = renderBoard;
     $('#be-apply').onclick = async () => {
@@ -533,6 +642,7 @@ $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 $('#btn-gen-prompt').onclick = generatePrompt;
 $('#btn-change-prompt').onclick = changePrompt;
 $('#btn-repair-prompt').onclick = repairPrompt;
+if ($('#btn-integer-prompt')) $('#btn-integer-prompt').onclick = integerFixPrompt;
 $('#btn-copy-prompt').onclick = () => copyText($('#out-prompt').value, 'Prompt');
 $('#btn-compile').onclick = () => compile(true);
 $('#btn-format').onclick = formatCode;

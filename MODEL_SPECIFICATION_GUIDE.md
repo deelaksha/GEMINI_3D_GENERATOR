@@ -129,13 +129,13 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   category: 'Foundation',              // Foundation | Structural | Roof | Details | Support
   color: '#8c6239',                    // 3D Preview HEX Color (wood, painted tones)
   step: 1,                             // Assembly sequence step (1 to N)
-  width: 120,                          // Bounding width in mm
-  length: 80,                          // Bounding length in mm
+  width: 120,                          // Bounding width in mm (INTEGER ONLY: e.g. 120, not 120.35)
+  length: 80,                          // Bounding length in mm (INTEGER ONLY: e.g. 80, not 80.42)
   sheet: 1,                            // Which manufacturing sheet it is nested on (1, 2, ...)
   fileSizeKB: '1.4 KB',
 
   // --- 3D POSITION & ORIENTATION ---
-  assembledPos: [0, 0, 0],             // Final 3D position [X, Y, Z] in millimeters
+  assembledPos: [0, 0, 0],             // Final 3D position [X, Y, Z] in integer millimeters
   assembledRot: [-Math.PI / 2, 0, 0],  // Final 3D rotation [Euler radians: X, Y, Z]
   explodeVec: [0, -40, 0],             // Displacement vector [X, Y, Z] when exploded
 
@@ -145,7 +145,7 @@ Every piece in `parts: [...]` represents a real physical laser-cut part:
   // --- PARAMETRIC 2D CUT CONTOUR GENERATOR ---
   /**
    * Generates the 2D cutting and engraving profile.
-   * @param {number} t - Material thickness (1.0, 2.0, 3.0, or 4.0 mm)
+   * @param {number} t - Material thickness (1.0, 2.0, 3.0, 4.0, or 5.0 mm)
    * @param {number} kerf - Laser kerf compensation (typically 0.15 mm)
    * @param {number} clr - Slot clearance tolerance (typically 0.10 mm)
    */
@@ -187,7 +187,7 @@ To pass the built-in **Physical Feasibility Auditor** ([validation.html](file://
 
 1. **Mortise Slot Width**:
    $$\text{Slot Width} = t + \text{clr} \quad (\text{typically } t + 0.10\,\text{mm})$$
-   *Never hardcode slot thickness to a constant number like `3.0`.* Always use `t + clr` or `t + 0.10` so when the user selects $1\text{mm}$, $2\text{mm}$, $3\text{mm}$, or $4\text{mm}$, the slot resizes automatically.
+   *Never hardcode slot thickness to a constant number like `3.0`.* Always use `t + clr` or `t + 0.10` so when the user selects $1\text{mm}$, $2\text{mm}$, $3\text{mm}$, $4\text{mm}$, or $5\text{mm}$, the slot resizes automatically.
 
 2. **Tab Dimensions**:
    A tab protruding from an edge should extend by:

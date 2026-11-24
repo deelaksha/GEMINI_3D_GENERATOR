@@ -613,6 +613,31 @@ def canvas_repair_prompt():
                     'problems': prompt.count('\n- [')})
 
 
+@bp.post('/canvas/integer-fix-prompt')
+@require('viewer')
+def canvas_integer_fix_prompt():
+    """Follow-up prompt asking the external AI to update only the floating-point dimensions to clean integers."""
+    import json
+    from board_engine.canvas import compile_source, find_non_integer_dimensions
+    from board_engine.canvas_prompt import build_integer_fix_prompt
+    src = body().get('source')
+    res = compile_source(src, run_production=False, time_budget=budget())
+    data = res.get('design') or {}
+    raw_json = None
+    try:
+        raw_json = json.loads(src) if src else {}
+    except Exception:
+        raw_json = data
+    issues = find_non_integer_dimensions(raw_json if raw_json else data)
+    prompt = build_integer_fix_prompt(src, issues)
+    return jsonify({
+        'ok': True,
+        'count': len(issues),
+        'issues': issues,
+        'prompt': prompt
+    })
+
+
 @bp.post('/canvas/update-prompt')
 @require('viewer')
 def canvas_update_prompt():

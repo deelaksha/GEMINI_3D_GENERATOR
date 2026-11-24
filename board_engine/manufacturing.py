@@ -38,11 +38,11 @@ from .validation import HINGE, TOL, _edge_world, _material_intervals, _r, evalua
 # ---------------------------------------------------------------------------
 
 MATERIALS = {
-    'plywood': {'thicknesses': [3, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30], 'thickness_tol': 0.5, 'cut_tol': 0.3,
-                'min_part': 25.0, 'grain': True, 'edge_wall': 3.0, 'face_remaining': 3.0, 'kerf': 3.2,
+    'plywood': {'thicknesses': [1, 2, 3, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30], 'thickness_tol': 0.5, 'cut_tol': 0.3,
+                'min_part': 15.0, 'grain': True, 'edge_wall': 3.0, 'face_remaining': 3.0, 'kerf': 3.2,
                 'stock': [[2440, 1220], [2500, 1250], [1525, 1525]]},
-    'mdf': {'thicknesses': [3, 6, 9, 12, 15, 16, 18, 19, 22, 25, 30], 'thickness_tol': 0.3, 'cut_tol': 0.2,
-            'min_part': 25.0, 'grain': False, 'edge_wall': 4.0, 'face_remaining': 3.0, 'kerf': 3.2,
+    'mdf': {'thicknesses': [1, 2, 3, 6, 9, 12, 15, 16, 18, 19, 22, 25, 30], 'thickness_tol': 0.3, 'cut_tol': 0.2,
+            'min_part': 15.0, 'grain': False, 'edge_wall': 4.0, 'face_remaining': 3.0, 'kerf': 3.2,
             'stock': [[2440, 1220], [2800, 2070]]},
     'particle_board': {'thicknesses': [8, 10, 12, 16, 18, 19, 22, 25, 28, 30, 38], 'thickness_tol': 0.3,
                        'cut_tol': 0.3, 'min_part': 30.0, 'grain': False, 'edge_wall': 4.0, 'face_remaining': 4.0,
@@ -50,10 +50,10 @@ MATERIALS = {
     'solid_wood': {'thicknesses': [12, 15, 18, 20, 22, 25, 27, 30, 32, 38, 40, 45], 'thickness_tol': 0.5,
                    'cut_tol': 0.5, 'min_part': 20.0, 'grain': True, 'edge_wall': 3.0, 'face_remaining': 3.0,
                    'kerf': 3.2, 'stock': [[2400, 600], [3000, 1200]]},
-    'hardboard': {'thicknesses': [2.5, 3, 3.2, 4, 5, 6], 'thickness_tol': 0.2, 'cut_tol': 0.3, 'min_part': 20.0,
+    'hardboard': {'thicknesses': [1, 2, 2.5, 3, 3.2, 4, 5, 6], 'thickness_tol': 0.2, 'cut_tol': 0.3, 'min_part': 15.0,
                   'grain': False, 'edge_wall': None, 'face_remaining': 1.5, 'kerf': 3.2,
                   'stock': [[2440, 1220], [2745, 1220]]},
-    'cardboard': {'thicknesses': [1.5, 2, 3, 4, 5, 6], 'thickness_tol': 0.3, 'cut_tol': 0.2, 'min_part': 5.0,
+    'cardboard': {'thicknesses': [1, 1.5, 2, 3, 4, 5, 6], 'thickness_tol': 0.3, 'cut_tol': 0.2, 'min_part': 5.0,
                   'grain': False, 'edge_wall': None, 'face_remaining': None, 'kerf': 0.2,
                   'stock': [[1000, 700], [1200, 800]]},
 }

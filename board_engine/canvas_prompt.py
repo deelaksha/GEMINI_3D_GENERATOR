@@ -689,6 +689,7 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 
 ## Coordinate system and units
 - Units: millimetres. World axes: **X = length (left → right)**, **Y = height (floor y = 0, up)**, **Z = depth (back → front)**.
+- **INTEGER DIMENSIONS RULE**: Because millimetres are small units (1mm, 2mm), all board sizes (`size`: [sx, sy, sz]), positions (`position`: [x, y, z]), and overall dimensions (`product.overall`) MUST be **integer numbers** (whole numbers like `30`, `38`, `150`, `60`, `12`), NEVER floating-point fractions (avoid `30.27`, `38.41`). The only numbers with decimals are material `thickness` (e.g. `1.0`, `2.0`, `3.0`) and manufacturing clearance (e.g. `0.1`).
 - Every board is an **axis-aligned box**: `position` = its minimum corner [x, y, z], `size` = [size_x, size_y, size_z].
 - A board is a flat panel: **exactly one** of `size` equals the board thickness — that axis is the board's normal.
   (Horizontal boards: size_y = thickness. Side panels: size_x = thickness. Back/front panels: size_z = thickness.)
@@ -939,6 +940,7 @@ INSTRUCTIONS:
 2. Decompose the product into every board it needs (nothing implied, nothing missing). Give each a short unique id
    (at most 24 characters) and put the boards of each sub-assembly in the same "group".
 3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
+   CRITICAL INTEGER RULE: Because millimetres are already small units (1 mm, 2 mm), all board dimensions (width, height, length), positions (X, Y, Z), and overall sizes MUST BE ROUND INTEGER NUMBERS (e.g. 30, 38, 150), NEVER fractional/floating decimals (e.g. avoid 30.27, 38.41). The only decimals allowed are material thickness (e.g. 1.0, 2.0, 3.0) and manufacturing clearance offsets (e.g. +0.1mm for receiver slots).
 4. Account for board thickness everywhere so boards touch exactly and never overlap
    (leg height = overall height − top thickness; inner width = overall width − 2 × side thickness).
 5. Choose each joint from the geometry: end face on a face away from the edges → "tab_slot" (inset at least the board
@@ -990,16 +992,56 @@ def build_repair_prompt(source, diagnostics, blocking=()):
     back to the AI and ask for a minimal correction."""
     seen = {d['message'] for d in diagnostics}
     diagnostics = list(diagnostics) + [dict(b, severity='error') for b in blocking if b.get('message') not in seen]
+    
+    # Check for floating-point non-integer dimensions
+    float_diags = [d for d in diagnostics if d.get('code') == 'NON_INTEGER_DIMENSION']
+    float_notice = ""
+    if float_diags:
+        float_notice = f"""
+NON-INTEGER FLOATING-POINT DIMENSIONS DETECTED ({len(float_diags)} items):
+The following dimensions violate the integer requirement because they contain decimal fractions:
+{chr(10).join(f"- {d['message']}" for d in float_diags[:20])}
+
+UPDATE INSTRUCTION FOR NON-INTEGER DIMENSIONS:
+Update the existing design ONLY for these specific dimensions so they become clean ROUND INTEGER NUMBERS in millimetres (e.g. 7, 12, 17, 30, 38 mm). Keep every other board, id, position, and connection unchanged.
+"""
     return f"""The board design generator compiled your JSON and reported the problems below.
 
 Return the COMPLETE corrected design as one ```json code block. Change only what is needed to fix these problems:
 keep every other board, id, dimension and connection exactly as it is. Where a problem names a suggested fix,
-apply it. Then run the self-check from the specification again before answering.
-
+apply it. Ensure all board dimensions, sizes and positions remain clean ROUND INTEGER NUMBERS in millimetres (e.g. 30, 38, 150 mm; never use fractional decimals like 30.27). Then run the self-check from the specification again before answering.
+{float_notice}
 PROBLEMS:
 {_problem_lines(diagnostics)}
 
 YOUR PREVIOUS JSON:
+```json
+{(source or '').strip()}
+```
+"""
+
+
+def build_integer_fix_prompt(source, non_integer_issues):
+    """Specialized follow-up prompt: request the external AI to update ONLY the specific
+    dimensions that have floating-point values so they become clean integer millimetres."""
+    lines = []
+    for issue in non_integer_issues:
+        lines.append(f"- {issue.get('message', str(issue))}")
+    problem_list = '\n'.join(lines) if lines else "- (no non-integer dimensions found)"
+
+    return f"""The following dimensions in your board design do NOT meet the integer millimetre requirement because they contain floating-point numbers with decimal fractions:
+
+{problem_list}
+
+REQUIREMENT:
+All board dimensions (width, height, thickness), coordinates (X, Y, Z), profiles, opening cutouts, tab sizes and gap margins must be clean ROUND INTEGER NUMBERS in millimetres (e.g. 7, 12, 17, 30, 38 mm). Never use fractional decimals like 6.7, 16.6, 3.9, 28.2 mm.
+
+UPDATE INSTRUCTION:
+Update the existing design ONLY for these specific dimensions to match clean integer millimetres (round each to the nearest sensible integer, e.g. 6.7 -> 7 mm, 16.6 -> 17 mm, 3.9 -> 4 mm). Keep every other board, id, position, and connection exactly as it is.
+
+Return the COMPLETE updated design as one ```json code block.
+
+CURRENT DESIGN:
 ```json
 {(source or '').strip()}
 ```
@@ -1025,6 +1067,7 @@ RULES FOR THE UPDATE:
 5. If the request is ambiguous or conflicts with the existing design, make the smallest reasonable interpretation
    and state it in the description.
 6. Run the self-check from the specification, then return the COMPLETE updated design as one ```json code block.
+7. Ensure all modified board dimensions, sizes and positions remain clean ROUND INTEGER NUMBERS in millimetres (e.g. 30, 38, 150 mm; never use fractional decimals like 30.27).
 {chr(10) + "The current design still has these problems; fix them too:" + chr(10) + _problem_lines(issues) + chr(10) if issues else ''}
 CURRENT DESIGN:
 ```json

@@ -313,6 +313,179 @@ def _check_boards(data, mat, diags, src, off):
     return boards if ok else {k: v for k, v in boards.items()}
 
 
+def find_non_integer_dimensions(data, src=None, off=0):
+    """Scan the design for any dimensions or coordinates that have non-integer floating-point values."""
+    issues = []
+    if not isinstance(data, dict):
+        return issues
+
+    def _is_float(val):
+        return isinstance(val, (int, float)) and not isinstance(val, bool) and abs(val - round(val)) > 1e-4
+
+    # 1. Product overall
+    overall = (data.get('product') or {}).get('overall') or {}
+    if isinstance(overall, dict):
+        for dim_k in ('length', 'height', 'depth', 'width'):
+            val = overall.get(dim_k)
+            if _is_float(val):
+                issues.append({
+                    'category': 'product',
+                    'id': f'product.overall.{dim_k}',
+                    'field': f'product overall {dim_k}',
+                    'value': val,
+                    'suggested': round(val),
+                    'message': f"Product overall {dim_k} is {val:g} mm (floating point). Must be an integer (e.g. {round(val)} mm)."
+                })
+
+    # 2. Boards
+    raw_boards = data.get('boards') or []
+    if isinstance(raw_boards, list):
+        for i, b in enumerate(raw_boards):
+            if not isinstance(b, dict):
+                continue
+            bid = b.get('id', f'board_{i}')
+            line = _id_line(src, bid, off) if src and isinstance(bid, str) else None
+
+            # Size: [width, height, depth]
+            size = b.get('size')
+            if isinstance(size, list):
+                axis_labels = ['width (X)', 'height (Y)', 'thickness (Z)']
+                for ax, val in enumerate(size):
+                    if _is_float(val):
+                        lbl = axis_labels[ax] if ax < 3 else f'dimension {ax}'
+                        rounded = round(val)
+                        new_size = list(size)
+                        new_size[ax] = rounded
+                        issues.append({
+                            'category': 'board',
+                            'board': bid,
+                            'field': f'size[{ax}]',
+                            'line': line,
+                            'value': val,
+                            'suggested': rounded,
+                            'message': f"Board '{bid}' {lbl} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm).",
+                            'fix': {
+                                'id': f'round-{bid}-size-{ax}',
+                                'title': f"Round '{bid}' {lbl} to {rounded} mm",
+                                'safe': True,
+                                'edits': [{'board': bid, 'field': 'size', 'value': new_size}]
+                            }
+                        })
+
+            # Position: [x, y, z]
+            pos = b.get('position')
+            if isinstance(pos, list):
+                axis_labels = ['X', 'Y', 'Z']
+                for ax, val in enumerate(pos):
+                    if _is_float(val):
+                        lbl = axis_labels[ax] if ax < 3 else f'axis {ax}'
+                        rounded = round(val)
+                        new_pos = list(pos)
+                        new_pos[ax] = rounded
+                        issues.append({
+                            'category': 'board',
+                            'board': bid,
+                            'field': f'position[{ax}]',
+                            'line': line,
+                            'value': val,
+                            'suggested': rounded,
+                            'message': f"Board '{bid}' position {lbl} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm).",
+                            'fix': {
+                                'id': f'round-{bid}-pos-{ax}',
+                                'title': f"Round '{bid}' position {lbl} to {rounded} mm",
+                                'safe': True,
+                                'edits': [{'board': bid, 'field': 'position', 'value': new_pos}]
+                            }
+                        })
+
+            # Profile points: [[x, y], ...]
+            profile = b.get('profile') or {}
+            if isinstance(profile, dict):
+                pts = profile.get('points') or []
+                if isinstance(pts, list):
+                    for p_idx, pt in enumerate(pts):
+                        if isinstance(pt, list):
+                            for ax, val in enumerate(pt):
+                                if _is_float(val):
+                                    ax_lbl = 'X' if ax == 0 else 'Y'
+                                    rounded = round(val)
+                                    issues.append({
+                                        'category': 'profile',
+                                        'board': bid,
+                                        'field': f'profile.points[{p_idx}][{ax}]',
+                                        'line': line,
+                                        'value': val,
+                                        'suggested': rounded,
+                                        'message': f"Board '{bid}' profile point #{p_idx + 1} {ax_lbl} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm)."
+                                    })
+
+            # Openings
+            openings = b.get('openings') or []
+            if isinstance(openings, list):
+                for o_idx, o in enumerate(openings):
+                    if not isinstance(o, dict):
+                        continue
+                    oid = o.get('id', f'opening_{o_idx}')
+                    for dim_k in ('width', 'height', 'diameter'):
+                        val = o.get(dim_k)
+                        if _is_float(val):
+                            rounded = round(val)
+                            issues.append({
+                                'category': 'opening',
+                                'board': bid,
+                                'opening': oid,
+                                'field': f'openings[{o_idx}].{dim_k}',
+                                'line': line,
+                                'value': val,
+                                'suggested': rounded,
+                                'message': f"Board '{bid}' opening '{oid}' {dim_k} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm)."
+                            })
+                    center = o.get('center')
+                    if isinstance(center, list):
+                        for ax, val in enumerate(center):
+                            if _is_float(val):
+                                ax_lbl = 'X' if ax == 0 else 'Y'
+                                rounded = round(val)
+                                issues.append({
+                                    'category': 'opening',
+                                    'board': bid,
+                                    'opening': oid,
+                                    'field': f'openings[{o_idx}].center[{ax}]',
+                                    'line': line,
+                                    'value': val,
+                                    'suggested': rounded,
+                                    'message': f"Board '{bid}' opening '{oid}' center {ax_lbl} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm)."
+                                })
+
+    # 3. Connections & tabs
+    connections = data.get('connections') or []
+    if isinstance(connections, list):
+        for c_idx, conn in enumerate(connections):
+            if not isinstance(conn, dict):
+                continue
+            cid = conn.get('id', f'conn_{c_idx}')
+            tabs = conn.get('tabs') or []
+            if isinstance(tabs, list):
+                for t_idx, t in enumerate(tabs):
+                    if not isinstance(t, dict):
+                        continue
+                    for dim_k in ('width', 'depth', 'offset'):
+                        val = t.get(dim_k)
+                        if _is_float(val):
+                            rounded = round(val)
+                            issues.append({
+                                'category': 'connection',
+                                'connection': cid,
+                                'field': f'connections[{c_idx}].tabs[{t_idx}].{dim_k}',
+                                'value': val,
+                                'suggested': rounded,
+                                'message': f"Connection '{cid}' tab #{t_idx + 1} {dim_k} is {val:g} mm (floating point). Must be integer millimetres (e.g. {rounded} mm)."
+                            })
+
+    return issues
+
+
+
 # ---------------------------------------------------------------------------
 # 3. Boards -> engine components (furniture.panel)
 # ---------------------------------------------------------------------------
@@ -1128,6 +1301,14 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     if any(d['severity'] == 'error' for d in diags):
         return result
     source_map = {bid: bd.line for bid, bd in boards.items()}
+
+    # Audit for non-integer floating-point dimensions (master precision directive)
+    float_issues = find_non_integer_dimensions(data, src, off)
+    result['non_integer_dimensions'] = float_issues
+    for fi in float_issues:
+        diags.append(diag('warning', 'NON_INTEGER_DIMENSION', fi['message'],
+                          board=fi.get('board'), line=fi.get('line'),
+                          fixes=[fi['fix']] if fi.get('fix') else None))
 
     comps = {bid: _component(bd, mat, diags) for bid, bd in boards.items()}
     comps0 = copy.deepcopy(comps)      # unrotated: edge directions ("+x", ...) always refer to the unrotated box

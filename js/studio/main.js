@@ -10,6 +10,7 @@ import { Api, ApiError } from './api.js';
 import { Viewport3D } from './viewport3d.js';
 import { Sheet2D } from './sheet2d.js';
 import { bindFullscreen } from './fullscreen.js';
+import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from './drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -28,7 +29,7 @@ const STEPS = {
 const S = {
   designId: null, designs: [], storage: null, model: null, validation: null, layout: null,
   selected: null, step: 'design', views: {}, sideTab: 'parts', filter: '', collapsed: new Set(),
-  lastAutoFix: null, saving: false,
+  lastAutoFix: null, saving: false, draftingMode: 'all',
   prod: { preset: 'A3', width: 600, height: 400, margin: 10, spacing: 5, rotation: 'orthogonal', kerf: true, paper: 'A4' }
 };
 try { Object.assign(S.prod, JSON.parse(localStorage.getItem('board-studio-prod') || '{}')); } catch (e) { /* storage unavailable */ }
@@ -344,26 +345,7 @@ function renderOverview(body) {
 }
 
 function profileSvg(c) {
-  const pts = c.cut_outline;
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const w = x1 - x0, h = y1 - y0, pad = Math.max(w, h) * 0.16;
-  const d = 'M' + pts.map((p) => `${p[0]},${-p[1]}`).join('L') + 'Z';
-  const feats = c.features.map((f) => {
-    const col = { slot: 'var(--slot)', opening: 'var(--opening)', hole: 'var(--hole)' }[f.kind];
-    const dash = f.kind === 'opening' ? 'stroke-dasharray="3 2"' : '';
-    if (f.shape === 'circle') return `<circle cx="${f.center[0]}" cy="${-f.center[1]}" r="${f.diameter / 2}" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
-    if (f.polygon) return `<path d="M${f.polygon.map((p) => `${p[0]},${-p[1]}`).join('L')}Z" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
-    return `<rect x="${f.center[0] - f.width / 2}" y="${-f.center[1] - f.height / 2}" width="${f.width}" height="${f.height}"
-      transform="rotate(${-(f.angle || 0)} ${f.center[0]} ${-f.center[1]})" fill="#0e1217" stroke="${col}" ${dash} vector-effect="non-scaling-stroke"/>`;
-  }).join('') + (c.marks || []).map((m) => `<path d="M${m.points.map((p) => `${p[0]},${-p[1]}`).join('L')}${m.closed ? 'Z' : ''}"
-      fill="none" stroke="${m.kind === 'pocket' ? '#15803d' : '#1d4ed8'}" stroke-dasharray="2 1.5" vector-effect="non-scaling-stroke"/>`).join('');
-  const fs = Math.max(w, h) * 0.055;
-  return `<svg class="profile" viewBox="${x0 - pad} ${-y1 - pad} ${w + 2 * pad} ${h + 2 * pad}" preserveAspectRatio="xMidYMid meet">
-    <path d="${d}" fill="#d6b483" stroke="var(--cut)" vector-effect="non-scaling-stroke" stroke-width="1.2"/>${feats}
-    <text x="${(x0 + x1) / 2}" y="${-y0 + pad * 0.72}" font-size="${fs}" fill="#8d98a8" text-anchor="middle">${fmt(w)} mm</text>
-    <text x="${x1 + pad * 0.5}" y="${-(y0 + y1) / 2}" font-size="${fs}" fill="#8d98a8" text-anchor="middle"
-      transform="rotate(-90 ${x1 + pad * 0.5} ${-(y0 + y1) / 2})">${fmt(h)} mm</text></svg>`;
+  return renderDraftingSvg(c, S.draftingMode || 'all');
 }
 
 function jointSpec(j) {
@@ -383,10 +365,7 @@ function renderInspector(body) {
       <div class="title-row"><span class="id">${esc(c.id)}</span><span class="chip ${c.state}">${stateLabel(c.state)}</span>
         <span class="spacer"></span><button class="icon-btn" id="btn-deselect" title="Back to overview (Esc)" aria-label="Back to overview">${icon('close')}</button></div>
       <div class="muted" style="margin:2px 0 12px">${esc(c.name)} · ${esc(c.group)}</div>
-      ${profileSvg(c)}
-      <dl class="kv" style="margin-top:12px">
-        <dt>Cut size</dt><dd>${fmt(c.cut_size.length, 2)} × ${fmt(c.cut_size.width, 2)} mm</dd>
-        <dt>Thickness</dt><dd>${c.thickness} mm</dd><dt>Net area</dt><dd>${fmt(c.dimensions_2d.area / 100, 1)} cm²</dd></dl>
+      ${renderDraftingGuide(c, S.draftingMode || 'all')}
     </div>
     ${errs ? `<div class="callout err">${errs} error(s) on this part. <a href="#" id="go-check">Show in Check</a></div>` : ''}
     <div class="section"><h4>Position in assembly</h4>
@@ -445,6 +424,38 @@ function renderInspector(body) {
       toast(`${j.id} re-joined`);
     } catch (e) { reportError(e); refresh().catch((err) => console.error(err)); }
   }));
+
+  // Drafting view mode toggles
+  $$('[data-draft]', body).forEach((b) => (b.onclick = () => {
+    S.draftingMode = b.dataset.draft;
+    const svg = body.querySelector('.drafting-svg');
+    if (svg) svg.className.baseVal = `profile drafting-svg mode-${S.draftingMode}`;
+    $$('[data-draft]', body).forEach((btn) => btn.classList.toggle('on', btn.dataset.draft === S.draftingMode));
+  }));
+
+  // Copy manual cutting specs
+  const btnCopy = $('#btn-copy-specs', body);
+  if (btnCopy) btnCopy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(formatDraftingSpecsText(c));
+      toast('Copied manual cutting specs to clipboard!');
+    } catch {
+      toast('Failed to copy to clipboard', true);
+    }
+  };
+
+  // Interactive hover highlights between drafting tables and SVG
+  $$('.drafting-table tr[data-edge]', body).forEach((tr) => {
+    const edgeId = tr.dataset.edge;
+    tr.onmouseenter = () => body.querySelectorAll(`.drafting-svg [data-edge="${edgeId}"]`).forEach((el) => el.classList.add('highlight'));
+    tr.onmouseleave = () => body.querySelectorAll(`.drafting-svg [data-edge="${edgeId}"]`).forEach((el) => el.classList.remove('highlight'));
+  });
+  $$('.drafting-table tr[data-slot]', body).forEach((tr) => {
+    const slotId = tr.dataset.slot;
+    tr.onmouseenter = () => body.querySelectorAll(`.drafting-svg [data-slot="${slotId}"]`).forEach((el) => el.classList.add('highlight'));
+    tr.onmouseleave = () => body.querySelectorAll(`.drafting-svg [data-slot="${slotId}"]`).forEach((el) => el.classList.remove('highlight'));
+  });
+  bindCadInspectorEvents(body, c);
 }
 
 // ---------- Step 2: Check ----------

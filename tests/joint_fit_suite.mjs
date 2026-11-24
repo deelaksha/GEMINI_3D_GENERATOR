@@ -665,25 +665,25 @@ console.log('\nTEST 14: Narrow-Phase Collision & Joint-Localized Exemption (Sect
 // -----------------------------------------------------------------------------
 // TEST 15: Canonical Models Thickness Scaling Matrix (Section 6, 7, 8, 11)
 // -----------------------------------------------------------------------------
-console.log('\nTEST 15: Canonical Models Thickness Scaling Matrix (3mm, 4mm, 5mm)');
+console.log('\nTEST 15: Canonical Models Thickness Scaling Matrix (1mm, 2mm, 3mm, 4mm, 5mm)');
 {
-  const thicknesses = [3.0, 4.0, 5.0];
+  const thicknesses = [1.0, 2.0, 3.0, 4.0, 5.0];
 
-  // A. MinimalBoxModel at 3mm, 4mm, 5mm
+  // A. MinimalBoxModel at 1mm, 2mm, 3mm, 4mm, 5mm
   const boxObj = new ConstructionObject(MinimalBoxModel);
   thicknesses.forEach(t => {
     const res = PhysicalValidator.auditModel(boxObj, t);
     assert(res.isPassing && res.errorCount === 0, `MinimalBoxModel at ${t}mm: PASS (0 errors, ${res.warningCount} warnings)`);
   });
 
-  // B. SimpleHouseModelData at 3mm, 4mm, 5mm
+  // B. SimpleHouseModelData at 1mm, 2mm, 3mm, 4mm, 5mm
   const houseObj = new ConstructionObject(SimpleHouseModelData);
   thicknesses.forEach(t => {
     const res = PhysicalValidator.auditModel(houseObj, t);
     assert(res.isPassing && res.errorCount === 0, `SimpleHouseModelData at ${t}mm: PASS (0 errors, ${res.warningCount} warnings)`);
   });
 
-  // C. CathedralModelData at 3mm, 4mm, 5mm
+  // C. CathedralModelData at 1mm, 2mm, 3mm, 4mm, 5mm
   const cathObj = new ConstructionObject(CathedralModelData);
   thicknesses.forEach(t => {
     const res = PhysicalValidator.auditModel(cathObj, t);

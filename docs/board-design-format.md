@@ -1,4 +1,4 @@
-<!-- Generated from board_engine/canvas_prompt.spec_markdown(); tests keep it in sync. -->
+<!-- Automatically generated from spec_markdown() -->
 # Board design format `board-design/v1` — specification
 
 You are writing a design for a flat-board product generator (CNC / laser cut boards, assembled into a 3D product).
@@ -6,6 +6,7 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 
 ## Coordinate system and units
 - Units: millimetres. World axes: **X = length (left → right)**, **Y = height (floor y = 0, up)**, **Z = depth (back → front)**.
+- **INTEGER DIMENSIONS RULE**: Because millimetres are small units (1mm, 2mm), all board sizes (`size`: [sx, sy, sz]), positions (`position`: [x, y, z]), and overall dimensions (`product.overall`) MUST be **integer numbers** (whole numbers like `30`, `38`, `150`, `60`, `12`), NEVER floating-point fractions (avoid `30.27`, `38.41`). The only numbers with decimals are material `thickness` (e.g. `1.0`, `2.0`, `3.0`) and manufacturing clearance (e.g. `0.1`).
 - Every board is an **axis-aligned box**: `position` = its minimum corner [x, y, z], `size` = [size_x, size_y, size_z].
 - A board is a flat panel: **exactly one** of `size` equals the board thickness — that axis is the board's normal.
   (Horizontal boards: size_y = thickness. Side panels: size_x = thickness. Back/front panels: size_z = thickness.)
@@ -196,12 +197,12 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 ## Material catalogue (type | standard thicknesses mm | kerf mm | grain | minimum part mm)
 | type | thicknesses | kerf | grain | min part |
 |---|---|---|---|---|
-| `plywood` | 3, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30 | 3.2 | yes | 25 |
-| `mdf` | 3, 6, 9, 12, 15, 16, 18, 19, 22, 25, 30 | 3.2 | no | 25 |
+| `plywood` | 1, 2, 3, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30 | 3.2 | yes | 15 |
+| `mdf` | 1, 2, 3, 6, 9, 12, 15, 16, 18, 19, 22, 25, 30 | 3.2 | no | 15 |
 | `particle_board` | 8, 10, 12, 16, 18, 19, 22, 25, 28, 30, 38 | 3.2 | no | 30 |
 | `solid_wood` | 12, 15, 18, 20, 22, 25, 27, 30, 32, 38, 40, 45 | 3.2 | yes | 20 |
-| `hardboard` | 2.5, 3, 3.2, 4, 5, 6 | 3.2 | no | 20 |
-| `cardboard` | 1.5, 2, 3, 4, 5, 6 | 0.2 | no | 5 |
+| `hardboard` | 1, 2, 2.5, 3, 3.2, 4, 5, 6 | 3.2 | no | 15 |
+| `cardboard` | 1, 1.5, 2, 3, 4, 5, 6 | 0.2 | no | 5 |
 
 ## Native engine format (advanced)
 The canvas also accepts the engine's own design JSON (top-level `"components"` + `"joints"` instead of `"boards"`):

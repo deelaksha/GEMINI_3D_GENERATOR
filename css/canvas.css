@@ -56,6 +56,11 @@
 /* diagnostics */
 .cv-diag { flex: none; height: 34%; min-height: 150px; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface); }
 .cv-diag-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.diag-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); flex-wrap: wrap; }
+.diag-banner.err { background: rgba(242, 85, 93, 0.08); border-color: rgba(242, 85, 93, 0.35); color: #ffb0b4; }
+.diag-banner.warn { background: rgba(243, 172, 62, 0.08); border-color: rgba(243, 172, 62, 0.35); color: #ffd395; }
+.diag-banner-text { display: flex; align-items: center; gap: 8px; font-size: 12px; flex: 1; min-width: 200px; }
+.diag-banner .btn { flex: none; }
 .cv-diag-list { flex: 1; overflow: auto; }
 .dg { display: grid; grid-template-columns: 10px 1fr; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .dg:hover { background: var(--surface-2); }

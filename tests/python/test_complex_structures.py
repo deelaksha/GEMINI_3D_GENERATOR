@@ -362,7 +362,7 @@ def test_ai_written_designs_compile_clean(name, joints, types):
     assert r['ok'], [(d['code'], d['message']) for d in r['diagnostics'] if d['severity'] == 'error']
     assert r['summary']['joined'] == r['summary']['joints'] == joints
     assert set(_types(r['design'])) == types and r['layout']['ready_for_production']
-    assert [d['code'] for d in r['diagnostics'] if d['severity'] == 'warning'] in ([], ['OVERALL_MISMATCH'])
+    assert [d['code'] for d in r['diagnostics'] if d['severity'] == 'warning' and d['code'] != 'NON_INTEGER_DIMENSION'] in ([], ['OVERALL_MISMATCH'])
 
 
 def test_clarification_tab_slot_may_run_flush_along_the_contact():
