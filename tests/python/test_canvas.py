@@ -448,3 +448,125 @@ def test_canvas_integer_fix_prompt_endpoint(client):
     assert res['count'] >= 1
     assert 'Update the existing design ONLY for these specific dimensions' in res['prompt']
 
+
+
+def test_compile_reports_every_problem_in_one_pass():
+    """Compiling carries on past a problem: one compile reports every independent problem (not just the first), still
+    builds the valid boards in 3D, and does not repeat a problem as follow-on errors."""
+    d = copy.deepcopy(EXAMPLE)
+    b = {x['id']: x for x in d['boards']}
+    b['LEG-R']['position'][1] = -6                  # connection gap
+    b['MODESTY']['size'][2] = 20                    # thickness mismatch
+    d['product']['mounting'] = 'ceiling'            # invalid setting
+    r = compile_source(json.dumps(d), run_production=False)
+    errors = [x['code'] for x in r['diagnostics'] if x['severity'] == 'error']
+    assert sorted(errors) == ['CONNECTION_GAP', 'MOUNTING', 'THICKNESS_MISMATCH'] and not r['ok']
+    assert {c['id'] for c in r['model3d']['components']} == {'TOP', 'LEG-L', 'LEG-R', 'SHELF'}
+    codes = {x['code'] for x in r['diagnostics']}
+    assert not codes & {'UNKNOWN_BOARD', 'FLOATING_COMPONENT', 'CANTILEVER', 'TIP_OVER', 'COLLISION'}
+
+
+def test_compile_continues_past_invalid_settings():
+    d = copy.deepcopy(EXAMPLE)
+    d['joinery'] = 'nails'
+    d['connections'] = 'everything'
+    r = compile_source(json.dumps(d), run_production=False)
+    assert {'JOINERY', 'CONNECTIONS_INVALID'} <= {x['code'] for x in r['diagnostics'] if x['severity'] == 'error'}
+    assert len(r['model3d']['components']) == 5 and r['summary']['joined'] > 0      # still built, with inferred joints
+
+
+def test_compile_returns_the_fix_prompt_built_from_its_own_result(client):
+    d = copy.deepcopy(EXAMPLE)
+    b = {x['id']: x for x in d['boards']}
+    b['LEG-R']['position'][1] = -6
+    b['MODESTY']['size'][2] = 20
+    src = json.dumps(d, indent=2)
+    full = client.post('/api/v1/canvas/compile', headers=VW, json={'source': src, 'production': True, 'repair_prompt': True}).json
+    assert full['model3d'] and not full['compiled']
+    for code in ('CONNECTION_GAP', 'THICKNESS_MISMATCH'):
+        assert code in full['repair_prompt']
+    assert full['repair_problems'] >= 2 and '"LEG-R"' in full['repair_prompt']
+    streamed = _stream(client, src)[-1]['result']
+    assert 'repair_prompt' not in streamed                                  # only when asked for
+    ok = client.post('/api/v1/canvas/compile', headers=VW, json={'source': json.dumps(EXAMPLE), 'repair_prompt': True}).json
+    assert ok['compiled'] and 'repair_prompt' not in ok                     # nothing to fix, no prompt
+
+
+def test_canvas_export_is_a_machine_ready_zip(client):
+    import io
+    import re
+    import zipfile
+    r = client.post('/api/v1/canvas/export', headers=VW, json={'source': json.dumps(EXAMPLE)})
+    assert r.status_code == 200 and r.mimetype == 'application/zip'
+    z = zipfile.ZipFile(io.BytesIO(r.data))
+    names = z.namelist()
+    sheets = sorted(n for n in names if n.endswith('.svg'))
+    assert sheets and len(sheets) == len([n for n in names if n.endswith('.dxf')])
+    assert any(n.endswith('-booklet.pdf') for n in names) and any(n.endswith('-README.txt') for n in names)
+    readme = z.read(next(n for n in names if n.endswith('README.txt'))).decode()
+    assert 'kerf' in readme and 'CUT_OUTER' in readme and '1:1' in readme
+    for n in sheets:
+        svg = z.read(n).decode()
+        assert 'sheet-boundary' not in svg and '<rect' not in svg            # nothing but parts reaches the machine
+        assert set(re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', svg)) <= {'#FF0000', '#0000FF', '#00FFFF', '#00FF00'}
+        assert set(re.findall(r'stroke-width="([\d.]+)"', svg)) == {'0.025'}
+    assert b'$INSUNITS' in z.read(sheets[0][:-3] + 'dxf')
+
+
+def test_canvas_export_refuses_a_design_that_is_not_ready(client):
+    d = copy.deepcopy(EXAMPLE)
+    next(b for b in d['boards'] if b['id'] == 'LEG-R')['position'][1] = -6
+    r = client.post('/api/v1/canvas/export', headers=VW, json={'source': json.dumps(d)})
+    assert r.status_code == 409 and r.json['error']['issues']
+    forced = client.post('/api/v1/canvas/export', headers=VW, json={'source': json.dumps(d), 'force': True})
+    import io
+    import zipfile
+    assert forced.status_code == 200 and all(n.startswith('DRAFT-') for n in zipfile.ZipFile(io.BytesIO(forced.data)).namelist())
+    assert client.post('/api/v1/canvas/export', headers=VW, json={'source': '{"boards": []}'}).status_code == 422
+
+
+def test_partial_designs_are_never_saved_or_imported(client):
+    """Compiling continues past errors for checking and preview, but a design that left boards / connections out must
+    not be stored as a project (it would silently lose parts)."""
+    d = copy.deepcopy(EXAMPLE)
+    next(b for b in d['boards'] if b['id'] == 'LEG-R')['position'][1] = -6
+    src = json.dumps(d)
+    assert compile_source(src, run_production=False)['partial']
+    assert client.post('/api/v1/canvas/save', headers=ED, json={'source': src}).status_code == 422
+    client.post('/api/v1/designs', headers=ED, json={'id': 'host2', 'name': 'Host 2'})
+    assert client.post('/api/v1/canvas/import', headers=ED, json={'source': src, 'target': 'host2'}).status_code == 422
+    assert not compile_source(json.dumps(EXAMPLE), run_production=False)['partial']
+
+
+LASER = {'kerf': 0.15, 'sheet': {'width': 600, 'height': 400}}
+SMALL_BOX = {'format': 'board-design/v1', 'product': {'name': 'Laser box'}, 'material': {'type': 'plywood', 'thickness': 6},
+             'boards': [{'id': 'BASE', 'position': [0, 0, 0], 'size': [200, 6, 150]},
+                        {'id': 'WALL', 'position': [30, 6, 60], 'size': [140, 80, 6]}],
+             'connections': [{'id': 'W-B', 'type': 'tab_slot', 'board': 'WALL', 'into': 'BASE', 'tabs': 2}]}
+
+
+def test_laser_profile_drives_kerf_bed_and_checks(client):
+    design = compile_source(json.dumps(SMALL_BOX), run_production=False, machine=LASER)['design']
+    assert design['material']['kerf'] == 0.15 and (design['sheet']['width'], design['sheet']['height']) == (600, 400)
+    r = client.post('/api/v1/canvas/compile', headers=VW, json={'source': json.dumps(SMALL_BOX), 'machine': LASER}).json
+    assert r['compiled'] and r['layout']['ready_for_production'] and r['layout']['nesting']['sheet']['width'] == 600
+    # the 1200 mm table top cannot go on a 600 x 400 bed: a clear blocking error, not a file the laser cannot load
+    big = client.post('/api/v1/canvas/compile', headers=VW, json={'source': json.dumps(EXAMPLE), 'machine': LASER}).json
+    assert not big['layout']['ready_for_production'] and any(i['code'] == 'PART_EXCEEDS_SHEET' for i in big['layout']['blocking_issues'])
+    bad = client.post('/api/v1/canvas/compile', headers=VW, json={'source': json.dumps(SMALL_BOX), 'machine': {'kerf': 9}})
+    assert bad.status_code == 400
+    p = client.post('/api/v1/canvas/prompt', headers=VW, json={'title': 'Box', 'thickness': 6, 'machine': LASER}).json['prompt']
+    assert '600 × 400 mm bed' in p and '"kerf": 0.15' in p and '580 × 366 mm' in p
+
+
+def test_laser_cut_files_use_the_bed_and_kerf(client):
+    import io
+    import zipfile
+    r = client.post('/api/v1/canvas/export', headers=VW, json={'source': json.dumps(SMALL_BOX), 'machine': LASER, 'labels': False})
+    assert r.status_code == 200
+    z = zipfile.ZipFile(io.BytesIO(r.data))
+    svg = z.read(next(n for n in z.namelist() if n.endswith('.svg'))).decode()
+    assert 'width="600mm" height="400mm"' in svg and 'kerf compensation 0.15 mm' in svg and '<text' not in svg
+    readme = z.read(next(n for n in z.namelist() if n.endswith('README.txt'))).decode()
+    assert 'laser cutter, 600 x 400 mm bed, 0.15 mm kerf' in readme
+    assert client.post('/api/v1/canvas/export', headers=VW, json={'source': json.dumps(EXAMPLE), 'machine': LASER}).status_code == 409

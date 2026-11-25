@@ -65,12 +65,13 @@ export const Api = {
   storage: () => request('GET', '/storage'),
   canvasSpec: () => request('GET', '/canvas/spec'),
   canvasPrompt: (opts) => request('POST', '/canvas/prompt', opts),
-  canvasCompile: (source, production = true) => request('POST', '/canvas/compile', { source, production }, { timeout: 120000 }),
+  canvasCompile: (source, production = true, extra = {}) => request('POST', '/canvas/compile', { source, production, ...extra }, { timeout: 120000 }),
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
-  canvasRepairPrompt: (source) => request('POST', '/canvas/repair-prompt', { source }, { timeout: 120000 }),
+  canvasRepairPrompt: (source, machine) => request('POST', '/canvas/repair-prompt', { source, machine }, { timeout: 120000 }),
   canvasIntegerFixPrompt: (source) => request('POST', '/canvas/integer-fix-prompt', { source }, { timeout: 120000 }),
   canvasUpdatePrompt: (source, change) => request('POST', '/canvas/update-prompt', { source, change }, { timeout: 120000 }),
-  canvasSave: (source, name, designId) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined }),
+  canvasExport: (source, force = false, extra = {}) => request('POST', '/canvas/export', { source, force, ...extra }, { timeout: 150000 }).then((r) => r.blob()),
+  canvasSave: (source, name, designId, machine) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined, machine }),
   canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),
   createBoat: (id, name, params) => request('POST', '/designs/examples/boat', { id, params }).then(async (r) => {
     if (name) await request('PATCH', `/designs/${enc(id)}`, { name });

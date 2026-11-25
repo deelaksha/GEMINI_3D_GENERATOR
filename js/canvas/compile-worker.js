@@ -3,7 +3,7 @@
  * turns the compiler's geometry preview into ready-to-draw buffers for the live assembly animation, so the page
  * stays responsive however large the design (and its result JSON) is.
  *
- * in:  {source, production, timeout}
+ * in:  {source, production, timeout, machine}
  * out: {type:'progress', stage, done, total, t, ...info} ... {type:'preview', ...buffers}
  *      then {type:'result', result, bytes, previewPending} | {type:'error', status, message}
  *      ({type:'preview-done'} once a preview that was still being built when the result came has been posted)
@@ -62,7 +62,7 @@ async function buildPreview(boards) {
   return out;
 }
 
-self.onmessage = async ({ data: { source, production, timeout } }) => {
+self.onmessage = async ({ data: { source, production, timeout, machine } }) => {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeout);
   const fail = (status, message) => self.postMessage({ type: 'error', status, message });
@@ -72,7 +72,7 @@ self.onmessage = async ({ data: { source, production, timeout } }) => {
     const res = await fetch('/api/v1/canvas/compile-stream', {
       method: 'POST', credentials: 'same-origin', signal: ctl.signal,
       headers: { 'X-Board-Client': 'studio', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, production })
+      body: JSON.stringify({ source, production, machine, repair_prompt: true })
     });
     if (!res.ok) {
       let message = `The compiler answered HTTP ${res.status}.`;

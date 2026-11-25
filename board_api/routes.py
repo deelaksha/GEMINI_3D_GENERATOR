@@ -562,6 +562,20 @@ def export_file(did, fmt):
 # AI Design Canvas: project-aware prompt -> external AI -> paste JSON -> compile / save / import
 # ---------------------------------------------------------------------------
 
+def _machine(data):
+    """The cutting machine the canvas user set up ({'kerf': mm, 'sheet': {'width', 'height'}}), or None."""
+    m = data.get('machine')
+    if m is None:
+        return None
+    sheet = m.get('sheet') if isinstance(m, dict) else None
+    ok = lambda v, lo, hi: isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
+    if not (isinstance(m, dict) and ok(m.get('kerf'), 0.01, 5) and isinstance(sheet, dict)
+            and ok(sheet.get('width'), 50, 5000) and ok(sheet.get('height'), 50, 5000)):
+        raise SchemaError('machine must be {"kerf": 0.01..5 mm, "sheet": {"width": 50..5000, "height": 50..5000 mm}}',
+                          'machine')
+    return {'kerf': float(m['kerf']), 'sheet': {'width': float(sheet['width']), 'height': float(sheet['height'])}}
+
+
 def _canvas_slug(name):
     import re
     import secrets
@@ -596,7 +610,7 @@ def canvas_prompt():
         raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
     return jsonify({'ok': True, 'prompt': build_prompt(title[:200], str(data.get('requirements') or '')[:4000],
                                                         data.get('material') or None, th or None,
-                                                        data.get('joinery') or None)})
+                                                        data.get('joinery') or None, _machine(data))})
 
 
 @bp.post('/canvas/repair-prompt')
@@ -605,8 +619,9 @@ def canvas_repair_prompt():
     """Follow-up prompt that hands this source's diagnostics back to the external AI for a minimal correction."""
     from board_engine.canvas import compile_source
     from board_engine.canvas_prompt import build_repair_prompt
-    src = body().get('source')
-    res = compile_source(src, run_production=True, time_budget=budget())
+    data = body()
+    src = data.get('source')
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=_machine(data))
     blocking = (res.get('layout') or {}).get('blocking_issues', [])
     prompt = build_repair_prompt(src, res['diagnostics'], blocking)
     return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
@@ -654,12 +669,25 @@ def canvas_update_prompt():
     return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'])})
 
 
+def _with_repair_prompt(res, source):
+    """Attach the follow-up fix prompt for a compile that found errors, built from this result (no second compile)."""
+    from board_engine.canvas_prompt import build_repair_prompt
+    if res.get('summary', {}).get('errors') or any(d['severity'] == 'error' for d in res['diagnostics']):
+        blocking = (res.get('layout') or {}).get('blocking_issues', [])
+        res['repair_prompt'] = build_repair_prompt(source, res['diagnostics'], blocking)
+        res['repair_problems'] = res['repair_prompt'].count('\n- [')
+    return res
+
+
 @bp.post('/canvas/compile')
 @require('viewer')
 def canvas_compile():
     from board_engine.canvas import compile_source
     data = body()
-    res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget())
+    res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget(),
+                         machine=_machine(data))
+    if data.get('repair_prompt'):
+        _with_repair_prompt(res, data.get('source'))
     if not data.get('include_design'):
         res.pop('design', None)
     # envelope 'ok' = the request worked; 'compiled' = the design compiled without errors
@@ -684,7 +712,7 @@ def canvas_compile_stream():
     from board_engine.progress import CompileCancelled, reporting
     data = body()
     source, production, seconds = data.get('source'), bool(data.get('production', True)), budget()
-    include_design = bool(data.get('include_design'))
+    include_design, want_prompt, machine = bool(data.get('include_design')), bool(data.get('repair_prompt')), _machine(data)
     events, cancelled = queue.Queue(), threading.Event()
     state = {'stage': -1, 'sent': 0.0}
     t0 = time.monotonic()
@@ -705,7 +733,9 @@ def canvas_compile_stream():
     def work():
         try:
             with reporting(reporter):
-                res = compile_source(source, run_production=production, time_budget=seconds)
+                res = compile_source(source, run_production=production, time_budget=seconds, machine=machine)
+            if want_prompt:
+                _with_repair_prompt(res, source)
             if not include_design:
                 res.pop('design', None)
             events.put({'type': 'result', 'result': dict(res, ok=True, compiled=res['ok']), 't': round(time.monotonic() - t0, 3)})
@@ -735,6 +765,61 @@ def canvas_compile_stream():
     return Response(stream(), mimetype='application/x-ndjson', headers={'X-Accel-Buffering': 'no'})
 
 
+@bp.post('/canvas/export')
+@require('viewer')
+@budgeted
+def canvas_export():
+    """Everything a cutting machine needs, in one zip: per sheet an SVG (laser) and a DXF (CNC / CAD), the PDF booklet
+    and a README with material, kerf, sheet size, colour / layer map and cut order. Kerf-compensated, 1:1 in mm.
+    Refused while the design has blocking issues unless `force` (then every file name is marked DRAFT)."""
+    import io
+    import zipfile
+    from board_engine.canvas import compile_source
+    from board_engine.cutpaths import LEGEND
+    data = body()
+    machine = _machine(data)
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
+    design = res.get('design')
+    if not design or not design['components']:
+        return fail(422, 'compile_failed', 'the design does not compile yet; fix its errors first', issues=res['diagnostics'])
+    pkg = production_package(design, {'compensate_kerf': True, 'labels': data.get('labels', True) is not False})
+    # the production checks only see the part of the design that compiled, so compile errors block production too
+    blocking = [d for d in res['diagnostics'] if d['severity'] == 'error'] + pkg['blocking_issues']
+    draft = bool(blocking)
+    if draft and not data.get('force'):
+        return fail(409, 'not_ready_for_production', 'the design has blocking issues; fix them or download a marked draft',
+                    issues=blocking[:50])
+    n, mat, cut = pkg['nesting'], design['material'], pkg['cut']
+    slug = _canvas_slug(design['name']).rsplit('-', 1)[0]
+    prefix = f"{'DRAFT-' if draft else ''}{slug}"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        for i in range(n['sheet_count']):
+            for fmt in ('svg', 'dxf'):
+                z.writestr(f"{prefix}-sheet{i + 1}.{fmt}", export(pkg, fmt, i)[0])
+        z.writestr(f'{prefix}-booklet.pdf', export(pkg, 'pdf', None, data.get('paper') or 'A4')[0])
+        parts = len(n['placements'])
+        z.writestr(f'{prefix}-README.txt', '\n'.join([
+            f"{design['name']} - machine files{'  (DRAFT: NOT READY FOR PRODUCTION)' if draft else ''}",
+            '',
+            f"Material   : {mat.get('name')} ({mat['type']}), {mat['thickness']:g} mm thick",
+            *([f"Machine    : laser cutter, {machine['sheet']['width']:g} x {machine['sheet']['height']:g} mm bed, "
+               f"{machine['kerf']:g} mm kerf"] if machine else []),
+            f"Sheets     : {n['sheet_count']} x {n['sheet']['width']:g} x {n['sheet']['height']:g} mm, {parts} parts",
+            f"Units      : millimetres, scale 1:1 - import / print at 100 %, never 'fit to page'",
+            f"Kerf       : paths already compensated for a {cut['kerf_compensation']:g} mm kerf "
+            f"(set the machine's own kerf / tool offset to 0)",
+            f"Layers     : {LEGEND}",
+            'Cut order  : per sheet - engrave / pocket first, then every inner cut, then the outlines',
+            'Files      : *-sheetN.svg for lasers (colour-mapped hairlines), *-sheetN.dxf (R12) for CNC / CAD, '
+            '*-booklet.pdf for assembly',
+            *(['', 'Blocking issues:'] + [f"- {i['message']}" for i in blocking[:30]] if draft else []),
+            '']))
+    resp = Response(buf.getvalue(), mimetype='application/zip')
+    resp.headers['Content-Disposition'] = f'attachment; filename="{prefix}-cut-files.zip"'
+    return resp
+
+
 @bp.post('/canvas/fix')
 @require('viewer')
 def canvas_fix():
@@ -756,8 +841,8 @@ def canvas_save():
     from board_engine.canvas import compile_source
     data = body()
     src = data.get('source')
-    res = compile_source(src, run_production=False, time_budget=budget())
-    if res.get('design') is None:
+    res = compile_source(src, run_production=False, time_budget=budget(), machine=_machine(data))
+    if res.get('design') is None or res.get('partial'):
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     design = res['design']
     if data.get('name'):
@@ -788,7 +873,7 @@ def canvas_import():
     data = body()
     target = check_id(data.get('target'), 'target')
     res = compile_source(data.get('source'), run_production=False, time_budget=budget())
-    if res.get('design') is None:
+    if res.get('design') is None or res.get('partial'):
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     src_design = res['design']
     wanted = data.get('boards') or [c['id'] for c in src_design['components']]

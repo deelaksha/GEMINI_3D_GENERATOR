@@ -45,8 +45,8 @@ COMPLEX_EXAMPLE = {
         "name": "Gabled cottage",
         "description": "Glue-free cottage: pitched gables, 35 deg roof, arched door",
         "overall": {
-            "length": 239.6,
-            "height": 230.9,
+            "length": 240,
+            "height": 231,
             "depth": 190
         }
     },
@@ -92,7 +92,7 @@ COMPLEX_EXAMPLE = {
             ],
             "size": [
                 200,
-                220.02,
+                220,
                 6
             ],
             "profile": {
@@ -112,7 +112,7 @@ COMPLEX_EXAMPLE = {
                     ],
                     [
                         100,
-                        220.02
+                        220
                     ],
                     [
                         0,
@@ -176,7 +176,7 @@ COMPLEX_EXAMPLE = {
             ],
             "size": [
                 200,
-                220.02,
+                220,
                 6
             ],
             "profile": {
@@ -196,7 +196,7 @@ COMPLEX_EXAMPLE = {
                     ],
                     [
                         100,
-                        220.02
+                        220
                     ],
                     [
                         0,
@@ -333,7 +333,7 @@ COMPLEX_EXAMPLE = {
                 -15
             ],
             "size": [
-                142.0775,
+                142,
                 6,
                 190
             ],
@@ -352,12 +352,12 @@ COMPLEX_EXAMPLE = {
             "name": "Roof right",
             "group": "Roof",
             "position": [
-                77.9225,
+                78,
                 156,
                 -15
             ],
             "size": [
-                142.0775,
+                142,
                 6,
                 190
             ],
@@ -929,10 +929,17 @@ INTEGER_RULE = ('All sizes, positions, product.overall values and profile / open
                 'may have decimals.')
 
 
-def build_prompt(title, requirements='', material=None, thickness=None, joinery=None):
+def build_prompt(title, requirements='', material=None, thickness=None, joinery=None, machine=None):
     title = (title or '').strip() or 'Board product'
     req = (requirements or '').strip()
     extra = []
+    if machine:
+        # nesting keeps a 10 mm margin all round and a 14 mm strip for the printed sheet label
+        w, h = machine['sheet']['width'] - 20, machine['sheet']['height'] - 34
+        extra.append(f"- Cut on a laser cutter with a {machine['sheet']['width']:g} × {machine['sheet']['height']:g} mm bed and a "
+                     f"{machine['kerf']:g} mm kerf: write \"kerf\": {machine['kerf']:g} in \"material\".")
+        extra.append(f"- Every board's flat cut shape (its two largest sizes, tabs included) must fit within "
+                     f"{max(w, h):g} × {min(w, h):g} mm. Split anything larger into several boards joined together.")
     if material:
         extra.append(f'- Material type: {material}')
     if thickness:

@@ -1,9 +1,11 @@
 """
 2D nesting of cut parts onto sheets (paper or board).
 
-Algorithm: MaxRects (best-short-side-fit) on each part's cut-profile bounding box at the
-allowed orientations, largest parts first, opening new sheets as needed. A final pass
-checks real polygon overlap/spacing and the usable-area boundary.
+Algorithm: MaxRects on each part's cut-profile bounding box at the allowed orientations, opening new
+sheets as needed. A few part orders (largest area first, longest side, width, height, perimeter) and two
+placement rules (best short side fit, best area fit) are packed and the layout with the fewest sheets is
+kept (ties keep the first: largest area, best short side fit). A final pass checks real polygon
+overlap/spacing and the usable-area boundary.
 
 Sheet coordinates: millimetres, origin top-left, +y down (paper / SVG convention). A part
 is shown as seen from its local +z face, never mirrored:
@@ -71,14 +73,16 @@ def _rotated_bbox(poly, rot):
 
 
 class _MaxRects:
-    def __init__(self, x0, y0, x1, y1):
+    def __init__(self, x0, y0, x1, y1, rule='bssf'):
         self.free = [(x0, y0, x1 - x0, y1 - y0)]
+        self.rule = rule
 
     def find(self, w, h):
         best = None
         for fx, fy, fw, fh in self.free:
             if w <= fw + 1e-9 and h <= fh + 1e-9:
-                score = (min(fw - w, fh - h), max(fw - w, fh - h), fy, fx)
+                fit = (min(fw - w, fh - h), max(fw - w, fh - h))
+                score = (fit + (fy, fx)) if self.rule == 'bssf' else (fw * fh - w * h,) + fit + (fy, fx)
                 if best is None or score < best[0]:
                     best = (score, (fx, fy))
         return best
@@ -159,37 +163,25 @@ def nest(design, opts=None):
     sheets, placements = [], []
     # Thickest stock first, then by name: deterministic sheet numbering
     for key in sorted(groups, key=lambda k: (-k[2], k[0], k[1])):
-        items = sorted(groups[key], key=lambda it: -max(o[1] * o[2] for o in it[1]))
         stock = {'material': key[0], 'type': key[1], 'thickness': key[2]}
-        bins, first = [], len(sheets)
-        for pl, options, grain in items:
-            check_budget()
-            placed = False
-            for bi, mr in enumerate(bins + [None]):
-                if mr is None:
-                    mr = _MaxRects(ux0, uy0, ux1 + sp, uy1 + sp)  # spacing is added to every item's size
-                    bins.append(mr)
-                best = None
-                for r, w, h, bx0, by0 in options:
-                    hit = mr.find(w + sp, h + sp)
-                    if hit and (best is None or hit[0] < best[0]):
-                        best = (hit[0], hit[1], r, w, h, bx0, by0)
-                if best:
-                    _s, (fx, fy), r, w, h, bx0, by0 = best
-                    mr.place(fx, fy, w + sp, h + sp)
-                    placements.append({'id': pl.id, 'name': pl.comp.get('name', pl.id), 'sheet': first + bi,
-                                       'rotation': r,
-                                       'tx': fx - bx0, 'ty': fy - by0,  # unrounded: rounding can push a part past the usable edge
-                                       'bbox': [round(fx, 3), round(fy, 3), round(fx + w, 3), round(fy + h, 3)],
-                                       'thickness': pl.t, 'area': round(part_area(pl), 2),
-                                       **({'grain_aligned': True} if grain else {})})
-                    placed = True
-                    break
-            if not placed:
-                unplaced.append({'id': pl.id, 'code': 'NESTING_FAILED', 'message': f"Could not place '{pl.id}'."})
-                if bins and not mr_has_items(placements, first + len(bins) - 1):
-                    bins.pop()
-        sheets.extend({'index': first + i, 'stock': stock} for i in range(len(bins)))
+        first = len(sheets)
+        best = None
+        for order in _ORDERS:
+            items = sorted(groups[key], key=order)
+            for rule in ('bssf', 'baf'):
+                packed = _pack(items, (ux0, uy0, ux1, uy1), sp, rule)
+                if best is None or (len(packed[1]), packed[0]) < (len(best[1]), best[0]):
+                    best = packed            # fewer parts left over, then fewer sheets; ties keep the first
+        nbins, placed, failed = best
+        for pl, bi, r, fx, fy, w, h, bx0, by0, grain in placed:
+            placements.append({'id': pl.id, 'name': pl.comp.get('name', pl.id), 'sheet': first + bi,
+                               'rotation': r,
+                               'tx': fx - bx0, 'ty': fy - by0,  # unrounded: rounding can push a part past the usable edge
+                               'bbox': [round(fx, 3), round(fy, 3), round(fx + w, 3), round(fy + h, 3)],
+                               'thickness': pl.t, 'area': round(part_area(pl), 2),
+                               **({'grain_aligned': True} if grain else {})})
+        unplaced.extend({'id': pl.id, 'code': 'NESTING_FAILED', 'message': f"Could not place '{pl.id}'."} for pl in failed)
+        sheets.extend({'index': first + i, 'stock': stock} for i in range(nbins))
 
     nsheets = len(sheets)
     sheet_area = sheet['width'] * sheet['height']
@@ -228,8 +220,42 @@ def nest(design, opts=None):
     return report
 
 
-def mr_has_items(placements, si):
-    return any(p['sheet'] == si for p in placements)
+# part orders tried by the packer: largest area first (the original order, kept on ties), longest side, width,
+# height, perimeter -- each on the part's largest allowed bounding box
+_dims = lambda it: max(((o[1], o[2]) for o in it[1]), key=lambda wh: wh[0] * wh[1])
+_ORDERS = (lambda it: -max(o[1] * o[2] for o in it[1]),
+           lambda it: -max(max(o[1], o[2]) for o in it[1]),
+           lambda it: -_dims(it)[0],
+           lambda it: -_dims(it)[1],
+           lambda it: -sum(_dims(it)))
+
+
+def _pack(items, usable, sp, rule):
+    """MaxRects-pack items in the given order. -> (sheets used, [(plate, sheet, rot, x, y, w, h, bx0, by0, grain)],
+    [plates that fit no sheet])"""
+    ux0, uy0, ux1, uy1 = usable
+    bins, placed, failed = [], [], []
+    for pl, options, grain in items:
+        check_budget()
+        for bi, mr in enumerate(bins + [None]):
+            if mr is None:
+                mr = _MaxRects(ux0, uy0, ux1 + sp, uy1 + sp, rule)  # spacing is added to every item's size
+                bins.append(mr)
+            best = None
+            for r, w, h, bx0, by0 in options:
+                hit = mr.find(w + sp, h + sp)
+                if hit and (best is None or hit[0] < best[0]):
+                    best = (hit[0], hit[1], r, w, h, bx0, by0)
+            if best:
+                _s, (fx, fy), r, w, h, bx0, by0 = best
+                mr.place(fx, fy, w + sp, h + sp)
+                placed.append((pl, bi, r, fx, fy, w, h, bx0, by0, grain))
+                break
+        else:
+            failed.append(pl)
+            if bins and not any(p[1] == len(bins) - 1 for p in placed):
+                bins.pop()
+    return len(bins), placed, failed
 
 
 def placed_geometry(design, placement):

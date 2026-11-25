@@ -152,7 +152,48 @@ cm.on('change', () => {
 // ---------------------------------------------------------------------------
 function fillThickness() {
   const ts = S.spec.materials.plywood.thicknesses;     // the default material's stock thicknesses
-  $('#in-thickness').innerHTML = ts.map((t) => `<option ${t === 18 ? 'selected' : ''}>${t}</option>`).join('');
+  $('#in-thickness').innerHTML = ts.map((t) => `<option ${t === 6 ? 'selected' : ''}>${t}</option>`).join('');   // laser-cut stock
+}
+
+// ---------------------------------------------------------------------------
+// Laser cutter: bed and kerf drive the prompt, every check, the nesting and the cut files
+// ---------------------------------------------------------------------------
+const MACHINE_KEY = 'board-canvas-laser';
+const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true };
+
+function loadMachine() {
+  let m = MACHINE_DEFAULT;
+  try { m = { ...MACHINE_DEFAULT, ...JSON.parse(localStorage.getItem(MACHINE_KEY) || '{}') }; } catch (e) { /* storage unavailable */ }
+  $('#in-bed').value = m.bed;
+  $('#in-bed-w').value = m.w;
+  $('#in-bed-h').value = m.h;
+  $('#in-kerf').value = m.kerf;
+  $('#in-labels').checked = m.labels;
+  syncBed();
+}
+
+function syncBed() {
+  const custom = $('#in-bed').value === 'custom';
+  $$('.bed-custom').forEach((el) => (el.hidden = !custom));
+  if (!custom) [$('#in-bed-w').value, $('#in-bed-h').value] = $('#in-bed').value.split('x');
+}
+
+/** {kerf, sheet: {width, height}} as the API takes it (out-of-range input falls back to the defaults). */
+function machine() {
+  const num = (el, lo, hi, d) => { const v = parseFloat($(el).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : d; };
+  return { kerf: num('#in-kerf', 0.01, 1, MACHINE_DEFAULT.kerf),
+    sheet: { width: num('#in-bed-w', 50, 5000, MACHINE_DEFAULT.w), height: num('#in-bed-h', 50, 5000, MACHINE_DEFAULT.h) } };
+}
+
+function machineChanged() {
+  syncBed();
+  const m = machine();
+  try {
+    localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: m.sheet.width, h: m.sheet.height,
+      kerf: m.kerf, labels: $('#in-labels').checked }));
+  } catch (e) { /* ignore */ }
+  S.fixPrompt = null;                         // built for the old settings
+  if (S.result) setStatus('warn', 'Laser settings changed — compile again');
 }
 
 async function generatePrompt() {
@@ -160,7 +201,7 @@ async function generatePrompt() {
   if (!title) { $('#in-title').focus(); return toast('Enter a product title first', true); }
   try {
     const r = await Api.canvasPrompt({ title, requirements: $('#in-req').value,
-      thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking' });   // always glue-free
+      thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking', machine: machine() });   // always glue-free
     $('#out-prompt').value = r.prompt;
     $('#btn-copy-prompt').disabled = false;
     $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. Paste the AI’s JSON reply into the editor and click <b>Compile</b>.`;
@@ -184,7 +225,8 @@ async function repairPrompt() {
   if (btn) btn.disabled = true;
   if (btnBanner) btnBanner.disabled = true;
   try {
-    const r = await Api.canvasRepairPrompt(source);
+    // the prompt built at the end of the last compile, if the code has not changed since (no second compile)
+    const r = S.fixPrompt?.source === source ? S.fixPrompt : await Api.canvasRepairPrompt(source, machine());
     showPrompt(r.prompt, `Follow-up prompt with ${r.problems} problem(s). Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`);
     if (r.problems > 0 || r.prompt) {
       await copyText(r.prompt, 'Fix prompt');
@@ -289,7 +331,7 @@ let compileJob = null;
  *  Api.canvasCompile(source, false). */
 function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.15', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./compile-worker.js?v=2.17', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
     let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
@@ -310,7 +352,7 @@ function compileStream(source, onProgress, onPreview) {
       else reject(new ApiError(data.status, { error: { message: data.message } }));
     };
     worker.onerror = (e) => { e.preventDefault(); end(); reject(new ApiError(0, { error: { message: 'The compile worker could not start.' } })); };
-    worker.postMessage({ source, production: false, timeout: 120000 });
+    worker.postMessage({ source, production: false, timeout: 120000, machine: machine() });
   });
 }
 
@@ -333,6 +375,16 @@ function compileFailure(r) {
 /** Two short requests instead of one long one: geometry + validation first (3D and problems appear right
  *  away), then the cut sheets / cut list. A slow or failed second phase never hides the first result.
  *  An explicit compile (production) shows the compile loader over the preview; background recompiles (auto-fix) only use the status pill. */
+/** End of a compile that found errors: put the fix prompt (built from the final result) into step 2. */
+function offerFixPrompt(r, source) {
+  if (!r?.repair_prompt) return;
+  S.fixPrompt = { source, prompt: r.repair_prompt, problems: r.repair_problems };
+  $('#out-prompt').value = r.repair_prompt;
+  $('#btn-copy-prompt').disabled = false;
+  $('#prompt-meta').innerHTML = `Fix prompt for ${r.repair_problems} problem(s) found by the last compile. Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`;
+  toast(`${r.repair_problems} problem(s) found — a fix prompt for your AI is ready in step 2 (or click “Copy fix prompt”).`, false, 6000);
+}
+
 /** Replace the editor text with a repaired version (one undoable change) and flash the lines that changed. */
 function applySyntaxRepair(fix) {
   cm.replaceRange(fix.source, cm.posFromIndex(0), cm.posFromIndex(cm.getValue().length));
@@ -394,6 +446,7 @@ async function compile(production = true) {
         const s = first.summary;
         loader.complete(s.errors ? `Compiled with ${s.errors} error${s.errors === 1 ? '' : 's'}` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
       } else {
+        offerFixPrompt(first, source);           // nothing more will run: this is the end of the compile
         preview.markErrors(first.diagnostics.filter((d) => d.severity === 'error' && d.board).map((d) => d.board));
         loader.fail({ ...compileFailure(first), actions: [['close', 'Close', false, close],
           ['problems', 'Show problems', true, () => { loader.hide(); fs3d.exit(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
@@ -403,10 +456,11 @@ async function compile(production = true) {
     if (production && first.model3d) {
       setStatus(first.compiled ? 'ok' : 'err', `${$('#compile-status').innerText} · preparing cut sheets…`);
       try {
-        const full = await Api.canvasCompile(source, true);
-        if (cm.getValue() === source) { S.result = full; render(true); showStatus(full); }
+        const full = await Api.canvasCompile(source, true, { repair_prompt: true, machine: machine() });
+        if (cm.getValue() === source) { S.result = full; render(true); showStatus(full); offerFixPrompt(full, source); }
       } catch (e) {
         showStatus(first);
+        if (cm.getValue() === source) offerFixPrompt(first, source);
         toast(`3D and checks are ready, but the cut sheets could not be prepared: ${e.message}`, true);
       }
     }
@@ -439,8 +493,9 @@ function render(keepCamera = false) {
   const r = S.result;
   renderDiagnostics();
   markEditor();
-  $('#btn-save').disabled = !r?.model3d;
-  $('#btn-import').disabled = !r?.model3d;
+  $('#btn-save').disabled = !r?.model3d || !!r.partial;     // a partial compile left parts out: never stored
+  $('#btn-import').disabled = !r?.model3d || !!r.partial;
+  $('#btn-cutfiles').disabled = !r?.model3d;
   $('#pv-empty').hidden = !!r?.model3d;
   if (r?.model3d) {
     if (!keepCamera) view3d._framed = false;
@@ -686,13 +741,36 @@ function renderBoard() {
 async function save(update = false) {
   if (!S.result?.model3d) return toast('Compile the design first', true);
   try {
-    const r = await Api.canvasSave(cm.getValue(), undefined, update ? S.savedId : undefined);
+    const r = await Api.canvasSave(cm.getValue(), undefined, update ? S.savedId : undefined, machine());
     S.savedId = r.design_id;
     $('#btn-open-studio').disabled = false;
     $('#btn-update').hidden = false;
     history.replaceState(null, '', `?design=${encodeURIComponent(r.design_id)}`);
     toast(update ? 'Project updated' : `Saved as new project “${r.design_id}”`);
   } catch (e) { reportError(e); }
+}
+
+/** One zip with everything the cutting machine needs (see /canvas/export). */
+async function downloadCutFiles(force = false) {
+  const btn = $('#btn-cutfiles');
+  btn.disabled = true;
+  try {
+    toast('Preparing cut files…');
+    const blob = await Api.canvasExport(cm.getValue(), force, { machine: machine(), labels: $('#in-labels').checked });
+    let name = 'design';
+    try { name = (parseCode().product?.name || name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); } catch (e) { /* ignore */ }
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${force ? 'DRAFT-' : ''}${name}-cut-files.zip` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(force ? 'Downloaded a DRAFT — fix the blocking issues before cutting' : 'Cut files downloaded: SVG + DXF per sheet, PDF booklet, README');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) {
+      const why = e.issues.slice(0, 4).map((i) => `• ${i.message}`).join('\n');
+      if (confirm(`This design is not ready for production:\n\n${why}${e.issues.length > 4 ? `\n… and ${e.issues.length - 4} more` : ''}\n\nDownload the files anyway as a marked DRAFT?`)) return downloadCutFiles(true);
+    } else reportError(e);
+  } finally {
+    btn.disabled = !S.result?.model3d;
+  }
 }
 
 async function openImport() {
@@ -772,6 +850,8 @@ $('#btn-save').onclick = () => save(false);
 $('#btn-update').onclick = () => save(true);
 $('#btn-open-studio').onclick = () => { if (S.savedId) location.href = `/?design=${encodeURIComponent(S.savedId)}`; };
 $('#btn-import').onclick = () => openImport().catch(reportError);
+$('#btn-cutfiles').onclick = () => downloadCutFiles();
+['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels'].forEach((id) => ($(id).onchange = machineChanged));
 $('#sel-example').onchange = (e) => {
   const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,
     structures: S.spec.structures_example_source }[e.target.value];
@@ -790,6 +870,7 @@ window.addEventListener('keydown', (e) => {
   try {
     S.spec = await Api.canvasSpec();
     fillThickness();
+    loadMachine();
     const q = new URLSearchParams(location.search);
     if (q.get('design')) {
       const { design } = await Api.design(q.get('design'));

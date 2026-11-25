@@ -606,7 +606,8 @@ async function download(fmtName, opts, name) {
 
 async function pngPreview(sheet, opts) {
   try {
-    const svg = await Api.exportText(S.designId, 'svg', opts);
+    // the machine file uses 0.025 mm hairlines (what lasers cut as vectors): thicken them for a visible image
+    const svg = (await Api.exportText(S.designId, 'svg', opts)).replace(/stroke-width="[\d.]+"/g, 'stroke-width="0.4"');
     const { width, height } = S.layout.nesting.sheet;
     const pxPerMm = 6;
     const img = new Image();

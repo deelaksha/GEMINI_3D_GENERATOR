@@ -387,8 +387,8 @@ Return **one** fenced ```json code block containing only the design object — n
     "name": "Gabled cottage",
     "description": "Glue-free cottage: pitched gables, 35 deg roof, arched door",
     "overall": {
-      "length": 239.6,
-      "height": 230.9,
+      "length": 240,
+      "height": 231,
       "depth": 190
     }
   },
@@ -417,14 +417,14 @@ Return **one** fenced ```json code block containing only the design object — n
       "name": "Back gable",
       "group": "Walls",
       "position": [0, 6, 0],
-      "size": [200, 220.02, 6],
+      "size": [200, 220, 6],
       "profile": {
         "shape": "polygon",
         "points": [
           [0, 0],
           [200, 0],
           [200, 150],
-          [100, 220.02],
+          [100, 220],
           [0, 150]
         ]
       },
@@ -462,14 +462,14 @@ Return **one** fenced ```json code block containing only the design object — n
       "name": "Front gable",
       "group": "Walls",
       "position": [0, 6, 154],
-      "size": [200, 220.02, 6],
+      "size": [200, 220, 6],
       "profile": {
         "shape": "polygon",
         "points": [
           [0, 0],
           [200, 0],
           [200, 150],
-          [100, 220.02],
+          [100, 220],
           [0, 150]
         ]
       },
@@ -550,7 +550,7 @@ Return **one** fenced ```json code block containing only the design object — n
       "name": "Roof left",
       "group": "Roof",
       "position": [-20, 156, -15],
-      "size": [142.0775, 6, 190],
+      "size": [142, 6, 190],
       "rotate": {
         "axis": "z",
         "angle": 35,
@@ -561,8 +561,8 @@ Return **one** fenced ```json code block containing only the design object — n
       "id": "ROOF-R",
       "name": "Roof right",
       "group": "Roof",
-      "position": [77.9225, 156, -15],
-      "size": [142.0775, 6, 190],
+      "position": [78, 156, -15],
+      "size": [142, 6, 190],
       "rotate": {
         "axis": "z",
         "angle": -35,

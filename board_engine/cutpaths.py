@@ -16,9 +16,14 @@ from .model import Plate, feature_shape, find_component
 from .nesting import transform_point
 from .shapes import arc_sweep
 
-LAYERS = {'outer': ('CUT_OUTER', '#e11d48', 1), 'inner': ('CUT_INNER', '#2563eb', 5),
-          'engrave': ('ENGRAVE', '#0ea5e9', 4), 'pocket': ('POCKET', '#16a34a', 3),
-          'label': ('ENGRAVE_LABELS', '#111827', 7)}
+# Layer name, SVG colour, DXF colour index. The SVG colours are the pure RGB values of the DXF colours: laser drivers
+# (Epilog, Universal, Trotec, LightBurn) assign cut / engrave settings by exact colour, so every operation has one.
+LAYERS = {'outer': ('CUT_OUTER', '#FF0000', 1), 'inner': ('CUT_INNER', '#0000FF', 5),
+          'engrave': ('ENGRAVE', '#00FFFF', 4), 'pocket': ('POCKET', '#00FF00', 3),
+          'label': ('ENGRAVE_LABELS', '#000000', 7)}
+HAIRLINE = 0.025  # mm (0.001 in): the stroke width print-driver lasers treat as a vector cut, not a raster fill
+LEGEND = ('red CUT_OUTER = part outline (cut last) | blue CUT_INNER = slots / holes / openings (cut first) | '
+          'cyan ENGRAVE, green POCKET = partial depth (machined before any cut) | black text = part labels (optional)')
 ARC_TOL = 0.02   # mm: an arc run is exported as a true arc only if its end points sit on the circle
 
 
@@ -247,17 +252,16 @@ def sheet_svg(design, nesting, cut, index, labels=True):
     out = [f'<?xml version="1.0" encoding="UTF-8"?>',
            f'<!-- {_esc(design["name"])} | sheet {index + 1} of {nesting["sheet_count"]} | '
            f'{_esc(sheet_stock_label(nesting, index, design["material"]))} | 1 user unit = 1 mm | kerf compensation '
-           f'{cut["kerf_compensation"]} mm -->',
+           f'{cut["kerf_compensation"]} mm | the page is the sheet: nothing else is drawn, so nothing else is cut -->',
+           f'<!-- {LEGEND} -->',
            f'<svg xmlns="http://www.w3.org/2000/svg" width="{_fmt(w)}mm" height="{_fmt(h)}mm" '
-           f'viewBox="0 0 {_fmt(w)} {_fmt(h)}">',
-           f'  <rect id="sheet-boundary" x="0" y="0" width="{_fmt(w)}" height="{_fmt(h)}" fill="none" '
-           f'stroke="#9ca3af" stroke-width="0.2" stroke-dasharray="2 2"/>']
+           f'viewBox="0 0 {_fmt(w)} {_fmt(h)}">']
     for kind in ('engrave', 'pocket', 'inner', 'outer'):
         layer, color, _ = LAYERS[kind]
         paths = sorted((p for p in sheet['paths'] if p['type'] == kind), key=lambda p: p['order'])
         if not paths and kind in ('engrave', 'pocket'):
             continue
-        out.append(f'  <g id="{layer}" fill="none" stroke="{color}" stroke-width="0.1">')
+        out.append(f'  <g id="{layer}" fill="none" stroke="{color}" stroke-width="{HAIRLINE}">')
         for p in paths:
             attrs = f'id="{_esc(p["id"])}" data-part="{_esc(p["part"])}" data-order="{p["order"]}"'
             if p.get('feature_kind'):

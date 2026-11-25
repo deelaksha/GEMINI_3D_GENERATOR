@@ -245,11 +245,11 @@ def _check_material(m, diags, src, off):
                           f"{LIMITS['min_thickness']} and {LIMITS['max_thickness']} mm.", path='material.thickness',
                           line=_key_line(src, 'thickness', off)))
         return None
-    if m.get('type') is not None and m['type'] not in MATERIAL_TYPES:
+    mtype = m.get('type', 'other')
+    if mtype not in MATERIAL_TYPES:              # reported; the boards are still checked as a generic material
         diags.append(diag('error', 'MATERIAL_TYPE', f"material.type must be one of {list(MATERIAL_TYPES)}.",
                           path='material.type', line=_key_line(src, 'type', off)))
-        return None
-    mtype = m.get('type', 'other')
+        mtype = 'other'
     cat = MATERIALS.get(mtype, {})
     out = {'name': str(m.get('name') or f"{mtype.replace('_', ' ').title()} {m['thickness']:g} mm"),
            'type': mtype, 'thickness': float(m['thickness']),
@@ -959,7 +959,7 @@ def _resolve_board(ref, boards):
     return None, None
 
 
-def _resolve_connections(conns, boards, diags, src, off):
+def _resolve_connections(conns, boards, diags, src, off, rejected=(), held=None):
     """Normalise what an external AI wrote: type spellings, key names, board references, duplicates. Each kind of
     correction is reported once (with the connections it touched) so the AI can learn the exact format."""
     out, seen, notes = [], {}, {}
@@ -986,6 +986,11 @@ def _resolve_connections(conns, boards, diags, src, off):
         if (ka, kb) != ('board', 'into') and ka and kb:
             note('keys', f"{label}: \"{ka}\"/\"{kb}\"")
         refs = [c.get(ka) if ka else None, c.get(kb) if kb else None]
+        if any(isinstance(r, str) and r in rejected for r in refs):
+            # a board this connection needs already has its own error: no second error, just hold the partner back
+            if held is not None:
+                held.update(r for r in refs if isinstance(r, str))
+            continue
         ids = []
         for ref in refs:
             bid, how = _resolve_board(ref, boards)
@@ -1259,9 +1264,12 @@ def _auto_sheet(design, mat, data):
     return {'width': float(max(W, H)), 'height': float(min(W, H)), 'spacing': 6.0}
 
 
-def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None):
+def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None, machine=None):
     """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic.
-    time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget)."""
+    time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget).
+    machine: {'kerf': mm, 'sheet': {'width', 'height'}} of the cutting machine (e.g. a laser's kerf and bed); it
+    overrides the material's catalogue kerf and the stock sheet, so every check, the nesting and the cut files use
+    the real machine."""
     data, src, off, diags = parse_source(text)
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
@@ -1270,8 +1278,8 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
     try:
         with _budget(time_budget):
             if 'components' in data and 'boards' not in data:
-                return _compile_native(data, design_id, result, run_production)
-            return _compile_v1(data, src, off, design_id, result, run_production)
+                return _compile_native(data, design_id, result, run_production, machine)
+            return _compile_v1(data, src, off, design_id, result, run_production, machine)
     except TimeBudgetExceeded as e:
         result['ok'], result['design'] = False, None
         result['diagnostics'].append(diag('error', 'COMPILE_TIMEOUT', f'{str(e).capitalize()}. The design is too complex to '
@@ -1304,11 +1312,19 @@ def _preview(comps, design=None):
     return out
 
 
-def _compile_native(data, design_id, result, run_production):
+def _machine_sheet(machine):
+    return {'width': float(machine['sheet']['width']), 'height': float(machine['sheet']['height']),
+            'spacing': max(3.0, float(machine['kerf']))}     # a laser needs little room between parts
+
+
+def _compile_native(data, design_id, result, run_production, machine=None):
     result['format'] = 'native'
     d = dict(data)
     d.setdefault('id', design_id)
     design = normalize_design(d)
+    if machine:
+        design['material']['kerf'] = float(machine['kerf'])
+        design['sheet'] = _machine_sheet(machine)
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
     _progress('geometry', 1, 1, **({'preview': _preview(design['components'], design)} if _reporting() else {}))
@@ -1322,7 +1338,7 @@ def _compile_native(data, design_id, result, run_production):
     return _finish(design, result, {}, run_production)
 
 
-def _compile_v1(data, src, off, design_id, result, run_production):
+def _compile_v1(data, src, off, design_id, result, run_production, machine=None):
     diags = result['diagnostics']
     result['format'] = FORMAT
     if data.get('format') not in (None, FORMAT):
@@ -1332,17 +1348,23 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     if not product.get('name'):
         diags.append(diag('warning', 'PRODUCT_NAME', 'Add "product": {"name": ...} so the design can be identified.',
                           line=_key_line(src, 'product', off)))
+    # From here on a problem is reported and compiling carries on with the rest of the design, so one compile shows
+    # every problem. Only what no geometry can be built without (material thickness, any valid board) stops it.
     mat = _check_material(data.get('material'), diags, src, off)
     if mat is None:
         return result
+    if machine:
+        mat['kerf'] = float(machine['kerf'])   # the machine's real kerf, not the catalogue value
     mounting = product.get('mounting', data.get('mounting'))
     if mounting is not None and mounting not in MOUNTINGS:
         diags.append(diag('error', 'MOUNTING', f'"product.mounting" must be one of {list(MOUNTINGS)}.',
                           line=_key_line(src, 'mounting', off)))
-        return result
+        mounting = None
     boards = _check_boards(data, mat, diags, src, off)
-    if any(d['severity'] == 'error' for d in diags):
+    if not boards:
         return result
+    rejected = {d['board'] for d in diags if d['severity'] == 'error' and d.get('board') and d['board'] not in boards}
+    held = set(rejected)               # boards whose problems are already reported (no follow-on floating / collision)
     source_map = {bid: bd.line for bid, bd in boards.items()}
 
     # Audit for non-integer floating-point dimensions (master precision directive)
@@ -1367,9 +1389,10 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     auto = raw_conns is None or raw_conns == 'auto'
     if not auto and not isinstance(raw_conns, list):
         diags.append(diag('error', 'CONNECTIONS_INVALID', '"connections" must be an array (or "auto" to infer them from '
-                          'the geometry).', line=_key_line(src, 'connections', off)))
-        return result
-    norm = [] if auto else _resolve_connections(raw_conns, boards, diags, src, off)
+                          'the geometry). The rest was checked with connections inferred from the geometry.',
+                          line=_key_line(src, 'connections', off)))
+        raw_conns, auto = None, True
+    norm = [] if auto else _resolve_connections(raw_conns, boards, diags, src, off, rejected, held)
     if auto or data.get('auto_connect'):
         have = {frozenset((c['board'], c['into'])) for c in norm}
         inferred = [c for c in _infer_connections(boards, comps) if frozenset((c['board'], c['into'])) not in have]
@@ -1389,7 +1412,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
     joinery = data.get('joinery') or ('interlocking' if types <= GLUE_FREE_TYPES else 'glue_allowed')
     if joinery not in JOINERY_MODES:
         diags.append(diag('error', 'JOINERY', f'"joinery" must be one of {list(JOINERY_MODES)}.', line=_key_line(src, 'joinery', off)))
-        return result
+        joinery = 'interlocking' if types <= GLUE_FREE_TYPES else 'glue_allowed'
     if joinery == 'interlocking' and not types <= GLUE_FREE_TYPES:
         diags.append(diag('error', 'GLUE_JOINT_IN_INTERLOCKING', f"Connections of type {sorted(types - GLUE_FREE_TYPES)} need glue or "
                           f"hardware, but \"joinery\" is \"interlocking\" (glue-free). Use tab_slot / finger / cross_lap or set "
@@ -1397,8 +1420,9 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                           line=_key_line(src, 'joinery', off),
                           fixes=[{'id': 'joinery-glue', 'title': 'Set "joinery": "glue_allowed"', 'safe': False,
                                   'edits': [{'field': 'joinery', 'value': 'glue_allowed'}]}]))
-        return result
+        joinery = 'glue_allowed'       # reported; the joints are still built and checked
     joints, seen = [], set()
+    conn_pairs = {c['id']: (c['board'], c['into']) for c in norm if isinstance(c.get('id'), str)}
     # Pass 1: finger and cross-lap joints cut both boards' outlines (before any tab is placed on them)
     cuts = {}
     for c in norm:
@@ -1428,6 +1452,7 @@ def _compile_v1(data, src, off, design_id, result, run_production):
             _fit_id(f"C{(i if i is not None else norm.index(c)) + 1}-{a}-{b}")
         cline = _id_line(src, c['id'], off) if c.get('id') else None
         source_map[cid] = cline
+        conn_pairs[cid] = (a, b)
         if cid in seen:
             diags.append(diag('error', 'DUPLICATE_CONNECTION_ID', f"Connection id '{cid}' is used twice.", connection=cid, line=cline))
             continue
@@ -1526,22 +1551,29 @@ def _compile_v1(data, src, off, design_id, result, run_production):
             if _add_fasteners(j, c, cid, cline, diags):
                 joints.append((j, c, cid, cline))
 
-    if any(d['severity'] == 'error' for d in diags):
-        result['source_map'] = source_map
-        return result
-
-    try:
-        design = normalize_design({
-            'id': design_id, 'name': str(product.get('name') or 'AI design')[:200],
-            'description': str(product.get('description') or '')[:2000], 'joinery': joinery, 'material': mat,
-            'mounting': mounting, 'components': list(comps.values()), 'joints': []})
-    except SchemaError as e:          # a board field the v1 checks pass through (e.g. edge_banding thickness)
-        m = re.match(r'components\[(\d+)\]', e.path or '')
-        bid = list(comps)[int(m.group(1))] if m else None
-        diags.append(diag('error', 'BOARD_INVALID', f"Board '{bid}': {e}" if bid else str(e), board=bid,
-                          line=boards[bid].line if bid else None))
-        return result
-    design['sheet'] = _auto_sheet(design, mat, data)
+    # errors so far left boards / connections out: the design is built for checking and preview, but it is partial
+    # (saving / importing / producing it would silently drop parts)
+    result['partial'] = any(d['severity'] == 'error' for d in diags)
+    while True:
+        try:
+            design = normalize_design({
+                'id': design_id, 'name': str(product.get('name') or 'AI design')[:200],
+                'description': str(product.get('description') or '')[:2000], 'joinery': joinery, 'material': mat,
+                'mounting': mounting, 'components': list(comps.values()), 'joints': []})
+            break
+        except SchemaError as e:      # a board field the v1 checks pass through (e.g. edge_banding thickness)
+            m = re.match(r'components\[(\d+)\]', e.path or '')
+            bid = list(comps)[int(m.group(1))] if m else None
+            diags.append(diag('error', 'BOARD_INVALID', f"Board '{bid}': {e}" if bid else str(e), board=bid,
+                              line=boards[bid].line if bid else None))
+            if bid is None or len(comps) == 1:
+                result['source_map'] = source_map
+                return result
+            del comps[bid]             # left out; the rest of the design is still built and checked
+            result['partial'] = True
+            held.add(bid)
+            joints = [jt for jt in joints if jt[0]['a'] in comps and jt[0]['b'] in comps]
+    design['sheet'] = _machine_sheet(machine) if machine else _auto_sheet(design, mat, data)
     design['source'] = {'format': FORMAT, 'code': None}
 
     for n, (j, c, cid, cline) in enumerate(joints):
@@ -1582,7 +1614,8 @@ def _compile_v1(data, src, off, design_id, result, run_production):
                               f"product.overall.{name} is {ov[name]:g} mm.", path=f'product.overall.{name}',
                               line=_key_line(src, name, off)))
     result['source_map'] = source_map
-    return _finish(design, result, boards, run_production, raw_conns if isinstance(raw_conns, list) else None)
+    return _finish(design, result, boards, run_production, raw_conns if isinstance(raw_conns, list) else None,
+                   held=held, conn_pairs=conn_pairs)
 
 
 def _remove_fix(raw_conns, i, cid):
@@ -1592,21 +1625,34 @@ def _remove_fix(raw_conns, i, cid):
              'edits': [{'field': 'connections', 'value': [x for k, x in enumerate(raw_conns) if k != i]}]}]
 
 
-def _finish(design, result, boards, run_production, raw_conns=None):
+def _finish(design, result, boards, run_production, raw_conns=None, held=(), conn_pairs=None):
     from .support import support_report
     from .views import model3d, production_package
     diags = result['diagnostics']
+    # connections that failed (resolving, placing or joining) are reported; the boards they would have held are not
+    # reported again as loose, and the pair is not reported again as colliding / almost touching
+    held, failed_pairs = set(held), set()
+    for d in diags:
+        if d['severity'] == 'error' and d.get('connection'):
+            pair = (conn_pairs or {}).get(d['connection'])
+            if pair:
+                failed_pairs.add(frozenset(pair))
+                held.update(pair)
+            elif d.get('board'):
+                held.add(d['board'])
     report = validate_design(design)
     _progress('model', 0, 2)
     support = support_report(design)
     _progress('model', 1, 2)
     known = {(d.get('connection'), d['code']) for d in diags}
-    held = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
+    resting = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
     for i in report['issues']:
         if i['code'] in ('JOINT_NOT_JOINED',):
             continue
-        if i['code'] == 'FLOATING_COMPONENT' and set(i['components']) <= held:
+        if i['code'] == 'FLOATING_COMPONENT' and set(i['components']) <= resting:
             continue                    # reported more precisely below as RESTING_COMPONENT / UNSUPPORTED_COMPONENT
+        if _follow_on(i, held, failed_pairs):
+            continue                    # a consequence of an error already reported for that board / connection
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
         fixes = None
         sug = i.get('suggestion')
@@ -1628,6 +1674,8 @@ def _finish(design, result, boards, run_production, raw_conns=None):
                           line=boards[comp].line if comp in boards else None, components=i.get('components'),
                           location=i.get('location'), fixes=fixes))
     for i in support['issues']:
+        if _follow_on(i, held, failed_pairs) or (held and i['code'] in _STABILITY):
+            continue                    # stability of a partly built structure says nothing about the real product
         comp = next((c for c in i['components'] if c in boards), None)
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp, line=boards[comp].line if comp else None,
                           components=i['components'] or None, location=i.get('location')))
@@ -1650,11 +1698,28 @@ def _finish(design, result, boards, run_production, raw_conns=None):
         except Exception as e:
             diags.append(diag('warning', 'PRODUCTION_UNAVAILABLE', f'Cut sheets could not be computed: {e}'))
     errors = sum(1 for d in diags if d['severity'] == 'error')
+    if errors and result.get('layout'):
+        # the production checks only see the part of the design that compiled: any compile error blocks production
+        result['layout']['ready_for_production'] = False
+        result['layout']['blocking_issues'] = ([d for d in diags if d['severity'] == 'error'] + result['layout']['blocking_issues'])[:50]
     result['summary'] = {'boards': len(design['components']), 'joints': len(design['joints']),
                          'joined': sum(1 for j in design['joints'] if j.get('status') == 'joined'),
                          'errors': errors, 'warnings': sum(1 for d in diags if d['severity'] == 'warning')}
     result['ok'] = errors == 0
     return result
+
+
+_STABILITY = ('CANTILEVER', 'TIP_OVER', 'LOW_STABILITY_MARGIN', 'RESTING_OFF_SUPPORT')
+
+
+def _follow_on(issue, held, failed_pairs):
+    """True for a validation / support issue that only restates an error already reported: boards left loose because
+    their connection failed, or two boards colliding / almost touching where their connection was rejected."""
+    comps = issue.get('components') or []
+    if issue['code'] in ('COLLISION', 'NEAR_MISS_GAP') and len(comps) >= 2 and frozenset(comps[:2]) in failed_pairs:
+        return True
+    return issue['code'] in ('FLOATING_COMPONENT', 'RESTING_COMPONENT', 'UNSUPPORTED_COMPONENT', 'UNJOINED_TAB') \
+        and bool(comps) and set(comps) <= set(held)
 
 
 def apply_code_fix(text, fix):
