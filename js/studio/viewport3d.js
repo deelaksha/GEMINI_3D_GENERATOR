@@ -109,6 +109,9 @@ export class Viewport3D {
     this.showEdges = true;
     this.selected = null;
     this.bounds = null;
+    this.moveMode = false;            // drag a board to pull it out (Shift + drag works in any mode)
+    this.pulled = new Map();          // board id -> pull offset kept across recompiles
+    this.partners = new Set();
 
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -151,6 +154,13 @@ export class Viewport3D {
     this.sailTex = woodTexture('#efe8dc', 7);
     this.edgeTex = plyEdgeTexture();
     this.raycaster = new THREE.Raycaster();
+    this.links = new THREE.Group();   // joint lines of the board that is pulled out
+    this.links.renderOrder = 10;
+    this.scene.add(this.links);
+    this.info = document.createElement('div');
+    this.info.className = 'pull-info';
+    this.info.hidden = true;
+    container.appendChild(this.info);
 
     this._bindPointer();
     new ResizeObserver(() => this.resize()).observe(container);
@@ -213,6 +223,7 @@ export class Viewport3D {
       it.edges.geometry.dispose();
       it.edges.material.dispose();
       it.marks?.forEach((m) => { m.geometry.dispose(); m.material.dispose(); });
+      if (it.pull.lengthSq() > 0) this.pulled.set(it.comp.id, it.pull.clone());
     }
     this.root.clear();
     this.items.clear();
@@ -239,8 +250,11 @@ export class Viewport3D {
       mesh.userData.id = comp.id;
       this.root.add(outer);
       const wc = new THREE.Vector3(...comp.world_bounds.min).add(new THREE.Vector3(...comp.world_bounds.max)).multiplyScalar(0.5);
-      this.items.set(comp.id, { comp, mesh, edges, marks, outer, dir: wc.sub(this.center) });
+      this.items.set(comp.id, { comp, mesh, edges, marks, outer, dir: wc.sub(this.center), base: new THREE.Vector3(),
+        pull: (this.pulled.get(comp.id) || new THREE.Vector3()).clone(), matrix: inner.matrix.clone() });
     }
+    this.pulled.clear();
+    this.jointPts = (model.joints || []).filter((j) => this.items.has(j.a) && this.items.has(j.b)).map((j) => ({ j, p: this._jointPoint(j) }));
     this._stage(model.bounds);
     this.setExplode(this.explode);
     this.setSelected(this.selected);
@@ -310,8 +324,86 @@ export class Viewport3D {
     const k = f * this.radius * 0.45;
     for (const it of this.items.values()) {
       const d = it.dir.lengthSq() > 1e-6 ? it.dir.clone().normalize() : new THREE.Vector3(0, 1, 0);
-      it.outer.position.copy(d.multiplyScalar(k));
+      it.base.copy(d.multiplyScalar(k));
+      it.outer.position.copy(it.base).add(it.pull);
     }
+    this._showLinks();
+  }
+
+  /** World point where a joint sits at rest: the centre of its slot in the receiving board, else the middle of the
+   *  overlap of the two boards' boxes (finger, cross-lap and hinge joints). */
+  _jointPoint(j) {
+    const b = this.items.get(j.b), a = this.items.get(j.a);
+    const f = j.slot && b.comp.features?.find((x) => x.id === j.slot);
+    if (f?.center) return new THREE.Vector3(f.center[0], f.center[1], 0).applyMatrix4(b.matrix);
+    const lo = (c) => new THREE.Vector3(...c.world_bounds.min), hi = (c) => new THREE.Vector3(...c.world_bounds.max);
+    return lo(a.comp).max(lo(b.comp)).add(hi(a.comp).min(hi(b.comp))).multiplyScalar(0.5);
+  }
+
+  /** Pull one board out of the assembly (offset in mm, world axes) or put it back (null). */
+  setPull(id, v) {
+    const it = this.items.get(id);
+    if (!it) return;
+    it.pull.copy(v || new THREE.Vector3());
+    it.outer.position.copy(it.base).add(it.pull);
+    this._showLinks();
+  }
+
+  resetPulls() {
+    for (const it of this.items.values()) it.pull.set(0, 0, 0);
+    this.setExplode(this.explode);
+  }
+
+  setMoveMode(on) {
+    this.moveMode = on;
+    this.renderer.domElement.style.cursor = on ? 'grab' : '';
+  }
+
+  /** Lines from each joint of the pulled-out (else the selected) board to where it plugs into its partner. */
+  _showLinks() {
+    this.links.children.forEach((o) => { o.geometry.dispose(); o.material.dispose(); });
+    this.links.clear();
+    const out = [...this.items.values()].filter((it) => it.pull.lengthSq() > 0.01);
+    const focus = this.items.get(this.dragging?.id) || out.find((it) => it.comp.id === this.selected) || out[out.length - 1];
+    const prev = [...this.partners].join();
+    this.partners = new Set();
+    if (!focus) {
+      this.info.hidden = true;
+      if (prev) this.setSelected(this.selected);
+      return;
+    }
+    const id = focus.comp.id, pos = [], col = [], rows = [];
+    const ok = new THREE.Color(0x22c55e), bad = new THREE.Color(0xef4444);
+    for (const { j, p } of this.jointPts) {
+      if (j.a !== id && j.b !== id) continue;
+      const other = j.a === id ? j.b : j.a, o = this.items.get(other);
+      const pa = p.clone().add(focus.base).add(focus.pull), pb = p.clone().add(o.base).add(o.pull);
+      const c = j.status === 'joined' ? ok : bad;
+      pos.push(...pa.toArray(), ...pb.toArray());
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      this.partners.add(other);
+      rows.push({ other, type: j.type, status: j.status });
+    }
+    if (pos.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true }));
+      const dots = new THREE.Points(g.clone(), new THREE.PointsMaterial({ vertexColors: true, size: 7, sizeAttenuation: false, depthTest: false }));
+      lines.renderOrder = dots.renderOrder = 10;
+      this.links.add(lines, dots);
+    }
+    const seen = new Map();
+    for (const r of rows) {
+      const k = `${r.other}|${r.type}|${r.status}`;
+      seen.set(k, { ...r, n: (seen.get(k)?.n || 0) + 1 });
+    }
+    const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    this.info.innerHTML = `<b>${esc(id)}</b> — ${rows.length ? `${rows.length} joint${rows.length === 1 ? '' : 's'}` : 'no joints: not attached to anything'}`
+      + [...seen.values()].map((r) => `<div class="${r.status === 'joined' ? 'ok' : 'bad'}">${r.status === 'joined' ? '●' : '✕'} ${esc(r.other)} · ${esc(r.type)}${r.n > 1 ? ` ×${r.n}` : ''} · ${esc(r.status)}</div>`).join('')
+      + '<div class="hint">Double-click a board to put it back</div>';
+    this.info.hidden = false;
+    if ([...this.partners].join() !== prev) this.setSelected(this.selected);
   }
 
   setEdges(on) {
@@ -320,12 +412,18 @@ export class Viewport3D {
   }
 
   setSelected(id) {
+    const changed = id !== this.selected;
     this.selected = id;
+    if (changed && !this._linking && [...this.items.values()].some((it) => it.pull.lengthSq() > 0.01)) {
+      this._linking = true;           // the pulled-out board whose joints are shown follows the selection
+      this._showLinks();
+      this._linking = false;
+    }
     for (const [cid, it] of this.items) {
-      const sel = cid === id;
+      const sel = cid === id, partner = this.partners.has(cid);
       it.mesh.material.forEach((m) => {
-        m.emissive.setHex(sel ? 0x1d4ed8 : it.comp.state === 'error' ? 0x5a0d10 : 0x000000);
-        m.emissiveIntensity = sel ? 0.32 : 0.25;
+        m.emissive.setHex(sel ? 0x1d4ed8 : partner ? 0x0f766e : it.comp.state === 'error' ? 0x5a0d10 : 0x000000);
+        m.emissiveIntensity = sel ? 0.32 : partner ? 0.35 : 0.25;
       });
       it.edges.material.color.setHex(sel ? SELECT_EDGE : STATE_EDGE[it.comp.state] || STATE_EDGE.joined);
       it.edges.material.opacity = sel ? 1 : 0.7;
@@ -333,23 +431,59 @@ export class Viewport3D {
     }
   }
 
-  _pick(ev) {
+  _ray(ev) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const m = new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(m, this.camera);
-    const hits = this.raycaster.intersectObjects([...this.items.values()].map((i) => i.mesh), false);
-    return hits[0]?.object.userData.id || null;
+    return this.raycaster;
+  }
+
+  _hit(ev) {
+    return this._ray(ev).intersectObjects([...this.items.values()].map((i) => i.mesh), false)[0] || null;
+  }
+
+  _pick(ev) {
+    return this._hit(ev)?.object.userData.id || null;
   }
 
   _bindPointer() {
     const el = this.renderer.domElement;
     let down = null;
-    el.addEventListener('pointerdown', (e) => (down = [e.clientX, e.clientY]));
+    // capture phase: a drag that pulls a board must start before the orbit controls see the press
+    el.addEventListener('pointerdown', (e) => {
+      down = [e.clientX, e.clientY];
+      if (e.button !== 0 || !(this.moveMode || e.shiftKey)) return;
+      const hit = this._hit(e);
+      if (!hit) return;
+      e.stopImmediatePropagation();
+      const id = hit.object.userData.id, it = this.items.get(id);
+      const normal = this.camera.getWorldDirection(new THREE.Vector3());
+      this.dragging = { id, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point), start: hit.point.clone(),
+        pull: it.pull.clone() };
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = 'grabbing';
+      this.onSelect?.(id);
+    }, { capture: true });
+    el.addEventListener('pointermove', (e) => {
+      if (this.dragging) {
+        const p = this._ray(e).ray.intersectPlane(this.dragging.plane, new THREE.Vector3());
+        if (p) this.setPull(this.dragging.id, this.dragging.pull.clone().add(p.sub(this.dragging.start)));
+        return;
+      }
+      if (!down) this.onHover?.(this._pick(e), e);
+    });
     el.addEventListener('pointerup', (e) => {
-      if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 4) this.onSelect?.(this._pick(e));
+      if (this.dragging) {
+        this.dragging = null;
+        el.style.cursor = this.moveMode ? 'grab' : '';
+        this._showLinks();
+      } else if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 4) this.onSelect?.(this._pick(e));
       down = null;
     });
-    el.addEventListener('pointermove', (e) => { if (!down) this.onHover?.(this._pick(e), e); });
+    el.addEventListener('dblclick', (e) => {
+      const id = this._pick(e);
+      if (id && this.items.get(id).pull.lengthSq() > 0) this.setPull(id, null);
+    });
     el.addEventListener('pointerleave', () => this.onHover?.(null));
   }
 }

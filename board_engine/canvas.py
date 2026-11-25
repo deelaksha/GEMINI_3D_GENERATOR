@@ -1472,7 +1472,7 @@ def _preview(comps, design=None):
 
 
 # found by the geometric inspection; a move may undo something deliberate (an inset, an asymmetry), so always confirm
-_EYE_CHECKS = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC')
+_EYE_CHECKS = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC', 'OFF_CENTRE', 'MISMATCHED_PAIR', 'UNJOINED_CONTACT')
 
 
 def _laid_out(raw):
@@ -1850,9 +1850,10 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     conn = analyze(design, plates, support)
     bodies = {cid: ([float(v) for v in bd.raw['position']], [bd.raw['position'][k] + bd.raw['size'][k] for k in range(3)])
               for cid, bd in boards.items() if _laid_out(bd.raw)}
-    insp = inspect(plates, {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined'}, bodies,
-                   conn['groups'])
+    insp = inspect(plates, design['joints'], bodies)
     covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
+    for d in _unattached(conn, diags, conn_pairs or {}, boards):
+        diags.append(d)
     known = {(d.get('connection'), d['code']) for d in diags}
     resting = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
     for i in report['issues'] + conn['issues'] + insp['issues']:
@@ -1932,6 +1933,152 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
 
 
 _STABILITY = ('CANTILEVER', 'TIP_OVER', 'LOW_STABILITY_MARGIN', 'RESTING_OFF_SUPPORT')
+
+
+# what to do when a connection could not be made, by the code that rejected it ({a}: the board, {b}: the other one)
+_ATTACH_HINT = {
+    'NO_CONTACT': "an EDGE of '{a}' must sit flat against the broad FACE of '{b}' for a tab_slot. {parallel}",
+    'NOT_IN_CONTACT': "an EDGE of '{a}' must sit flat against the broad FACE of '{b}' for a tab_slot. {parallel}",
+    'CONNECTION_GAP': "'{a}' does not reach '{b}': move it so its joining edge touches '{b}' exactly (gap 0).",
+    'CONNECTION_OVERLAP': "'{a}' runs into '{b}': move or shorten it so its joining edge just touches '{b}'s face.",
+    'SLOT_ALREADY_USED': "its tab would land in a slot another board's tab already uses: move '{a}' so no other board "
+                         "joins '{b}' at the same place (keep >= 20 mm between neighbouring joints), or drop the clash.",
+    'TAB_OUTSIDE_RECEIVER': "part of its joining edge lies beyond the outline of '{b}', so a tab lands where '{b}' has "
+                            "no material: keep the whole joining edge of '{a}' inside '{b}'s outline (shorten or move "
+                            "'{a}'), or use fewer tabs.",
+    'MISSING_SLOT': "'{b}' cannot get the slot this tab needs there (it would cut into an edge, an opening or another "
+                    "slot): move '{a}' a little along '{b}', or use fewer tabs.",
+    'COLLISION': "'{a}' and '{b}' occupy the same space: move one so they only touch.",
+}
+
+
+def _slot_neighbour(a, recv, conn_pairs, boards, thin):
+    """The board whose slot through `recv` is too close to (or the same as) the one `a` needs, the clearance between
+    the two footprints on `recv`, and the smallest move of `a` (staying on `recv`) that leaves >= 2 board
+    thicknesses between `a` and EVERY board that joins `recv`."""
+    k_recv = thin(recv)
+    ok = lambda x: x in boards and isinstance(boards[x].raw.get('size'), list) and isinstance(boards[x].raw.get('position'), list)
+    if k_recv is None or not ok(a) or not ok(recv):
+        return None
+    box = lambda x: (boards[x].raw['position'], [boards[x].raw['position'][k] + boards[x].raw['size'][k] for k in range(3)])
+    plane = [k for k in range(3) if k != k_recv]
+    want = 2 * boards[a].t
+    others = {pb if pa == recv else pa for pa, pb in conn_pairs.values() if recv in (pa, pb)} - {a, recv}
+    others = [c for c in others if ok(c)]
+    (alo, ahi), (rlo, rhi) = box(a), box(recv)
+
+    def sep(lo, hi, c):
+        clo, chi = box(c)
+        return max(max(clo[k] - hi[k], lo[k] - chi[k]) for k in plane)
+    near = [(sep(alo, ahi, c), c) for c in others]
+    near = [x for x in near if x[0] < want]
+    if not near:
+        return None
+    s0, c = min(near)
+    cands = []
+    for k in plane:
+        for o in others:
+            olo, ohi = box(o)
+            for mv in (ohi[k] + want - alo[k], olo[k] - want - ahi[k]):
+                lo = [alo[j] + (mv if j == k else 0) for j in range(3)]
+                hi = [ahi[j] + (mv if j == k else 0) for j in range(3)]
+                if rlo[k] <= lo[k] and hi[k] <= rhi[k] and all(sep(lo, hi, x) >= want for x in others):
+                    cands.append((abs(mv), k, mv))
+    clo, chi = box(c)
+    if not cands:                       # nowhere on recv clears all its joints: report the clash without a move
+        return (c, s0, None, None, alo, ahi, clo, chi)
+    _m, k, mv = min(cands)
+    return (c, s0, k, mv, alo, ahi, clo, chi)
+
+
+def _move_text(name, nb, recv, origin, whole=False):
+    c, _sep, k, mv, alo, ahi, clo, chi = nb
+    if mv is None:
+        return (f"There is no free place on '{origin.get(recv, recv)}' that clears every other joint there: remove "
+                f"'{name}', make it smaller, or put it on another board.")
+    ax = 'xyz'[k]
+    return (f"Move '{name}'{' (the whole repeat)' if whole else ''} by {mv:+g} mm along {ax}: {name} {ax} "
+            f"{alo[k]:g}..{ahi[k]:g}, {origin.get(c, c)} {ax} {clo[k]:g}..{chi[k]:g} -> {name} {ax} {alo[k] + mv:g}.."
+            f"{ahi[k] + mv:g} (checked clear of every other joint on '{origin.get(recv, recv)}' and inside it).")
+
+
+def _unattached(conn, diags, conn_pairs, boards):
+    """One clear error per board (or per repeated board) that is not attached to the main structure although
+    connections were written for it: every one of them failed, so the part is only placed there and would fall off.
+    Lists each attempted connection, why it failed and what to change."""
+    main = set(conn['main'])
+    failed = {}                         # board -> [(connection, other board, code, message)]
+    for d in diags:
+        if d['severity'] != 'error' or not d.get('connection') or d['connection'] not in conn_pairs:
+            continue
+        a, b = conn_pairs[d['connection']]
+        for x, y in ((a, b), (b, a)):
+            failed.setdefault(x, []).append((d['connection'], y, d['code'], d['message']))
+    origin = _ORIGIN.get()
+    by_source = {}
+    for g in conn['groups']:
+        if set(g) & main:
+            continue
+        for bid in g:
+            if bid in failed:
+                by_source.setdefault((origin.get(bid, bid), tuple(sorted(g)) if len(g) > 1 else ()), []).append(bid)
+    out = []
+    thin = lambda x: next((k for k in range(3) if x in boards and abs(boards[x].raw['size'][k] - boards[x].t) < 0.01), None) \
+        if x in boards and isinstance(boards[x].raw.get('size'), list) else None
+    for (src, group), ids in by_source.items():
+        total = sum(1 for x in boards if origin.get(x, x) == src)
+        partial = 1 < total and len(ids) < total     # some copies of a repeat work, some do not
+        rows, seen, clashes = [], set(), []
+        for bid in ids:
+            for cid, other, code, msg in failed[bid]:
+                nb0 = _slot_neighbour(bid, other, conn_pairs, boards, thin) if code in ('SLOT_ALREADY_USED', 'MISSING_SLOT') else None
+                if partial and nb0:
+                    if (bid, nb0[0]) not in {(x[0], x[5]) for x in clashes}:
+                        clashes.append((bid, origin.get(nb0[0], nb0[0]), nb0[1], origin.get(other, other), nb0, nb0[0]))
+                    continue
+                key = (origin.get(cid, cid), origin.get(other, other), code if not nb0 else 'slot')
+                if key in seen:
+                    continue
+                seen.add(key)
+                par = (f"Both boards are flat in the same direction (their {'xyz'[thin(bid)]} sizes are the thickness), so "
+                       f"they would lie face to face, and two parallel faces cannot be joined: make '{src}' stand upright "
+                       f"on '{origin.get(other, other)}' (its thickness along another axis) so its bottom edge tabs into it."
+                       if thin(bid) is not None and thin(bid) == thin(other) else
+                       "Move it so that edge touches the face exactly, or pick the board it really sits on.")
+                hint = _ATTACH_HINT.get(code, "{msg}").format(a=src, b=origin.get(other, other), parallel=par, msg=msg)
+                nb = nb0
+                if nb:
+                    c, sep, k, mv, alo, ahi, clo, chi = nb
+                    hint = (f"its slot through '{origin.get(other, other)}' would be "
+                            + ("the same slot" if sep < 0 else f"only {sep:.1f} mm from the slot") +
+                            f" of '{origin.get(c, c)}' (which joins '{origin.get(other, other)}' there too; slots need >= "
+                            f"{2 * boards[bid].t:g} mm between them). " + _move_text(src, nb, other, origin))
+                rows.append(f"connection '{origin.get(cid, cid)}' to '{origin.get(other, other)}' failed ({code}): {hint}")
+        if clashes:
+            where = '; '.join(f"'{b}' is {'on' if sep < 0 else f'{sep:.1f} mm from'} the slot of '{c}' in '{r}'"
+                              for b, c, sep, r, _nb, _c in clashes[:6])
+            same = {(nb[2], None if nb[3] is None else round(nb[3], 3)) for *_x, nb, _c in clashes}
+            if len(same) == 1 and None not in next(iter(same)):     # one move clears every failing copy
+                rows.insert(0, f"{where}. " + _move_text(src, clashes[0][4], clashes[0][3], origin, whole=True)
+                            + f" Slots need >= {2 * boards[ids[0]].t:g} mm between them.")
+            elif all(nb[3] is None for *_x, nb, _c in clashes):
+                rows.insert(0, f"{where}. There is no free place on '{clashes[0][3]}' for these copies that keeps "
+                               f">= {2 * boards[ids[0]].t:g} mm from every other joint there: remove these copies (split the "
+                               f"repeat), make the part smaller, or put it on another board.")
+            else:
+                rows.insert(0, f"the repeat puts these copies where another board already joins: {where}. Change the "
+                               f"repeat's position / step so every copy stays >= {2 * boards[ids[0]].t:g} mm from those "
+                               f"boards, or split the repeat into several so no copy lands there.")
+        n = (f" ({'all ' if len(ids) == total else ''}{len(ids)} of {total} copies: {', '.join(ids[:5])}"
+             f"{'...' if len(ids) > 5 else ''})" if total > 1 else '')
+        what = (f"'{src}'{n} is" if not group else
+                f"The group {', '.join(group[:6])}{'...' if len(group) > 6 else ''} is")
+        out.append(diag('error', 'UNATTACHED_BOARD',
+                        f"{what} NOT ATTACHED to the model: none of its connections works, so it is only placed there "
+                        f"and would fall off when assembled. Fix: " + ' | '.join(rows[:4]),
+                        board=ids[0], line=boards[ids[0]].line if ids[0] in boards else None,
+                        components=sorted(set(ids) | set(group)), copies=len(ids)))
+    return out
 
 
 def _follow_on(issue, held, failed_pairs):

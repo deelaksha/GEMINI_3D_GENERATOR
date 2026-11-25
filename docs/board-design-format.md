@@ -204,6 +204,17 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
   (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
 - Sizes written in the requirements ("length 1200 mm", "80 cm wide", "1200 x 600 x 750 mm" = length x depth x height)
   are checked against the built design (REQUIREMENT_MISMATCH).
+- Every board must be ATTACHED by a connection that actually works, or it is an UNATTACHED_BOARD error (it would
+  fall off). A tab_slot needs an EDGE of "board" lying on the broad FACE of "into": two boards lying flat on each other
+  (both with their thickness along the same axis) cannot be joined; stand small parts (fittings, bollards, benches,
+  funnels, hatches) upright on the face they sit on. The whole joining edge must lie inside the outline of "into". Two
+  slots in one board must be >= 2 × thickness apart: never put a part exactly above / below another part that joins
+  the same board from the other side, and keep repeated parts clear of the other joints in that board.
+- The assembled model is also inspected by eye-like checks (warnings): VISIBLE_GAP (a 0.5-10 mm slit inside one
+  structure), UNJOINED_CONTACT (a board resting on another with no connection), MISALIGNED (edges almost flush, off by
+  0.5-5 mm), OFF_CENTRE (overhangs nearly but not exactly equal), MISMATCHED_PAIR (twin legs / sides / shelves that
+  differ by 0.5-5 mm), UNEVEN_SPACING and ASYMMETRIC. Make edges exactly flush or clearly offset (>= 5 mm), twins
+  exactly equal, symmetric parts exactly symmetric, and connect every board that rests on another.
 - A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
   A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
   `"product": {"mounting": "wall"}` and give the product a back rail or back panel at z = 0.

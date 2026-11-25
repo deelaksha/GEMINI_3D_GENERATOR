@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
   <link rel="stylesheet" href="css/studio.css?v=2.5" />
-  <link rel="stylesheet" href="css/canvas.css?v=2.22" />
+  <link rel="stylesheet" href="css/canvas.css?v=2.24" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -154,6 +154,8 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
         <div class="view view-3d pv" data-pv-id="3d">
           <div class="view-tools">
             <div class="seg tiny"><button data-cam="iso">Iso</button><button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="top">Top</button></div>
+            <button class="tool txt" id="btn-move-parts" aria-pressed="false" title="Drag a board to pull it out and see where and how it is joined (Shift + drag works any time). Double-click a board to put it back.">Move parts</button>
+            <button class="tool txt" id="btn-reset-parts" title="Put every pulled-out board back">Reset parts</button>
             <button class="tool" id="btn-fit-3d" title="Fit to view"><svg><use href="#i-fit"/></svg></button>
             <button class="tool" id="btn-full-3d" title="Full screen"></button>
           </div>
@@ -203,6 +205,6 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
     <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
     <div class="dlg-body" id="import-body"></div></dialog>
   <div class="toast" id="toast" role="status"></div>
-  <script type="module" src="js/canvas/main.js?v=2.23"></script>
+  <script type="module" src="js/canvas/main.js?v=2.24"></script>
 </body>
 </html>

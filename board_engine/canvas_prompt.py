@@ -887,6 +887,17 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
   (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
 - Sizes written in the requirements ("length 1200 mm", "80 cm wide", "1200 x 600 x 750 mm" = length x depth x height)
   are checked against the built design (REQUIREMENT_MISMATCH).
+- Every board must be ATTACHED by a connection that actually works, or it is an UNATTACHED_BOARD error (it would
+  fall off). A tab_slot needs an EDGE of "board" lying on the broad FACE of "into": two boards lying flat on each other
+  (both with their thickness along the same axis) cannot be joined; stand small parts (fittings, bollards, benches,
+  funnels, hatches) upright on the face they sit on. The whole joining edge must lie inside the outline of "into". Two
+  slots in one board must be >= 2 × thickness apart: never put a part exactly above / below another part that joins
+  the same board from the other side, and keep repeated parts clear of the other joints in that board.
+- The assembled model is also inspected by eye-like checks (warnings): VISIBLE_GAP (a 0.5-10 mm slit inside one
+  structure), UNJOINED_CONTACT (a board resting on another with no connection), MISALIGNED (edges almost flush, off by
+  0.5-5 mm), OFF_CENTRE (overhangs nearly but not exactly equal), MISMATCHED_PAIR (twin legs / sides / shelves that
+  differ by 0.5-5 mm), UNEVEN_SPACING and ASYMMETRIC. Make edges exactly flush or clearly offset (>= 5 mm), twins
+  exactly equal, symmetric parts exactly symmetric, and connect every board that rests on another.
 - A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
   A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
   `"product": {{"mounting": "wall"}}` and give the product a back rail or back panel at z = 0.
@@ -1035,6 +1046,8 @@ INSTRUCTIONS (follow every one):
     d. Is any space occupied by two boards (other than boards joined with cross_lap)?
     e. Are all ids unique and at most 24 characters? Is every board held?
     e2. Walk the connections from the base board: is EVERY board reached? Does every board touch another one?
+        Is every small part (fittings, details on a deck or panel) standing with an EDGE on that face, never lying
+        flat on it, with its slot >= 2 × thickness from every other slot in that board?
     e3. Do the overall sizes match every size stated in the requirements?
     f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
@@ -1068,7 +1081,8 @@ def _problem_lines(diagnostics, limit=60):
     """One line per problem; repeats of the same code on the same board / connection are merged (with a count) so
     the AI sees every distinct problem instead of a truncated list."""
     groups = {}
-    for d in diagnostics:
+    first = ('UNATTACHED_BOARD', 'ISOLATED_BOARD', 'DISCONNECTED', 'NOT_JOINED')    # loose parts lead the list
+    for d in sorted(diagnostics, key=lambda d: d.get('code') not in first):
         if d.get('severity') not in ('error', 'warning'):
             continue
         key = (d['severity'], d['code'], d.get('board') or (d.get('components') or [None])[0], d.get('connection'))
@@ -1110,7 +1124,11 @@ REPAIR RULES (follow every one):
    touches exactly (gap 0) and no two boards overlap.
 5. Line numbers in the problems refer to YOUR PREVIOUS JSON below.
 6. {INTEGER_RULE}{f" {floats} dimension(s) below break this rule: round each to the nearest whole millimetre and keep the boards that touch them touching." if floats else ''}
-{"7. The previous reply was not valid JSON: rewrite it as strict, complete JSON (every bracket closed, commas between items, double-quoted keys and strings) with the same content." + chr(10) if syntax else ''}
+7. Every board reported as UNATTACHED_BOARD, ISOLATED_BOARD, DISCONNECTED or NOT_JOINED must be attached after your
+   fix: give it a connection that works (an EDGE of it on the broad FACE of the other board, the whole joining edge
+   inside that board's outline, its slot >= 2 × thickness from every other slot in that board) or remove the board.
+   Apply the move the problem gives; it was checked against every other joint on that board.
+{"8. The previous reply was not valid JSON: rewrite it as strict, complete JSON (every bracket closed, commas between items, double-quoted keys and strings) with the same content." + chr(10) if syntax else ''}
 SELF-CHECK before answering: every problem below is resolved; each board has exactly one size equal to its
 thickness; every connection's faces touch (gap 0); no two boards occupy the same space; ids are unique; all sizes and
 positions are whole millimetres.

@@ -8,7 +8,7 @@
  */
 /* global CodeMirror */
 import { Api, ApiError } from '../studio/api.js';
-import { Viewport3D } from '../studio/viewport3d.js';
+import { Viewport3D } from '../studio/viewport3d.js?v=2.24';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
 import { CompileLoader } from './compile-loader.js?v=2.20';
@@ -980,6 +980,13 @@ $('#btn-fit-2d').onclick = () => sheet2d.fit();
 const fs3d = bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
 bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
+$('#btn-move-parts').onclick = (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  view3d.setMoveMode(on);
+  if (on) toast('Drag a board to pull it out and see its joints · double-click puts it back');
+};
+$('#btn-reset-parts').onclick = () => view3d.resetPulls();
 $('#btn-gen-prompt').onclick = generatePrompt;
 $('#btn-change-prompt').onclick = changePrompt;
 $('#btn-repair-prompt').onclick = repairPrompt;
