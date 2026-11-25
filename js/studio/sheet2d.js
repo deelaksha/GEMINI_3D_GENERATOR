@@ -4,7 +4,7 @@
  */
 const NS = 'http://www.w3.org/2000/svg';
 const GAP = 40;
-const KIND_COLOR = { slot: 'var(--slot)', opening: 'var(--opening)', hole: 'var(--hole)' };
+const KIND_COLOR = { slot: 'var(--slot)', opening: 'var(--opening)', hole: 'var(--hole)', hinge: 'var(--cut)' };
 
 const el = (tag, attrs = {}, parent) => {
   const n = document.createElementNS(NS, tag);
@@ -61,8 +61,10 @@ export class Sheet2D {
       for (const [part, paths] of byPart) {
         const pg = el('g', { 'data-part': part, class: 'part' }, g);
         const outer = paths.find((p) => p.type === 'outer');
+        const outline = outer.part_outline || outer.points;          // shared cut lines: the part's full outline
         const inner = paths.filter((p) => p.type === 'inner');
-        const d = ptsToD(outer.points) + inner.map((p) => (p.shape === 'circle' ? circleD(p.center, p.radius) : ptsToD(p.points))).join('');
+        const holes = inner.filter((p) => p.closed !== false);         // living-hinge lines are open cuts, not holes
+        const d = ptsToD(outline) + holes.map((p) => (p.shape === 'circle' ? circleD(p.center, p.radius) : ptsToD(p.points))).join('');
         const state = states[part];
         const body = el('path', { d, 'fill-rule': 'evenodd', fill: mode === 'production' ? '#fffdf8' : '#d6b483',
           stroke: 'none', class: 'part-body' }, pg);
@@ -72,14 +74,14 @@ export class Sheet2D {
             'vector-effect': 'non-scaling-stroke' };
           if (p.feature_kind === 'opening') attrs['stroke-dasharray'] = '4 2';
           p.shape === 'circle' ? el('circle', { ...attrs, cx: p.center[0], cy: p.center[1], r: p.radius }, pg)
-            : el('path', { ...attrs, d: ptsToD(p.points) }, pg);
+            : el('path', { ...attrs, d: p.closed === false ? 'M' + p.points.map((q) => q.join(',')).join('L') : ptsToD(p.points) }, pg);
         }
         for (const p of paths.filter((q) => q.type === 'engrave' || q.type === 'pocket')) {
           el('path', { d: 'M' + p.points.map((q) => q.join(',')).join('L') + (p.closed ? 'Z' : ''), fill: 'none',
             stroke: p.type === 'pocket' ? '#15803d' : '#1d4ed8', 'stroke-width': 0.4, 'stroke-dasharray': '2 1.5',
             'vector-effect': 'non-scaling-stroke' }, pg);
         }
-        el('path', { d: ptsToD(outer.points), fill: 'none', stroke: 'var(--cut)', 'stroke-width': 1.1,
+        el('path', { d: ptsToD(outline), fill: 'none', stroke: 'var(--cut)', 'stroke-width': 1.1,
           'vector-effect': 'non-scaling-stroke', class: 'outline' }, pg);
         const lab = s.labels.find((l) => l.part === part);
         if (lab) {

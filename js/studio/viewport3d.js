@@ -77,13 +77,26 @@ export function shapeFromComponent(comp) {
 // Engraving / pockets: drawn on the +Z face (they do not cut through, so they are not holes)
 const MARK_COLOR = { engrave: 0x1d4ed8, pocket: 0x15803d };
 function marksFromComponent(comp) {
-  return (comp.marks || []).map((m) => {
+  const hinge = (comp.hinges || []).map((h) => {      // living-hinge cuts: drawn on both faces (bending is not simulated)
+    const pts = [];
+    for (const z of [comp.thickness / 2 + 0.05, -comp.thickness / 2 - 0.05]) {
+      for (const [a, b] of h.lines) pts.push(new THREE.Vector3(a[0], a[1], z), new THREE.Vector3(b[0], b[1], z));
+    }
+    return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7a1d1d }));
+  });
+  const images = (comp.images || []).map((im) => {     // raster engraving: its outline on the +z face
+    const z = comp.thickness / 2 + 0.05;
+    const [tl, tr, bl] = im.corners, br = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1]];
+    const pts = [tl, tr, br, bl].map(([x, y]) => new THREE.Vector3(x, y, z));
+    return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x1d4ed8 }));
+  });
+  return hinge.concat(images, (comp.marks || []).map((m) => {
     const z = comp.thickness / 2 + 0.05;
     const pts = m.points.map(([x, y]) => new THREE.Vector3(x, y, z));
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const mat = new THREE.LineBasicMaterial({ color: MARK_COLOR[m.kind] });
     return m.closed ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat);
-  });
+  }));
 }
 
 export class Viewport3D {

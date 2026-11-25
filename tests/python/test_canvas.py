@@ -500,7 +500,7 @@ def test_canvas_export_is_a_machine_ready_zip(client):
     assert r.status_code == 200 and r.mimetype == 'application/zip'
     z = zipfile.ZipFile(io.BytesIO(r.data))
     names = z.namelist()
-    sheets = sorted(n for n in names if n.endswith('.svg'))
+    sheets = sorted(n for n in names if re.search(r'-sheet\d+\.svg$', n))
     assert sheets and len(sheets) == len([n for n in names if n.endswith('.dxf')])
     assert any(n.endswith('-booklet.pdf') for n in names) and any(n.endswith('-README.txt') for n in names)
     readme = z.read(next(n for n in names if n.endswith('README.txt'))).decode()
@@ -508,7 +508,7 @@ def test_canvas_export_is_a_machine_ready_zip(client):
     for n in sheets:
         svg = z.read(n).decode()
         assert 'sheet-boundary' not in svg and '<rect' not in svg            # nothing but parts reaches the machine
-        assert set(re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', svg)) <= {'#FF0000', '#0000FF', '#00FFFF', '#00FF00'}
+        assert set(re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', svg)) <= {'#FF0000', '#0000FF', '#00FFFF', '#00FF00', '#000000'}
         assert set(re.findall(r'stroke-width="([\d.]+)"', svg)) == {'0.025'}
     assert b'$INSUNITS' in z.read(sheets[0][:-3] + 'dxf')
 

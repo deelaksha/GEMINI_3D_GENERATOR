@@ -573,7 +573,16 @@ def _machine(data):
             and ok(sheet.get('width'), 50, 5000) and ok(sheet.get('height'), 50, 5000)):
         raise SchemaError('machine must be {"kerf": 0.01..5 mm, "sheet": {"width": 50..5000, "height": 50..5000 mm}}',
                           'machine')
-    return {'kerf': float(m['kerf']), 'sheet': {'width': float(sheet['width']), 'height': float(sheet['height'])}}
+    out = {'kerf': float(m['kerf']), 'sheet': {'width': float(sheet['width']), 'height': float(sheet['height'])}}
+    for k, lo, hi in (('measured', 0.5, 50), ('fit', -0.5, 1),           # optional: real board thickness, slot fit,
+                      ('cut_speed', 0.1, 1000), ('engrave_speed', 0.1, 5000), ('sheet_price', 0, 1e6)):   # job report
+        if m.get(k) is not None:
+            if not ok(m[k], lo, hi):
+                raise SchemaError(f'machine.{k} must be between {lo} and {hi} mm', f'machine.{k}')
+            out[k] = float(m[k])
+    if m.get('shared_edges'):
+        out['shared_edges'] = True
+    return out
 
 
 def _canvas_slug(name):
@@ -776,6 +785,8 @@ def canvas_export():
     import zipfile
     from board_engine.canvas import compile_source
     from board_engine.cutpaths import LEGEND
+    from board_engine.jobreport import job_lines, job_report
+    from board_engine.lightburn import sheet_lbrn2
     data = body()
     machine = _machine(data)
     res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
@@ -797,7 +808,10 @@ def canvas_export():
         for i in range(n['sheet_count']):
             for fmt in ('svg', 'dxf'):
                 z.writestr(f"{prefix}-sheet{i + 1}.{fmt}", export(pkg, fmt, i)[0])
+            z.writestr(f"{prefix}-sheet{i + 1}.lbrn2", sheet_lbrn2(design, n, cut, i, machine, labels=data.get('labels', True) is not False))
         z.writestr(f'{prefix}-booklet.pdf', export(pkg, 'pdf', None, data.get('paper') or 'A4')[0])
+        from board_engine.testfit import test_fit_files
+        z.writestr(f'{prefix}-test-fit.svg', test_fit_files((machine or {}).get('measured') or mat['thickness'], mat['kerf'])['svg'])
         parts = len(n['placements'])
         z.writestr(f'{prefix}-README.txt', '\n'.join([
             f"{design['name']} - machine files{'  (DRAFT: NOT READY FOR PRODUCTION)' if draft else ''}",
@@ -811,12 +825,120 @@ def canvas_export():
             f"(set the machine's own kerf / tool offset to 0)",
             f"Layers     : {LEGEND}",
             'Cut order  : per sheet - engrave / pocket first, then every inner cut, then the outlines',
-            'Files      : *-sheetN.svg for lasers (colour-mapped hairlines), *-sheetN.dxf (R12) for CNC / CAD, '
-            '*-booklet.pdf for assembly',
+            f"Slots      : {mat['thickness']:g} mm board + {mat['clearance']:g} mm clearance. Cut *-test-fit.svg first: push the "
+            'tab into each slot and enter the snuggest value that goes in by hand as "Slot fit" in the laser settings',
+            'Files      : *-sheetN.lbrn2 LightBurn projects (layers set: engrave, labels, inner cuts, outlines - check the '
+            'power once for your laser), *-sheetN.svg for any laser software (colour-mapped hairlines, raster images), '
+            '*-sheetN.dxf (R12) for CNC / CAD, *-booklet.pdf for assembly',
+            *job_lines(job_report(n, cut, machine)),
             *(['', 'Blocking issues:'] + [f"- {i['message']}" for i in blocking[:30]] if draft else []),
             '']))
     resp = Response(buf.getvalue(), mimetype='application/zip')
     resp.headers['Content-Disposition'] = f'attachment; filename="{prefix}-cut-files.zip"'
+    return resp
+
+
+def _ai_reply_source(text):
+    """The design JSON out of an AI reply (a fenced block or the outermost {...}); the raw text if there is none."""
+    from board_engine.canvas import _extract
+    body, _off = _extract(text)
+    return body.strip() or text
+
+
+@bp.get('/canvas/ai-status')
+@require('viewer')
+def canvas_ai_status():
+    from board_engine.ai_client import provider
+    name, model = provider()
+    return jsonify({'ok': True, 'provider': name, 'model': model})
+
+
+@bp.post('/canvas/ai-generate')
+@require('editor')
+def canvas_ai_generate():
+    """Generate a design with the configured AI from the canvas's description (the same prompt as step 2)."""
+    from board_engine.ai_client import AIError, complete, provider
+    from board_engine.canvas_prompt import build_prompt
+    data = body()
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip():
+        raise SchemaError('title is required', 'title')
+    th = data.get('thickness')
+    if th not in (None, '') and (isinstance(th, bool) or not isinstance(th, (int, float)) or not 0.5 <= th <= 50):
+        raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
+    prompt = build_prompt(title[:200], str(data.get('requirements') or '')[:4000], None, th or None, 'interlocking',
+                          _machine(data))
+    try:
+        reply = complete(prompt)
+    except AIError as e:
+        return fail(502, 'ai_failed', str(e))
+    return jsonify({'ok': True, 'source': _ai_reply_source(reply), 'provider': provider()[0]})
+
+
+@bp.post('/canvas/ai-fix')
+@require('editor')
+@budgeted
+def canvas_ai_fix():
+    """Compile the code; if it has errors, send the strict fix prompt to the AI and return its corrected design."""
+    from board_engine.ai_client import AIError, complete, provider
+    from board_engine.canvas import compile_source
+    from board_engine.canvas_prompt import build_repair_prompt
+    data = body()
+    src = data.get('source')
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=_machine(data))
+    errors = [d for d in res['diagnostics'] if d['severity'] == 'error']
+    blocking = (res.get('layout') or {}).get('blocking_issues', [])
+    if not errors and not blocking:
+        return jsonify({'ok': True, 'source': src, 'problems': 0, 'changed': False})
+    prompt = build_repair_prompt(src, res['diagnostics'], blocking)
+    try:
+        reply = complete(prompt)
+    except AIError as e:
+        return fail(502, 'ai_failed', str(e))
+    return jsonify({'ok': True, 'source': _ai_reply_source(reply), 'problems': prompt.count('\n- ['), 'changed': True,
+                    'provider': provider()[0]})
+
+
+@bp.post('/canvas/resize')
+@require('viewer')
+def canvas_resize():
+    """New overall length / height / depth for a design: board thicknesses stay, the space between them stretches."""
+    from board_engine.canvas import parse_source, pretty_json
+    from board_engine.resize import ResizeError, resize_design
+    data = body()
+    target = {}
+    for k in ('length', 'height', 'depth'):
+        v = data.get(k)
+        if v is not None:
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 10 <= v <= 5000:
+                raise SchemaError(f'{k} must be between 10 and 5000 mm', k)
+            target[k] = float(v)
+    parsed, _src, _off, diags = parse_source(data.get('source'))
+    if parsed is None:
+        return fail(422, 'compile_failed', 'the code is not valid JSON yet; compile and fix it first', issues=diags)
+    try:
+        new, ext = resize_design(parsed, target)
+    except (ResizeError, KeyError, TypeError, IndexError) as e:
+        return fail(422, 'resize_failed', str(e) if isinstance(e, ResizeError) else f'the design cannot be resized: {e}')
+    return jsonify({'ok': True, 'source': pretty_json(new), 'overall': ext})
+
+
+@bp.post('/canvas/test-fit')
+@require('viewer')
+def canvas_test_fit():
+    """The test-fit comb + tab for the laser (SVG or DXF): slots of measured thickness + -0.1..+0.3 mm."""
+    from board_engine.testfit import test_fit_files
+    data = body()
+    machine = _machine(data) or {'kerf': 0.15}
+    t = data.get('thickness')
+    if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0.5 <= t <= 50:
+        raise SchemaError('thickness (the measured board thickness) must be between 0.5 and 50 mm', 'thickness')
+    fmt = data.get('format', 'svg')
+    if fmt not in ('svg', 'dxf'):
+        raise SchemaError('format must be svg or dxf', 'format')
+    files = test_fit_files(float(t), machine['kerf'])
+    resp = Response(files[fmt], mimetype='image/svg+xml' if fmt == 'svg' else 'application/dxf')
+    resp.headers['Content-Disposition'] = f'attachment; filename="test-fit-{t:g}mm.{fmt}"'
     return resp
 
 

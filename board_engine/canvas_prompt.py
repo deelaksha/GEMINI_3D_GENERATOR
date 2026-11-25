@@ -754,6 +754,15 @@ Shapes (used by `profile`, `openings` and `engravings`):
   | {{"id", "kind", "depth", ...shape}}]` — machined into the face, never through (default depth: engrave 0.5 mm,
   pocket half the board). Engrave depth ≤ half the board;
   pockets keep the material's minimum remaining thickness under them. Must lie fully on the board, off any cut-out.
+  Engraved text: `{{"kind": "engrave", "text": "Max 120 chars", "position": [u, v], "height": mm, "align"?: "left"|"center"|"right"}}`
+  — single-stroke letters (capitals, digits, common punctuation) with the baseline starting at `position`; `height` is
+  the capital height (each character is about `height` wide). Raster images (`"kind": "image"`, `"src": data URI`,
+  `"position"`, `"size"`) are added by the user in the app; never write them yourself.
+- `"living_hinge": {{"from": [u, v], "to": [u, v], "lines_along": "u"|"v", "spacing"?: mm, "cut"?: mm, "bridge"?: mm}}`
+  (or a list) — a laser kerf-bending pattern: staggered through-cuts filling that face rectangle so the board can be
+  bent across the cuts (rounded box corners, lamp shades). `lines_along` is the face axis the cuts run along (the bend
+  axis). Defaults: spacing half the thickness, 20 mm cuts, bridges = thickness. Keep it at least one thickness inside
+  the board edges. The board stays flat in this design (bending is not simulated): model the flat panel.
 - `"rotate": {{"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down

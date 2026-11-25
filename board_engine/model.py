@@ -57,7 +57,8 @@ GRAIN = ('none', 'x', 'y')   # grain direction in the component's local frame
 LIMITS = {
     'max_components': 300,
     'max_outline_points': 2048,   # curved outlines are flattened (shapes.FLATTEN_TOL)
-    'max_marks': 64,
+    'max_marks': 400,          # engraved text is one mark per stroke
+    'max_hinge_lines': 5000,
     'max_features': 64,
     'max_tabs': 32,
     'max_joints': 1000,
@@ -147,6 +148,43 @@ def _marks(raw, path):
     if not isinstance(raw, list) or len(raw) > LIMITS['max_marks']:
         raise SchemaError(f'{path} must be a list of <= {LIMITS["max_marks"]}', path)
     return [normalize_mark(m, f'{path}[{i}]') for i, m in enumerate(raw)]
+
+
+def _images(raw, path):
+    """Raster engravings: {'id', 'src': data:image URI, 'corners': [top-left, top-right, bottom-left] local mm}."""
+    if not isinstance(raw, list) or len(raw) > 8:
+        raise SchemaError(f'{path} must be a list of <= 8 images', path)
+    out = []
+    for i, im in enumerate(raw):
+        p = f'{path}[{i}]'
+        if not (isinstance(im, dict) and isinstance(im.get('src'), str) and im['src'].startswith('data:image/')
+                and len(im['src']) <= 400_000 and isinstance(im.get('corners'), list) and len(im['corners']) == 3):
+            raise SchemaError(f'{p} must be {{"id", "src": data:image URI (<= 400 KB), "corners": 3 points}}', p)
+        out.append({'id': check_id(im.get('id'), p + '.id'), 'src': im['src'],
+                    'corners': [_vec(q, 2, f'{p}.corners[{k}]') for k, q in enumerate(im['corners'])]})
+    return out
+
+
+def _hinges(raw, path):
+    """Living hinges: through-cut line segments (local mm) that let the board bend. Bending is not simulated."""
+    if not isinstance(raw, list):
+        raise SchemaError(f'{path} must be a list', path)
+    out, total = [], 0
+    for i, h in enumerate(raw):
+        p = f'{path}[{i}]'
+        lines = h.get('lines') if isinstance(h, dict) else None
+        if not isinstance(lines, list) or not lines:
+            raise SchemaError(f'{p}.lines must be a non-empty list of [[x, y], [x, y]] segments', p + '.lines')
+        total += len(lines)
+        if total > LIMITS['max_hinge_lines']:
+            raise SchemaError(f'{path}: at most {LIMITS["max_hinge_lines"]} hinge cut lines per board', path)
+        segs = []
+        for k, ln in enumerate(lines):
+            if not (isinstance(ln, list) and len(ln) == 2):
+                raise SchemaError(f'{p}.lines[{k}] must be [[x, y], [x, y]]', f'{p}.lines[{k}]')
+            segs.append([_vec(q, 2, f'{p}.lines[{k}]') for q in ln])
+        out.append({'id': check_id(h.get('id'), p + '.id'), 'lines': segs})
+    return out
 
 
 def normalize_mark(m, path):
@@ -253,6 +291,8 @@ def normalize_component(c, path='component'):
         'tabs': [normalize_tab(t, f'{path}.tabs[{i}]') for i, t in enumerate(tabs)],
         **({'arcs': _arcs(outline_arcs, len(outline), path + '.arcs')} if outline_arcs else {}),
         **({'marks': _marks(c.get('marks'), path + '.marks')} if c.get('marks') else {}),
+        **({'hinges': _hinges(c.get('hinges'), path + '.hinges')} if c.get('hinges') else {}),
+        **({'images': _images(c.get('images'), path + '.images')} if c.get('images') else {}),
         'placement': {
             'position': _vec(pl.get('position', [0, 0, 0]), 3, path + '.placement.position'),
             'rotation': _vec(pl.get('rotation', [0, 0, 0]), 3, path + '.placement.rotation', 720),

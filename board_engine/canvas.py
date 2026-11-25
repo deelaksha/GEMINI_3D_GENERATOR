@@ -665,9 +665,17 @@ def _component(bd, mat, diags):
     for k, m in enumerate(r.get('engravings') or []):
         p = f"boards[{bd.index}].engravings[{k}]"
         kind = m.get('kind', 'engrave') if isinstance(m, dict) else None
+        if kind == 'image':                    # raster engraving (photo / logo): SVG only, outlined in 3D
+            img = _image_engraving(m, k, p, bd, to_local, su, sv, diags)
+            if img:
+                comp.setdefault('images', []).append(img)
+            continue
         if kind not in MARK_KINDS:
             diags.append(diag('error', 'ENGRAVING_INVALID', f"Board '{bd.id}': {p} must be an object with \"kind\": "
                               f"{' or '.join(repr(x) for x in MARK_KINDS)}.", path=p, board=bd.id, line=bd.line))
+            continue
+        if m.get('text') is not None:          # engraved text: single-stroke font, one mark per stroke
+            marks += _text_marks(m, k, kind, p, bd, to_local, su, sv, diags)
             continue
         try:
             if m.get('shape'):
@@ -692,7 +700,103 @@ def _component(bd, mat, diags):
         marks.append(mk)
     if marks:
         comp['marks'] = marks
+    if r.get('living_hinge') is not None:
+        _living_hinges(r['living_hinge'], bd, comp, to_local, su, sv, diags)
     return comp
+
+
+MAX_IMAGE = 400_000      # characters of the data: URI (~300 KB of PNG / JPEG)
+
+
+def _image_engraving(m, k, p, bd, to_local, su, sv, diags):
+    """engravings[k] = {"kind": "image", "src": "data:image/png;base64,...", "position": [u, v] (lower-left corner,
+    face mm), "size": [w, h]} -> {'id', 'src', 'corners': [top-left, top-right, bottom-left] in local mm}."""
+    src, pos, size = m.get('src'), m.get('position'), m.get('size')
+    pair = lambda v: isinstance(v, list) and len(v) == 2 and all(_num(x) for x in v)
+    err = None
+    if not (isinstance(src, str) and re.match(r'^data:image/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$', src)):
+        err = '"src" must be a data:image/png or data:image/jpeg base64 URI'
+    elif len(src) > MAX_IMAGE:
+        err = f'image is too large ({len(src) // 1000} KB; at most {MAX_IMAGE // 1000} KB)'
+    elif not (pair(pos) and pair(size) and size[0] > 0 and size[1] > 0):
+        err = 'needs "position": [u, v] (lower-left corner, face mm) and "size": [width, height] mm'
+    elif pos[0] < 0 or pos[1] < 0 or pos[0] + size[0] > su or pos[1] + size[1] > sv:
+        err = f'does not fit on the {su:g} x {sv:g} mm face'
+    if err:
+        diags.append(diag('error', 'ENGRAVING_INVALID', f"Board '{bd.id}': {p} {err}.", path=p, board=bd.id, line=bd.line))
+        return None
+    u, v, w, h = pos[0], pos[1], size[0], size[1]
+    return {'id': str(m.get('id') or f'image-{k + 1}'), 'src': src,
+            'corners': [to_local([u, v + h]), to_local([u + w, v + h]), to_local([u, v])]}
+
+
+def _text_marks(m, k, kind, p, bd, to_local, su, sv, diags):
+    """engravings[k] = {"kind": "engrave", "text": str, "position": [u, v] (baseline start, face mm), "height": mm,
+    "align"?: "left"|"center"|"right", "depth"?} -> one engrave mark per stroke of the single-stroke font."""
+    from .strokefont import text_strokes, text_width
+    text, pos, h, align = m.get('text'), m.get('position'), m.get('height', 5), m.get('align', 'left')
+    err = None
+    if kind != 'engrave':
+        err = 'text can only be engraved ("kind": "engrave")'
+    elif not isinstance(text, str) or not text.strip() or len(text) > 120:
+        err = '"text" must be 1..120 characters'
+    elif not (isinstance(pos, list) and len(pos) == 2 and all(_num(v) for v in pos)):
+        err = 'needs "position": [u, v] (start of the baseline, face mm)'
+    elif not _num(h) or not 2 <= h <= 200:
+        err = '"height" (capital letter height) must be 2..200 mm'
+    elif align not in ('left', 'center', 'right'):
+        err = '"align" must be "left", "center" or "right"'
+    if err:
+        diags.append(diag('error', 'ENGRAVING_INVALID', f"Board '{bd.id}': {p} {err}.", path=p, board=bd.id, line=bd.line))
+        return []
+    x0 = pos[0] - {'left': 0.0, 'center': 0.5, 'right': 1.0}[align] * text_width(text, h)
+    if x0 < 0 or pos[1] - h / 6 < 0 or x0 + text_width(text, h) > su or pos[1] + h > sv:
+        diags.append(diag('error', 'MARK_OUTSIDE_BOARD', f"Board '{bd.id}': {p} text \"{text}\" ({text_width(text, h):.0f} x "
+                          f"{h:g} mm) does not fit on the {su:g} x {sv:g} mm face at {pos}.", path=p, board=bd.id, line=bd.line))
+        return []
+    base = str(m.get('id') or f'text-{k + 1}')
+    depth = m['depth'] if m.get('depth') is not None else None
+    return [dict({'id': f'{base}-{n + 1}', 'kind': 'engrave', 'points': [to_local(q) for q in stroke], 'closed': False},
+                 **({'depth': depth} if depth is not None else {}), **({'note': text} if n == 0 else {}))
+            for n, stroke in enumerate(text_strokes(text, pos[0], pos[1], h, align))]
+
+
+def _living_hinges(raw, bd, comp, to_local, su, sv, diags):
+    """board.living_hinge: {"from": [u, v], "to": [u, v], "lines_along": "u"|"v", "spacing"?, "cut"?, "bridge"?} (or a
+    list): a kerf-bending pattern of through-cuts in that face rectangle. Bending is not simulated."""
+    from .hinge import hinge_defaults, hinge_lines
+    items = raw if isinstance(raw, list) else [raw]
+    d = hinge_defaults(bd.t)
+    for k, h in enumerate(items):
+        p = f"boards[{bd.index}].living_hinge" + (f"[{k}]" if isinstance(raw, list) else '')
+        bad = lambda msg: diags.append(diag('error', 'HINGE_INVALID', f"Board '{bd.id}': {p} {msg}.", path=p, board=bd.id,
+                                            line=bd.line))
+        if not (isinstance(h, dict) and all(isinstance(h.get(c), list) and len(h[c]) == 2 and all(_num(v) for v in h[c])
+                                            for c in ('from', 'to')) and h.get('lines_along', 'u') in ('u', 'v')):
+            bad('needs "from": [u, v], "to": [u, v] (face mm) and "lines_along": "u" or "v"')
+            continue
+        opts = {}
+        for key, lo, hi in (('spacing', 0.5, 20), ('cut', 2, 200), ('bridge', 1, 50)):
+            v = h.get(key, d[key])
+            if not _num(v) or not lo <= v <= hi:
+                bad(f'"{key}" must be between {lo} and {hi} mm')
+                break
+            opts[key] = float(v)
+        else:
+            (u0, u1), (v0, v1) = sorted((h['from'][0], h['to'][0])), sorted((h['from'][1], h['to'][1]))
+            m = max(bd.t, opts['bridge'])          # keep the cuts this far inside the board edges
+            if u0 < m or v0 < m or u1 > su - m or v1 > sv - m or u1 - u0 < 2 * opts['bridge'] or v1 - v0 < opts['spacing']:
+                bad(f'must lie at least {m:g} mm inside the {su:g} x {sv:g} mm face and be larger than the pattern step')
+                continue
+            lines = hinge_lines(u0, v0, u1, v1, h.get('lines_along', 'u'), opts['spacing'], opts['cut'], opts['bridge'])
+            local = [[to_local(a), to_local(b)] for a, b in lines]
+            if not all(G.point_in_polygon(q, comp['outline']) for ln in local for q in ln):
+                bad('runs outside the board\'s profile')
+                continue
+            if len(local) + sum(len(x['lines']) for x in comp.get('hinges', [])) > LIMITS['max_hinge_lines']:
+                bad(f'needs more than {LIMITS["max_hinge_lines"]} cut lines: make it smaller or the spacing larger')
+                continue
+            comp.setdefault('hinges', []).append({'id': str(h.get('id') or f'hinge-{k + 1}'), 'lines': local})
 
 
 # ---------------------------------------------------------------------------
@@ -1267,9 +1371,10 @@ def _auto_sheet(design, mat, data):
 def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None, machine=None):
     """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic.
     time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget).
-    machine: {'kerf': mm, 'sheet': {'width', 'height'}} of the cutting machine (e.g. a laser's kerf and bed); it
-    overrides the material's catalogue kerf and the stock sheet, so every check, the nesting and the cut files use
-    the real machine."""
+    machine: {'kerf': mm, 'sheet': {'width', 'height'}, 'measured'?: mm, 'fit'?: mm} of the cutting machine (e.g. a
+    laser's kerf and bed, the board's measured thickness and the fit found with the test-fit piece); it overrides the
+    material's catalogue kerf, slot clearance and the stock sheet, so every check, the nesting and the cut files use
+    the real machine and board."""
     data, src, off, diags = parse_source(text)
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
@@ -1312,7 +1417,20 @@ def _preview(comps, design=None):
     return out
 
 
+def _machine_fit(mat, machine):
+    """Slots for the real board: clearance = (measured - nominal thickness) + the fit chosen on the test-fit piece
+    (slot width = nominal thickness + clearance = measured + fit). Without either, the design's clearance stays."""
+    if machine.get('measured') is None and machine.get('fit') is None:
+        return
+    measured = machine.get('measured') or mat['thickness']
+    fit = machine['fit'] if machine.get('fit') is not None else mat['clearance']
+    mat['clearance'] = round(min(2.0, max(0.0, measured - mat['thickness'] + fit)), 4)
+
+
 def _machine_sheet(machine):
+    if machine.get('shared_edges'):             # parts exactly one kerf apart: neighbouring outlines are one cut
+        return {'width': float(machine['sheet']['width']), 'height': float(machine['sheet']['height']),
+                'spacing': float(machine['kerf']), 'shared_edges': True}
     return {'width': float(machine['sheet']['width']), 'height': float(machine['sheet']['height']),
             'spacing': max(3.0, float(machine['kerf']))}     # a laser needs little room between parts
 
@@ -1324,6 +1442,7 @@ def _compile_native(data, design_id, result, run_production, machine=None):
     design = normalize_design(d)
     if machine:
         design['material']['kerf'] = float(machine['kerf'])
+        _machine_fit(design['material'], machine)
         design['sheet'] = _machine_sheet(machine)
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
@@ -1335,7 +1454,7 @@ def _compile_native(data, design_id, result, run_production, machine=None):
             design = res['design']
         else:
             design['joints'].append(dict(spec, status='detached', detached_reason=res['status']))
-    return _finish(design, result, {}, run_production)
+    return _finish(design, result, {}, run_production, machine=machine)
 
 
 def _compile_v1(data, src, off, design_id, result, run_production, machine=None):
@@ -1355,6 +1474,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         return result
     if machine:
         mat['kerf'] = float(machine['kerf'])   # the machine's real kerf, not the catalogue value
+        _machine_fit(mat, machine)
     mounting = product.get('mounting', data.get('mounting'))
     if mounting is not None and mounting not in MOUNTINGS:
         diags.append(diag('error', 'MOUNTING', f'"product.mounting" must be one of {list(MOUNTINGS)}.',
@@ -1615,7 +1735,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
                               line=_key_line(src, name, off)))
     result['source_map'] = source_map
     return _finish(design, result, boards, run_production, raw_conns if isinstance(raw_conns, list) else None,
-                   held=held, conn_pairs=conn_pairs)
+                   held=held, conn_pairs=conn_pairs, machine=machine)
 
 
 def _remove_fix(raw_conns, i, cid):
@@ -1625,7 +1745,7 @@ def _remove_fix(raw_conns, i, cid):
              'edits': [{'field': 'connections', 'value': [x for k, x in enumerate(raw_conns) if k != i]}]}]
 
 
-def _finish(design, result, boards, run_production, raw_conns=None, held=(), conn_pairs=None):
+def _finish(design, result, boards, run_production, raw_conns=None, held=(), conn_pairs=None, machine=None):
     from .support import support_report
     from .views import model3d, production_package
     diags = result['diagnostics']
@@ -1693,6 +1813,8 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
             result['cut_list'] = pkg.get('cut_list')
             mfg = pkg.get('manufacturing') or {}
             result['manufacturing'] = {k: mfg[k] for k in ('summary', 'assembly') if k in mfg}
+            from .jobreport import job_report
+            result['job'] = job_report(pkg['nesting'], pkg['cut'], machine)
         except TimeBudgetExceeded:
             raise
         except Exception as e:

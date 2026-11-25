@@ -4,7 +4,10 @@
 Algorithm: MaxRects on each part's cut-profile bounding box at the allowed orientations, opening new
 sheets as needed. A few part orders (largest area first, longest side, width, height, perimeter) and two
 placement rules (best short side fit, best area fit) are packed and the layout with the fewest sheets is
-kept (ties keep the first: largest area, best short side fit). A final pass checks real polygon
+kept (ties keep the first: largest area, best short side fit). For jobs with shaped (non-rectangular)
+parts a true-shape pass also runs: the real outlines, grown by half the spacing, are rasterised onto a
+grid and placed bottom-left first at 0 / 90 / 180 / 270 deg; it is used only when it needs fewer sheets
+and its real polygons pass the overlap / spacing check. A final pass checks real polygon
 overlap/spacing and the usable-area boundary.
 
 Sheet coordinates: millimetres, origin top-left, +y down (paper / SVG convention). A part
@@ -172,6 +175,11 @@ def nest(design, opts=None):
                 packed = _pack(items, (ux0, uy0, ux1, uy1), sp, rule)
                 if best is None or (len(packed[1]), packed[0]) < (len(best[1]), best[0]):
                     best = packed            # fewer parts left over, then fewer sheets; ties keep the first
+        shaped = [it for it in groups[key] if part_area(it[0]) < 0.97 * _bbox_area(it[0])]
+        if shaped and len(groups[key]) <= TRUE_SHAPE_MAX_PARTS and (best[0] > 1 or best[2]):
+            ts = _true_shape_pack(sorted(groups[key], key=_ORDERS[0]), (ux0, uy0, ux1, uy1), sp, sheet)
+            if ts and (len(ts[2]), ts[0]) < (len(best[2]), best[0]):
+                best = ts                       # fewer sheets with the real outlines (checked polygon by polygon)
         nbins, placed, failed = best
         for pl, bi, r, fx, fy, w, h, bx0, by0, grain in placed:
             placements.append({'id': pl.id, 'name': pl.comp.get('name', pl.id), 'sheet': first + bi,
@@ -228,6 +236,146 @@ _ORDERS = (lambda it: -max(o[1] * o[2] for o in it[1]),
            lambda it: -_dims(it)[0],
            lambda it: -_dims(it)[1],
            lambda it: -sum(_dims(it)))
+
+
+TRUE_SHAPE_MAX_PARTS = 60
+
+
+def _bbox_area(pl):
+    x0, y0, x1, y1 = pl.bbox2d
+    return (x1 - x0) * (y1 - y0)
+
+
+def _smear(x, n):
+    """x | x>>1 | ... | x>>(n-1) in O(log n) big-int operations."""
+    out, k = x, 1
+    while k < n:
+        step = min(k, n - k)
+        out |= out >> step
+        k += step
+    return out
+
+
+def _raster(poly, cell, grow):
+    """Rows of bitmasks covering `poly` (sheet orientation, y down) grown by `grow` mm, on a `cell` mm grid whose
+    origin is the polygon's bounding-box corner minus `grow`. -> (rows, width in cells, height in cells, x0, y0)."""
+    from .validation import _polygon_line_intervals
+    x0, y0, x1, y1 = G.bbox(poly)
+    ox, oy = x0 - grow, y0 - grow
+    W, H = int(math.ceil((x1 - x0 + 2 * grow) / cell)), int(math.ceil((y1 - y0 + 2 * grow) / cell))
+    n = len(poly)
+    rows = []
+    for j in range(H):
+        ya, yb = oy + j * cell - grow, oy + (j + 1) * cell + grow       # the row band, grown vertically
+        ivs = []
+        for y in (ya, (ya + yb) / 2, yb):                                # scanlines through the band
+            ivs += _polygon_line_intervals(poly, (0.0, y), (1.0, 0.0))
+        for i in range(n):                                               # edge pieces inside the band
+            (px, py), (qx, qy) = poly[i], poly[(i + 1) % n]
+            if max(py, qy) < ya or min(py, qy) > yb:
+                continue
+            if abs(qy - py) < 1e-12:
+                ivs.append((min(px, qx), max(px, qx)))
+            else:
+                ta, tb = sorted(((ya - py) / (qy - py), (yb - py) / (qy - py)))
+                ta, tb = max(0.0, ta), min(1.0, tb)
+                xs = (px + (qx - px) * ta, px + (qx - px) * tb)
+                ivs.append((min(xs), max(xs)))
+        mask = 0
+        for a, b in ivs:
+            i0 = max(0, int(math.floor((a - grow - ox) / cell)))
+            i1 = min(W - 1, int(math.floor((b + grow - ox) / cell)))
+            if i1 >= i0:
+                mask |= ((1 << (i1 - i0 + 1)) - 1) << i0
+        rows.append(mask)
+    return rows, W, H, ox, oy
+
+
+def _runs(mask):
+    """[(start, length)] of the set bits of mask."""
+    out, i = [], 0
+    while mask:
+        tz = (mask & -mask).bit_length() - 1
+        mask >>= tz
+        i += tz
+        run = (~mask & (mask + 1)).bit_length() - 1
+        out.append((i, run))
+        mask >>= run
+        i += run
+    return out
+
+
+def _true_shape_pack(items, usable, sp, sheet):
+    """Bottom-left placement of the real outlines (grown by sp / 2) on a raster of the usable area.
+    -> (sheets used, placements like _pack, failed plates) or None when the result fails the polygon check."""
+    ux0, uy0, ux1, uy1 = usable
+    cell = max(1.0, (ux1 - ux0) / 240.0)
+    SW, SH = int((ux1 - ux0) // cell), int((uy1 - uy0) // cell)
+    full = (1 << SW) - 1
+    bins, placed, failed = [], [], []
+    for pl, options, grain in items:
+        check_budget()
+        rots = sorted({o[0] % 360 for o in options} | ({(o[0] + 180) % 360 for o in options}))
+        shapes = []
+        for r in rots:
+            poly = [transform_point(p, r, 0, 0) for p in pl.cut]
+            rows, w, h, ox, oy = _raster(poly, cell, sp / 2.0)
+            if w <= SW and h <= SH:
+                shapes.append((r, rows, w, h, ox, oy, [(j, _runs(m)) for j, m in enumerate(rows) if m]))
+        if not shapes:
+            failed.append(pl)
+            continue
+        spot = None
+        for bi in range(len(bins) + 1):
+            if bi == len(bins):
+                bins.append([0] * SH)
+            grid = bins[bi]
+            for y in range(SH):
+                best_here = None
+                for r, rows, w, h, ox, oy, runs in shapes:
+                    if y + h > SH:
+                        continue
+                    blocked = 0
+                    for j, rr in runs:
+                        line = grid[y + j]
+                        if line:
+                            for a, n in rr:
+                                blocked |= _smear(line >> a, n)
+                    free = ~blocked & (full >> (w - 1) if w > 0 else full)
+                    if free:
+                        x = (free & -free).bit_length() - 1
+                        if best_here is None or x < best_here[0]:
+                            best_here = (x, r, rows, w, h, ox, oy)
+                if best_here:
+                    spot = (bi, y) + best_here
+                    break
+            if spot:
+                break
+            if not any(grid):                   # a fresh sheet did not take it: it never fits
+                bins.pop()
+                break
+        if not spot:
+            failed.append(pl)
+            continue
+        bi, y, x, r, rows, w, h, ox, oy = spot
+        for j, m in enumerate(rows):
+            bins[bi][y + j] |= m << x
+        # placement in the usual form: the rotated bounding box corner lands at (fx, fy)
+        bx0, by0, bx1, by1 = _rotated_bbox(pl.cut, r)
+        fx, fy = ux0 + x * cell + (bx0 - ox), uy0 + y * cell + (by0 - oy)
+        placed.append((pl, bi, float(r), fx, fy, bx1 - bx0, by1 - by0, bx0, by0, grain))
+    # exact check on the real polygons: any overlap or spacing shortfall and the raster layout is not used
+    by_sheet = {}
+    for p in placed:
+        by_sheet.setdefault(p[1], []).append([transform_point(q, p[2], p[3] - p[7], p[4] - p[8]) for q in p[0].cut])
+    for polys in by_sheet.values():
+        for i in range(len(polys)):
+            if any(x < ux0 - 1e-6 or y < uy0 - 1e-6 or x > ux1 + 1e-6 or y > uy1 + 1e-6 for x, y in polys[i]):
+                return None
+            for j in range(i + 1, len(polys)):
+                if G.polygons_overlap(polys[i], polys[j]) or G.polygon_distance(polys[i], polys[j]) < sp - 1e-3:
+                    return None
+    return len(bins), placed, failed
 
 
 def _pack(items, usable, sp, rule):

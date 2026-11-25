@@ -23,7 +23,8 @@ LAYERS = {'outer': ('CUT_OUTER', '#FF0000', 1), 'inner': ('CUT_INNER', '#0000FF'
           'label': ('ENGRAVE_LABELS', '#000000', 7)}
 HAIRLINE = 0.025  # mm (0.001 in): the stroke width print-driver lasers treat as a vector cut, not a raster fill
 LEGEND = ('red CUT_OUTER = part outline (cut last) | blue CUT_INNER = slots / holes / openings (cut first) | '
-          'cyan ENGRAVE, green POCKET = partial depth (machined before any cut) | black text = part labels (optional)')
+          'cyan ENGRAVE, green POCKET = partial depth (machined before any cut) | black ENGRAVE_LABELS = part labels, '
+          'single-line (optional) | ENGRAVE_IMAGE = raster images (SVG only)')
 ARC_TOL = 0.02   # mm: an arc run is exported as a true arc only if its end points sit on the circle
 
 
@@ -106,10 +107,71 @@ def label_point(plate):
     return best, max(bd, 0.0)
 
 
-def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=True):
+def _share_edges(sheet):
+    """Common-line cutting: where an outline runs along a line another part's outline already cuts (parts nested one
+    kerf apart, so their compensated outlines coincide), drop that stretch from the later outline. What is left of it
+    becomes open paths. Only straight runs of outlines without arcs are shared."""
+    tol = 0.01
+    kept = []                                   # straight segments already being cut on this sheet
+    out = []
+    for p in sheet['paths']:
+        if p['type'] != 'outer' or p.get('arcs') or p['shape'] != 'polyline':
+            out.append(p)
+            continue
+        pts = p['points']
+        n = len(pts)
+        segs = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
+        pieces, shared = [], False             # (segment index, t0, t1) still to cut, in path order
+        for i, (a, b) in enumerate(segs):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            L = math.hypot(dx, dy)
+            if L < 1e-9:
+                continue
+            ux, uy = dx / L, dy / L
+            cuts = []
+            for c, d in kept:
+                if abs((d[0] - c[0]) * uy - (d[1] - c[1]) * ux) > tol * max(1.0, math.dist(c, d)):
+                    continue                    # not parallel
+                if abs((c[0] - a[0]) * uy - (c[1] - a[1]) * ux) > tol:
+                    continue                    # parallel but not on the same line
+                t0, t1 = sorted(((c[0] - a[0]) * ux + (c[1] - a[1]) * uy, (d[0] - a[0]) * ux + (d[1] - a[1]) * uy))
+                lo, hi = max(0.0, t0), min(L, t1)
+                if hi - lo > tol:
+                    cuts.append((lo, hi))
+                    shared = True
+            t = 0.0
+            for lo, hi in sorted(cuts):
+                if lo > t + tol:
+                    pieces.append((i, t, lo))
+                t = max(t, hi)
+            if t < L - tol:
+                pieces.append((i, t, L))
+        kept.extend(segs)
+        if not shared:
+            out.append(p)                       # nothing shared: the closed outline stays as it is
+            continue
+        at = lambda i, t: [round(segs[i][0][0] + (segs[i][1][0] - segs[i][0][0]) * t / math.dist(*segs[i]), 4),
+                           round(segs[i][0][1] + (segs[i][1][1] - segs[i][0][1]) * t / math.dist(*segs[i]), 4)]
+        runs, cur, last = [], None, None
+        for i, t0, t1 in pieces:                # join pieces that continue one another into polylines
+            start, end = at(i, t0), at(i, t1)
+            if cur and last and math.dist(last, start) <= tol:
+                cur.append(end)
+            else:
+                cur = [start, end]
+                runs.append(cur)
+            last = end
+        if len(runs) > 1 and math.dist(runs[-1][-1], runs[0][0]) <= tol:
+            runs[0] = runs.pop() + runs[0][1:]  # the run crossing the path's start point is one run
+        for k, run in enumerate(runs):
+            out.append(dict(p, id=f"{p['id']}#{k + 1}", points=run, closed=False, shared=True, part_outline=pts))
+    sheet['paths'] = out
+
+
+def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=True, shared_edges=False):
     kerf = design['material']['kerf'] if compensate_kerf else 0.0
     half = kerf / 2.0
-    sheets = [{'index': i, 'paths': [], 'labels': []} for i in range(nesting['sheet_count'])]
+    sheets = [{'index': i, 'paths': [], 'labels': [], 'images': []} for i in range(nesting['sheet_count'])]
     issues = []
     for pm in nesting['placements']:
         comp = find_component(design, pm['id'])
@@ -175,6 +237,13 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             issues.append(_iss('DIMENSION_DRIFT', pl.id, f"Cut path of '{pl.id}' deviates from design dimensions "
                                                           f"by {drift:.3f} mm."))
 
+        for im in comp.get('images', []):       # raster engraving: placed by its corners (top-left, top-right, bottom-left)
+            sheet['images'].append({'id': f"{pl.id}/{im['id']}", 'part': pl.id, 'src': im['src'],
+                                    'corners': [tf(q) for q in im['corners']]})
+        for h in comp.get('hinges', []):        # living hinge: open through-cuts, never kerf-offset, cut before the outline
+            inner += [{'id': f"{pl.id}/{h['id']}-{k + 1}", 'part': pl.id, 'type': 'inner', 'feature': h['id'],
+                       'feature_kind': 'hinge', 'shape': 'polyline', 'closed': False, 'points': [tf(a), tf(b)]}
+                      for k, (a, b) in enumerate(h['lines'])]
         order = len(sheet['paths'])
         for p in marks:                 # engrave / pocket while the part is still held by the sheet
             p['order'] = order
@@ -182,7 +251,7 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             sheet['paths'].append(p)
         for p in inner:
             if not p.pop('_drop', False):
-                p.pop('_local')
+                p.pop('_local', None)
                 p['order'] = order
                 order += 1
                 sheet['paths'].append(p)
@@ -193,6 +262,9 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             lp, room = label_point(pl)
             size = max(2.0, min(6.0, room * 0.7))
             sheet['labels'].append({'part': pl.id, 'text': pl.id, 'position': tf(lp), 'size': round(size, 2)})
+    if shared_edges:
+        for sheet in sheets:
+            _share_edges(sheet)
     counts = {'outer': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'outer'),
               'inner': sum(1 for s in sheets for p in s['paths'] if p['type'] == 'inner')}
     marks = sum(1 for s in sheets for p in s['paths'] if p['type'] in ('engrave', 'pocket'))
@@ -217,6 +289,14 @@ def _offset_error(orig, off, d):
 
 def _iss(code, part, msg):
     return {'code': code, 'severity': 'error', 'components': [part], 'message': msg}
+
+
+def label_strokes(lb):
+    """A part label as single-stroke polylines in sheet coordinates (y down), centred on its position."""
+    from .strokefont import text_strokes
+    x, y, size = lb['position'][0], lb['position'][1], lb['size']
+    base = y + size / 2                         # cap height = size; the label is centred vertically on y
+    return [[(u, round(base - v, 4)) for u, v in stroke] for stroke in text_strokes(lb['text'], x, 0.0, size, 'center')]
 
 
 def _fmt(v):
@@ -256,6 +336,14 @@ def sheet_svg(design, nesting, cut, index, labels=True):
            f'<!-- {LEGEND} -->',
            f'<svg xmlns="http://www.w3.org/2000/svg" width="{_fmt(w)}mm" height="{_fmt(h)}mm" '
            f'viewBox="0 0 {_fmt(w)} {_fmt(h)}">']
+    if sheet.get('images'):                     # raster engraving first, like the vector engraving
+        out.append('  <g id="ENGRAVE_IMAGE">')
+        for im in sheet['images']:
+            (x0, y0), (x1, y1), (x2, y2) = im['corners']
+            m = ' '.join(_fmt(v) for v in (x1 - x0, y1 - y0, x2 - x0, y2 - y0, x0, y0))
+            out.append(f'    <image id="{_esc(im["id"])}" data-part="{_esc(im["part"])}" x="0" y="0" width="1" height="1" '
+                       f'preserveAspectRatio="none" transform="matrix({m})" href="{_esc(im["src"])}"/>')
+        out.append('  </g>')
     for kind in ('engrave', 'pocket', 'inner', 'outer'):
         layer, color, _ = LAYERS[kind]
         paths = sorted((p for p in sheet['paths'] if p['type'] == kind), key=lambda p: p['order'])
@@ -274,12 +362,12 @@ def sheet_svg(design, nesting, cut, index, labels=True):
             else:
                 out.append(f'    <path {attrs} d="{_svg_d(p)}"/>')
         out.append('  </g>')
-    if labels:
+    if labels and sheet['labels']:              # single-stroke text: engraved as lines, no font needed
         layer, color, _ = LAYERS['label']
-        out.append(f'  <g id="{layer}" fill="{color}" font-family="Helvetica, Arial, sans-serif" text-anchor="middle">')
+        out.append(f'  <g id="{layer}" fill="none" stroke="{color}" stroke-width="{HAIRLINE}">')
         for lb in sheet['labels']:
-            out.append(f'    <text x="{_fmt(lb["position"][0])}" y="{_fmt(lb["position"][1] + lb["size"] * 0.35)}" '
-                       f'font-size="{_fmt(lb["size"])}">{_esc(lb["text"])}</text>')
+            d = ' '.join('M' + ' L'.join(f'{_fmt(x)},{_fmt(y)}' for x, y in st) for st in label_strokes(lb))
+            out.append(f'    <path data-part="{_esc(lb["part"])}" data-text="{_esc(lb["text"])}" d="{d}"/>')
         out.append('  </g>')
     out.append('</svg>')
     return '\n'.join(out) + '\n'
@@ -334,10 +422,13 @@ def sheet_dxf(design, nesting, cut, index, labels=True):
                 if bulge:
                     g(42, f'{bulge:.6f}')       # full precision: 3 decimals would bend the arc by ~0.01 mm
             g(0, 'SEQEND'); g(8, layer)
-    if labels:
+    if labels:                                  # single-stroke text as open polylines (CAM needs no font)
         for lb in sheet['labels']:
-            g(0, 'TEXT'); g(8, LAYERS['label'][0]); g(10, float(lb['position'][0])); g(20, H - lb['position'][1])
-            g(30, 0.0); g(40, float(lb['size'])); g(1, lb['text']); g(72, 1); g(11, float(lb['position'][0]))
-            g(21, H - lb['position'][1]); g(31, 0.0)
+            g(999, f"label {lb['part']}")           # DXF comment: which part the strokes below name
+            for st in label_strokes(lb):
+                g(0, 'POLYLINE'); g(8, LAYERS['label'][0]); g(66, 1); g(70, 0); g(10, 0.0); g(20, 0.0); g(30, 0.0)
+                for x, y in st:
+                    g(0, 'VERTEX'); g(8, LAYERS['label'][0]); g(10, float(x)); g(20, H - y); g(30, 0.0)
+                g(0, 'SEQEND'); g(8, LAYERS['label'][0])
     g(0, 'ENDSEC'); g(0, 'EOF')
     return '\n'.join(L) + '\n'

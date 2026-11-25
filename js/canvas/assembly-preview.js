@@ -135,14 +135,6 @@ export class AssemblyPreview {
     if (ev.a && ev.b) this._highlight([ev.a, ev.b], now);
   }
 
-  /** Short description of what the compiler is working on, for the loader's status line. */
-  detail(ev) {
-    if (ev.stage === JOINS && this.joins?.[ev.done]) return this.joins[ev.done].join(' → ');
-    if (ev.board) return ev.board;
-    if (ev.a && ev.b) return `${ev.a} ${ev.stage === 'collisions' ? '×' : '↔'} ${ev.b}`;
-    return '';
-  }
-
   /** Every board assembled, quickly staggered so a large design does not appear in one jump. */
   placeAll() {
     this.allPlaced = true;

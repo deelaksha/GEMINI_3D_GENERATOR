@@ -169,7 +169,10 @@ def test_svg_dxf_pdf_exports(boat):
     assert {g.get('id') for g in root if g.tag.endswith('g')} >= {'CUT_OUTER', 'CUT_INNER', 'ENGRAVE_LABELS'}
     dxf, _, _ = export(pkg, 'dxf', 0)
     assert dxf.startswith('0\nSECTION') and dxf.rstrip().endswith('EOF')
-    assert dxf.count('\nPOLYLINE\n') + dxf.count('\nCIRCLE\n') == len(pkg['cut']['sheets'][0]['paths'])
+    from board_engine.cutpaths import label_strokes
+    sheet = pkg['cut']['sheets'][0]
+    strokes = sum(len(label_strokes(lb)) for lb in sheet['labels'])     # part labels are single-stroke polylines
+    assert dxf.count('\nPOLYLINE\n') + dxf.count('\nCIRCLE\n') == len(sheet['paths']) + strokes
     pdf, mime, _ = export(pkg, 'pdf', paper='A4')
     assert pdf.startswith(b'%PDF-1.4') and pdf.rstrip().endswith(b'%%EOF')
     sizes = re.findall(rb'/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]', pdf)

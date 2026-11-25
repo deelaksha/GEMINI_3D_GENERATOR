@@ -1,59 +1,30 @@
 /**
- * Compile loader: the status card shown over the 3D view while a design compiles. The view behind it shows the
- * design itself assembling (assembly-preview.js).
+ * Compile progress: one thin bar along the top of the 3D view, so the live assembly behind it stays fully visible
+ * (assembly-preview.js). Errors are reported by the status pill, the Problems panel and a toast.
  *
  * Progress is driven only by the compiler's own stage events (see /canvas/compile-stream); each stage's share of
  * the bar is its measured share of compile time (collision checks dominate), and inside a stage the bar follows
  * the compiler's real item counts.
  */
 const STAGES = [
-  // id, label, unit of the compiler's item count, share of the bar (%)
-  ['parse', 'Parsing JSON', null, 2],
-  ['geometry', 'Generating geometry', 'board', 3],
-  ['joints', 'Joining boards', 'joint', 22],
-  ['dimensions', 'Validating dimensions', 'board', 4],
-  ['joint_validation', 'Validating joints', 'joint', 4],
-  ['collisions', 'Detecting gaps & overlaps', 'board pair', 50],
-  ['model', 'Building 3D model', null, 5],
-  ['render', 'Rendering', null, 10]
+  // id, share of the bar (%)
+  ['parse', 2], ['geometry', 3], ['joints', 22], ['dimensions', 4], ['joint_validation', 4],
+  ['collisions', 50], ['model', 5], ['render', 10]
 ];
 
-const fmtTime = (ms) => {
-  const s = ms / 1000;
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(1).padStart(4, '0')}`;
-};
-const fmtDur = (s) => (s < 1 ? `${Math.max(1, Math.round(s * 1000))} ms` : `${s.toFixed(1)} s`);
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
 export class CompileLoader {
-  constructor(host, { onCancel, onHide } = {}) {
+  constructor(host) {
     this.host = host;
-    this.onCancel = onCancel;
-    this.onHide = onHide;
     this.el = document.createElement('div');
-    this.el.className = 'cl';
+    this.el.className = 'cl-bar';
     this.el.hidden = true;
-    this.el.innerHTML = `
-      <div class="cl-stage" aria-hidden="true">
-        <div class="cl-hud tl mono"></div>
-        <div class="cl-wait">Reading the design…</div>
-      </div>
-      <div class="cl-info">
-        <div class="cl-head">
-          <div class="cl-head-text"><div class="cl-title">Compiling design</div><div class="cl-sub"></div></div>
-          <div class="cl-time mono" title="Elapsed time">00:00.0</div>
-        </div>
-        <div class="cl-bar" role="progressbar" aria-label="Compile progress" aria-valuemin="0" aria-valuemax="100"><div class="cl-fill"></div></div>
-        <div class="cl-meta"><span class="cl-pct mono">0%</span><span class="cl-hint">Press <kbd>Esc</kbd> to <span class="if-max">exit full screen</span><span class="if-min">cancel</span></span></div>
-        <ol class="cl-stages">${STAGES.map(([id, label]) => `<li data-st="${id}"><span class="cl-ico"></span><span class="cl-lbl">${label}</span><span class="cl-det mono"></span></li>`).join('')}</ol>
-        <div class="cl-fail" hidden><div class="cl-fail-msg"></div></div>
-        <div class="cl-actions"><button class="btn small" data-act="cancel">Cancel</button></div>
-        <div class="cl-live" aria-live="polite"></div>
-      </div>`;
+    this.el.setAttribute('role', 'progressbar');
+    this.el.setAttribute('aria-label', 'Compile progress');
+    this.el.setAttribute('aria-valuemin', '0');
+    this.el.setAttribute('aria-valuemax', '100');
+    this.el.innerHTML = '<div class="cl-fill"></div>';
     host.appendChild(this.el);
-    this.q = (s) => this.el.querySelector(s);
-    this.rows = Object.fromEntries([...this.el.querySelectorAll('[data-st]')].map((li) => [li.dataset.st, li]));
-    this.q('[data-act="cancel"]').onclick = () => this.onCancel?.();
+    this.fill = this.el.firstChild;
     this.active = false;
   }
 
@@ -61,159 +32,53 @@ export class CompileLoader {
 
   start() {
     clearTimeout(this._hideT);
-    this.st = Object.fromEntries(STAGES.map(([id]) => [id, { status: 'pending', frac: 0 }]));
-    this.t0 = performance.now();
-    this.lastServerT = 0;
+    this.frac = Object.fromEntries(STAGES.map(([id]) => [id, 0]));
     this.active = true;
     this.done = false;
-    this.failed = false;
-    this.el.className = 'cl';
+    this.el.className = 'cl-bar';
     this.el.hidden = false;
     this.host.classList.add('cl-busy');
-    this.q('.cl-title').textContent = 'Compiling design';
-    this.q('.cl-fail').hidden = true;
-    this.q('.cl-hint').hidden = false;
-    this.q('.cl-hud').textContent = '';
-    this.q('.cl-wait').hidden = false;
-    this.detail = '';
-    this._actions([['cancel', 'Cancel']]);
-    Object.values(this.rows).forEach((li) => { li.className = ''; li.querySelector('.cl-det').textContent = ''; });
-    this._set('parse', { status: 'active' });
     this._paint();
-    requestAnimationFrame(() => this.el.classList.add('show'));
-    clearInterval(this._tick);
-    this._tick = setInterval(() => { this.q('.cl-time').textContent = fmtTime(performance.now() - this.t0); }, 100);
   }
 
-  /** The live assembly is on screen: drop the placeholder and say what is being built. */
-  assembling(boards) {
-    this.q('.cl-wait').hidden = true;
-    this.q('.cl-hud').textContent = `LIVE ASSEMBLY · ${boards} BOARD${boards === 1 ? '' : 'S'}`;
-  }
-
-  /** A {stage, done, total, t} event from the compiler; `detail` names what it is working on. */
-  progress({ stage, done, total, t }, detail = '') {
+  /** A {stage, done, total} event from the compiler. */
+  progress({ stage, done, total }) {
     if (!this.busy) return;
-    this.detail = detail;
     const i = STAGES.findIndex(([id]) => id === stage);
     if (i < 0) return;
-    STAGES.slice(0, i).forEach(([id]) => this.st[id].status !== 'done' && this._finishStage(id, t));
-    const finished = !total || done >= total;
-    const s = this.st[stage];
-    s.frac = total ? Math.min(1, done / total) : 1;
-    s.count = total ? [Math.min(done + (finished ? 0 : 1), total), total] : null;
-    if (finished) this._finishStage(stage, t);
-    else this._set(stage, { status: 'active' });
+    STAGES.slice(0, i).forEach(([id]) => { this.frac[id] = 1; });       // earlier stages are finished
+    this.frac[stage] = total ? Math.min(1, done / total) : 1;
     this._paint();
   }
 
-  /** Server work is finished; the page is now building the 3D view (render = 'active'). */
-  rendering(serverT) {
+  /** Server work is finished; the page is building the 3D model. */
+  rendering() {
     if (!this.busy) return;
-    STAGES.slice(0, -1).forEach(([id]) => {
-      if (this.st[id].status === 'pending' || this.st[id].status === 'active') {
-        // a stage the compiler never reached was skipped (it stopped early); one it was in is complete
-        if (this.st[id].status === 'active' || this.st[id].frac) this._finishStage(id, serverT);
-        else this._set(id, { status: 'skipped' });
-      }
-    });
-    this.renderT0 = performance.now();
-    this._set('render', { status: 'active' });
+    STAGES.slice(0, -1).forEach(([id]) => { this.frac[id] = 1; });
     this._paint();
   }
 
-  /** Model on screen: fill the bar and fade the card out at once (no waiting on animations). */
-  complete(summary) {
+  /** Model on screen: fill the bar and fade it out at once (no waiting on animations). */
+  complete() {
     if (!this.busy) return;
-    Object.assign(this.st.render, { frac: 1, dur: (performance.now() - this.renderT0) / 1000 });
-    this._set('render', { status: 'done' });
-    this._stop();
+    this.frac.render = 1;
+    this._paint();
     this.el.classList.add('ok');
-    this.q('.cl-title').textContent = summary || 'Compiled';
-    this._paint();
     this.hide();
-  }
-
-  /** Show why compiling stopped. actions: [[id, label, primary?, handler]]. */
-  fail({ title, message, actions }) {
-    if (!this.active) return;
-    const cur = STAGES.find(([id]) => this.st[id].status === 'active')?.[0] || 'parse';
-    this._set(cur, { status: 'failed' });
-    STAGES.forEach(([id]) => this.st[id].status === 'pending' && this._set(id, { status: 'skipped' }));
-    this._stop();
-    this.failed = true;
-    this.el.classList.add('err');
-    this.q('.cl-title').textContent = title;
-    this.q('.cl-fail').hidden = false;
-    this.q('.cl-fail-msg').textContent = message || '';
-    this.q('.cl-hint').hidden = true;
-    this._paint();
-    this._actions(actions);
-    this.q('.cl-actions .btn.primary')?.focus();
   }
 
   hide() {
     clearTimeout(this._hideT);
-    this._stop();
-    this.active = false;
-    this.el.classList.remove('show');
-    this.host.classList.remove('cl-busy');
-    this.onHide?.();
-    this._hideT = setTimeout(() => { this.el.hidden = true; }, 420);
-  }
-
-  _stop() {
     this.done = true;
-    clearInterval(this._tick);
-    this.q('.cl-time').textContent = fmtTime(performance.now() - this.t0);
-  }
-
-  _actions(list) {
-    const box = this.q('.cl-actions');
-    box.innerHTML = list.map(([id, label, primary]) => `<button class="btn small${primary ? ' primary' : ''}" data-act="${id}">${esc(label)}</button>`).join('');
-    list.forEach(([id, , , fn]) => { box.querySelector(`[data-act="${id}"]`).onclick = fn || (() => this.onCancel?.()); });
-  }
-
-  _finishStage(id, t) {
-    const s = this.st[id];
-    s.frac = 1;
-    if (s.count) s.count = [s.count[1], s.count[1]];
-    if (t !== undefined) { s.dur = Math.max(0, t - this.lastServerT); this.lastServerT = t; }
-    this._set(id, { status: 'done' });
-    const next = STAGES[STAGES.findIndex(([x]) => x === id) + 1];
-    if (next && this.st[next[0]].status === 'pending') this._set(next[0], { status: 'active' });
-  }
-
-  _set(id, patch) {
-    const s = Object.assign(this.st[id], patch);
-    const li = this.rows[id];
-    li.className = s.status === 'pending' ? '' : s.status;
-    if (s.status === 'active') {
-      const [, label] = STAGES.find(([x]) => x === id);
-      if (this.q('.cl-live').textContent !== label) this.q('.cl-live').textContent = label;
-    }
+    this.active = false;
+    this.host.classList.remove('cl-busy');
+    this.el.classList.add('out');
+    this._hideT = setTimeout(() => { this.el.hidden = true; }, 400);
   }
 
   _paint() {
-    const pct = STAGES.reduce((sum, [id, , , w]) => sum + w * (this.st[id].status === 'skipped' && !this.failed ? 1 : this.st[id].frac), 0);
-    const p = Math.min(100, Math.floor(pct));
-    this.q('.cl-fill').style.transform = `scaleX(${pct / 100})`;
-    this.q('.cl-pct').textContent = `${p}%`;
-    this.q('.cl-bar').setAttribute('aria-valuenow', p);
-    for (const [id, , unit] of STAGES) {
-      const s = this.st[id];
-      const det = this.rows[id].querySelector('.cl-det');
-      det.textContent = s.status === 'done' && s.dur !== undefined ? fmtDur(s.dur)
-        : s.status === 'active' && s.count && unit ? `${s.count[0]}/${s.count[1]}` : '';
-    }
-    const act = STAGES.find(([id]) => this.st[id].status === 'active');
-    if (act && !this.done) {
-      const [id, label, unit] = act;
-      const c = this.st[id].count;
-      const count = c && unit ? `${unit} ${c[0]} of ${c[1]}` : '';
-      this.q('.cl-sub').textContent = [label, this.detail, count].filter(Boolean).join(' · ') + (count || this.detail ? '' : '…');
-    } else if (this.done) {
-      this.q('.cl-sub').textContent = `${this.failed ? 'Stopped after' : 'Finished in'} ${fmtTime(performance.now() - this.t0)}`;
-    }
+    const pct = STAGES.reduce((sum, [id, w]) => sum + w * this.frac[id], 0);
+    this.fill.style.transform = `scaleX(${pct / 100})`;
+    this.el.setAttribute('aria-valuenow', Math.floor(pct));
   }
 }

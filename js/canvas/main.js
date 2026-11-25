@@ -11,8 +11,8 @@ import { Api, ApiError } from '../studio/api.js';
 import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
-import { CompileLoader } from './compile-loader.js?v=2.15';
-import { AssemblyPreview } from './assembly-preview.js?v=2.15';
+import { CompileLoader } from './compile-loader.js?v=2.20';
+import { AssemblyPreview } from './assembly-preview.js?v=2.20';
 import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -159,7 +159,8 @@ function fillThickness() {
 // Laser cutter: bed and kerf drive the prompt, every check, the nesting and the cut files
 // ---------------------------------------------------------------------------
 const MACHINE_KEY = 'board-canvas-laser';
-const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true };
+const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true, shared: false, measured: '', fit: '', cut: '', engrave: '', price: '' };
+const MACHINE_FIELDS = { measured: '#in-measured', fit: '#in-fit', cut: '#in-cut-speed', engrave: '#in-engrave-speed', price: '#in-price' };
 
 function loadMachine() {
   let m = MACHINE_DEFAULT;
@@ -169,6 +170,8 @@ function loadMachine() {
   $('#in-bed-h').value = m.h;
   $('#in-kerf').value = m.kerf;
   $('#in-labels').checked = m.labels;
+  $('#in-shared').checked = m.shared;
+  Object.entries(MACHINE_FIELDS).forEach(([k, id]) => { $(id).value = m[k]; });
   syncBed();
 }
 
@@ -178,11 +181,29 @@ function syncBed() {
   if (!custom) [$('#in-bed-w').value, $('#in-bed-h').value] = $('#in-bed').value.split('x');
 }
 
-/** {kerf, sheet: {width, height}} as the API takes it (out-of-range input falls back to the defaults). */
+/** {kerf, sheet: {width, height}, measured?, fit?} as the API takes it (out-of-range input falls back to defaults). */
 function machine() {
   const num = (el, lo, hi, d) => { const v = parseFloat($(el).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : d; };
-  return { kerf: num('#in-kerf', 0.01, 1, MACHINE_DEFAULT.kerf),
+  const m = { kerf: num('#in-kerf', 0.01, 1, MACHINE_DEFAULT.kerf),
     sheet: { width: num('#in-bed-w', 50, 5000, MACHINE_DEFAULT.w), height: num('#in-bed-h', 50, 5000, MACHINE_DEFAULT.h) } };
+  for (const [k, id, lo, hi] of [['measured', '#in-measured', 0.5, 50], ['fit', '#in-fit', -0.5, 1],
+    ['cut_speed', '#in-cut-speed', 0.1, 1000], ['engrave_speed', '#in-engrave-speed', 0.1, 5000], ['sheet_price', '#in-price', 0, 1e6]]) {
+    const v = num(id, lo, hi, null);
+    if (v !== null) m[k] = v;
+  }
+  if ($('#in-shared').checked) m.shared_edges = true;
+  return m;
+}
+
+async function downloadTestFit() {
+  const t = machine().measured ?? parseFloat($('#in-thickness').value);
+  try {
+    const blob = await Api.canvasTestFit(t, machine());
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `test-fit-${t}mm.svg` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`Test-fit piece for ${t} mm board downloaded: cut it, push the tab into each slot, enter the snuggest value as “Slot fit”.`, false, 8000);
+  } catch (e) { reportError(e); }
 }
 
 function machineChanged() {
@@ -190,7 +211,8 @@ function machineChanged() {
   const m = machine();
   try {
     localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: m.sheet.width, h: m.sheet.height,
-      kerf: m.kerf, labels: $('#in-labels').checked }));
+      kerf: m.kerf, labels: $('#in-labels').checked, shared: $('#in-shared').checked,
+      ...Object.fromEntries(Object.entries(MACHINE_FIELDS).map(([k, id]) => [k, $(id).value])) }));
   } catch (e) { /* ignore */ }
   S.fixPrompt = null;                         // built for the old settings
   if (S.result) setStatus('warn', 'Laser settings changed — compile again');
@@ -208,6 +230,56 @@ async function generatePrompt() {
     if (narrow.matches) setPane('prompt');
     toast('Prompt ready — copy it into your AI');
   } catch (e) { reportError(e); }
+}
+
+// ---------------------------------------------------------------------------
+// Direct AI generation (when the server has an AI key): describe -> AI -> compile -> AI fixes errors
+// ---------------------------------------------------------------------------
+const AI_FIX_ROUNDS = 2;
+
+function putCode(source) {
+  cm.replaceRange(source, cm.posFromIndex(0), cm.posFromIndex(cm.getValue().length));   // one undoable change
+}
+
+const hasErrors = () => !S.result?.model3d || (S.result.summary?.errors || 0) > 0;
+
+/** Ask the AI to fix the current code's problems, then compile; repeat while errors remain (at most `rounds`). */
+async function aiFixLoop(rounds) {
+  for (let round = 1; round <= rounds && hasErrors(); round++) {
+    toast(`Asking the AI to fix the problems (round ${round} of ${rounds})…`, false, 60000);
+    const r = await Api.canvasAiFix(cm.getValue(), machine());
+    if (!r.changed) break;
+    putCode(r.source);
+    await compile(true);
+  }
+  toast(hasErrors() ? 'The AI could not fix every problem: see the Problems list (Copy fix prompt to try another AI)'
+    : 'The AI design compiles cleanly', hasErrors());
+}
+
+async function aiGenerate() {
+  const title = $('#in-title').value.trim();
+  if (!title) { $('#in-title').focus(); return toast('Enter a product title first', true); }
+  if (cm.getValue().trim() && !confirm('Replace the code in the editor with a new AI design?')) return;
+  const btn = $('#btn-ai-generate');
+  btn.disabled = true;
+  try {
+    toast('The AI is designing — this can take a minute or two…', false, 120000);
+    const r = await Api.canvasAiGenerate({ title, requirements: $('#in-req').value,
+      thickness: parseFloat($('#in-thickness').value), machine: machine() });
+    putCode(r.source);
+    if (narrow.matches) setPane('code');
+    await compile(true);
+    await aiFixLoop(AI_FIX_ROUNDS);
+  } catch (e) { reportError(e); } finally { btn.disabled = false; }
+}
+
+async function aiFix() {
+  const btn = $('#btn-ai-fix');
+  btn.disabled = true;
+  try {
+    fs3d.exit();
+    await aiFixLoop(1);
+  } catch (e) { reportError(e); } finally { btn.disabled = false; }
 }
 
 function showPrompt(prompt, meta) {
@@ -291,8 +363,8 @@ async function copyText(text, what) {
 // Compile
 // ---------------------------------------------------------------------------
 // while compiling, the view shows the live assembly: picking would hit the (hidden) previous model
-const view3d = new Viewport3D($('#canvas3d'), { onSelect: (id) => !loader.active && select(id, 'view'),
-  onHover: (id, e) => tip($('#tip-3d'), loader.active ? null : id, e) });
+const view3d = new Viewport3D($('#canvas3d'), { onSelect: (id) => !loader.active && !preview.shown && select(id, 'view'),
+  onHover: (id, e) => tip($('#tip-3d'), loader.active || preview.shown ? null : id, e) });
 const sheet2d = new Sheet2D($('#svg2d'), { onSelect: (id) => select(id, 'view'), onHover: (id, e) => tip($('#tip-2d'), id, e), scalebar: $('#scalebar-2d') });
 
 function tip(el, id, e) {
@@ -323,7 +395,7 @@ function showStatus(r) {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const preview = new AssemblyPreview(view3d);
-const loader = new CompileLoader($('.view-3d'), { onCancel: () => cancelCompile(), onHide: () => preview.end() });
+const loader = new CompileLoader($('.view-3d'));
 let compileJob = null;
 
 /** First compile phase, streamed: a Web Worker runs the request and parses the reply, posting the compiler's
@@ -362,7 +434,7 @@ function cancelCompile() {
   compileJob.cancel();
 }
 
-/** Why a compile produced no model, as the loader's failure panel shows it. */
+/** Why a compile produced no model, in one line. */
 function compileFailure(r) {
   const errs = r.diagnostics.filter((d) => d.severity === 'error');
   const first = errs[0] || r.diagnostics[0];
@@ -406,7 +478,15 @@ async function compile(production = true) {
   setStatus('busy');
   $('#btn-compile').disabled = true;
   const show = production;
-  const close = () => { loader.hide(); if (narrow.matches && !S.result?.model3d) setPane('code'); };
+  /** The compile ended without a model: show what went wrong where it can be fixed (code + Problems). */
+  const failed = (title, message) => {
+    loader.hide();
+    if (!preview.shown) preview.end();        // a partly built design stays on view, its bad boards in red
+    else $('#pv-empty').hidden = true;
+    fs3d.exit();
+    if (narrow.matches) setPane('code');
+    toast(`${title}${message ? ` — ${message}` : ''}${S.fixPrompt?.source === source ? ' · A fix prompt is ready in step 2.' : ''}`, true);
+  };
   if (show) {
     loader.start();
     preview.begin();             // the design assembles in the 3D view as the compiler works through it
@@ -416,11 +496,11 @@ async function compile(production = true) {
     if (navigator.userActivation?.isActive ?? true) fs3d.enter();
   }
   try {
-    let serverT = 0, first, repaired = false;
+    let first, repaired = false;
     while (true) {
       first = await compileStream(source,
-        (ev) => { serverT = ev.t; if (show) { preview.event(ev); loader.progress(ev, preview.detail(ev)); } },
-        (p) => { if (show && loader.active) { preview.show(p); loader.assembling(p.ids.length); } });
+        (ev) => { if (show) { preview.event(ev); loader.progress(ev); } },
+        (p) => { if (show && preview.active) preview.show(p); });
       // a JSON syntax error the compiler can repair is fixed in the editor and compiled again, once
       const fix = !first.model3d && !repaired && first.diagnostics[0]?.code === 'JSON_SYNTAX' &&
         first.diagnostics[0].fixes?.find((f) => f.kind === 'repair_json');
@@ -430,8 +510,8 @@ async function compile(production = true) {
       source = S.compilingSource = cm.getValue();
     }
     if (show && first.model3d) {
-      loader.rendering(serverT);
-      await nextFrame();         // let "Rendering" paint before the WebGL build blocks the main thread
+      loader.rendering();
+      await nextFrame();         // let the bar paint before the WebGL build blocks the main thread
     }
     const sameDesign = S.result?.model3d && first.model3d &&
       S.result.model3d.components.map((c) => c.id).join() === first.model3d.components.map((c) => c.id).join();
@@ -443,13 +523,12 @@ async function compile(production = true) {
     if (show) {
       if (first.model3d) {
         await nextFrame();       // the model has been drawn once: reveal it
-        const s = first.summary;
-        loader.complete(s.errors ? `Compiled with ${s.errors} error${s.errors === 1 ? '' : 's'}` : `Compiled · ${s.boards} boards · ${s.joined}/${s.joints} joints`);
+        loader.complete();
       } else {
         offerFixPrompt(first, source);           // nothing more will run: this is the end of the compile
         preview.markErrors(first.diagnostics.filter((d) => d.severity === 'error' && d.board).map((d) => d.board));
-        loader.fail({ ...compileFailure(first), actions: [['close', 'Close', false, close],
-          ['problems', 'Show problems', true, () => { loader.hide(); fs3d.exit(); setPane('code'); $('#diag-list .dg[data-i="0"]')?.click(); }]] });
+        const f = compileFailure(first);
+        failed(f.title, f.message);
       }
     }
     if (production && first.model3d && narrow.matches) setPane('preview');
@@ -467,14 +546,15 @@ async function compile(production = true) {
   } catch (e) {
     if (e.cancelled) {
       loader.hide();
+      preview.end();
       if (S.result && cm.getValue() === S.compiledSource) showStatus(S.result); else setStatus('dirty');
       toast('Compilation cancelled');
     } else {
       setStatus('err', 'Compile failed');
       if (show) {
         console.error(e);
-        loader.fail({ title: e.status === 408 ? 'Compilation timed out' : 'Compilation failed', message: e.message,
-          actions: [['close', 'Close', false, close], ['retry', 'Retry', true, () => { loader.hide(); compile(true); }]] });
+        preview.end();
+        failed(e.status === 408 ? 'Compilation timed out' : 'Compilation failed', e.message);
       } else reportError(e);
     }
   } finally {
@@ -496,12 +576,16 @@ function render(keepCamera = false) {
   $('#btn-save').disabled = !r?.model3d || !!r.partial;     // a partial compile left parts out: never stored
   $('#btn-import').disabled = !r?.model3d || !!r.partial;
   $('#btn-cutfiles').disabled = !r?.model3d;
+  $('#btn-resize').disabled = !r?.model3d;
   $('#pv-empty').hidden = !!r?.model3d;
   if (r?.model3d) {
     if (!keepCamera) view3d._framed = false;
     view3d.load(r.model3d);
     const s = r.summary;
-    $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`;
+    const j = r.job?.totals;
+    $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`
+      + (j ? ` · cut ${j.cut_length_m} m · ~${j.minutes} min${j.material_cost !== undefined ? ` · cost ${j.material_cost}` : ''}` : '');
+    $('#pv-summary').title = j ? r.job.sheets.map((x) => `Sheet ${x.sheet}: cut ${x.cut_length_m} m, engrave ${x.engrave_length_m} m, ${x.pierces} pierces, ~${x.minutes} min, offcut ${x.offcut_m2} m²`).join('\n') + `\n${r.job.note}` : '';
   }
   if (r?.layout) { sheet2d._fitted = false; sheet2d.load(r.layout, { mode: 'production', states: Object.fromEntries(r.model3d.components.map((c) => [c.id, c.state])) }); }
   if (S.selected && !r?.model3d?.components.some((c) => c.id === S.selected)) S.selected = null;
@@ -678,7 +762,10 @@ function renderBoard() {
       <div class="edit-grid"><span></span><span class="ax">X</span><span class="ax">Y</span><span class="ax">Z</span></div>
       <div class="edit-grid"><label>Position</label>${raw.position.map((v, i) => `<input data-f="position" data-i="${i}" value="${v}" inputmode="decimal" />`).join('')}</div>
       <div class="edit-grid"><label>Size</label>${raw.size.map((v, i) => `<input data-f="size" data-i="${i}" value="${v}" inputmode="decimal" />`).join('')}</div>
-      <div class="row-actions"><button class="btn small" id="be-reset">Reset</button><button class="btn small primary" id="be-apply">Update code &amp; compile</button></div></div>` : ''}
+      <div class="row-actions"><button class="btn small" id="be-reset">Reset</button><button class="btn small primary" id="be-apply">Update code &amp; compile</button></div></div>
+    <div class="section"><h4>Engrave an image</h4>
+      <p class="lead">PNG or JPEG up to 300 KB, raster-engraved on this board (laser SVG only).</p>
+      <input type="file" id="be-image" accept="image/png,image/jpeg" /></div>` : ''}
     <div class="section"><h4>Connections <span class="badge">${joints.length}</span></h4>
       ${joints.map((j) => `<div class="line"><span class="dot ${j.status === 'joined' ? 'joined' : 'error'}"></span><span class="grow mono">${esc(j.id)}</span>
         <span class="muted">${esc(j.type.replace('_', ' '))} ${j.a === c.id ? '→ ' + esc(j.b) : '← ' + esc(j.a)}</span></div>`).join('') || '<p class="lead">No connections.</p>'}</div>
@@ -717,6 +804,7 @@ function renderBoard() {
   });
   bindCadInspectorEvents(panel, c);
   if (raw) {
+    $('#be-image').onchange = (ev) => addImageEngraving(c.id, ev.target.files[0]);
     $('#be-reset').onclick = renderBoard;
     $('#be-apply').onclick = async () => {
       try {
@@ -733,6 +821,53 @@ function renderBoard() {
       } catch (e) { toast(e.message, true); }
     };
   }
+}
+
+function openResize() {
+  const b = S.result?.model3d?.bounds;
+  if (!b) return;
+  ['length', 'height', 'depth'].forEach((k, i) => { $(`#rs-${k}`).value = Math.round(b.max[i] - b.min[i]); });
+  $('#dlg-resize').showModal();
+}
+
+async function applyResize() {
+  const size = {};
+  for (const k of ['length', 'height', 'depth']) {
+    const v = parseFloat($(`#rs-${k}`).value);
+    if (Number.isFinite(v)) size[k] = v;
+  }
+  try {
+    const r = await Api.canvasResize(cm.getValue(), size);
+    $('#dlg-resize').close();
+    cm.replaceRange(r.source, cm.posFromIndex(0), cm.posFromIndex(cm.getValue().length));   // one undoable change
+    toast(`Resized to ${r.overall.length} × ${r.overall.height} × ${r.overall.depth} mm (Ctrl+Z to undo)`);
+    await compile(true);
+  } catch (e) { reportError(e); }
+}
+
+/** Put an image on a board's face (centred, 60 % of the face, aspect kept) as an "image" engraving, then compile. */
+async function addImageEngraving(boardId, file) {
+  if (!file) return;
+  if (file.size > 300 * 1024) return toast('Image is larger than 300 KB: use a smaller PNG / JPEG', true);
+  const src = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  try {
+    const data = parseCode();
+    const b = data.boards.find((x) => x.id === boardId);
+    const t = b.thickness ?? data.material.thickness;
+    const thin = b.normal ? 'xyz'.indexOf(b.normal) : b.size.findIndex((s) => Math.abs(s - t) <= 0.01);
+    const [iu, iv] = [0, 1, 2].filter((i) => i !== thin);
+    const su = b.size[iu], sv = b.size[iv];
+    const k = Math.min((su * 0.6) / img.naturalWidth, (sv * 0.6) / img.naturalHeight);
+    const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+    (b.engravings ||= []).push({ id: `image-${b.engravings.length + 1}`, kind: 'image', src,
+      position: [Math.round((su - w) / 2), Math.round((sv - h) / 2)], size: [w, h] });
+    cm.setValue(pretty(data));
+    toast(`Image added to ${boardId} (${w} × ${h} mm); edit its "position" / "size" in the code to move it`);
+    await compile(true);
+  } catch (e) { toast(`Cannot add the image: ${e.message}`, true); }
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +986,12 @@ $('#btn-update').onclick = () => save(true);
 $('#btn-open-studio').onclick = () => { if (S.savedId) location.href = `/?design=${encodeURIComponent(S.savedId)}`; };
 $('#btn-import').onclick = () => openImport().catch(reportError);
 $('#btn-cutfiles').onclick = () => downloadCutFiles();
-['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels'].forEach((id) => ($(id).onchange = machineChanged));
+$('#btn-ai-generate').onclick = aiGenerate;
+$('#btn-ai-fix').onclick = aiFix;
+$('#btn-resize').onclick = openResize;
+$('#rs-apply').onclick = applyResize;
+['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
+$('#btn-testfit').onclick = downloadTestFit;
 $('#sel-example').onchange = (e) => {
   const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,
     structures: S.spec.structures_example_source }[e.target.value];
@@ -871,6 +1011,11 @@ window.addEventListener('keydown', (e) => {
     S.spec = await Api.canvasSpec();
     fillThickness();
     loadMachine();
+    Api.canvasAiStatus().then((st) => {           // AI buttons only when the server has a provider key
+      if (!st.provider) return;
+      $('#btn-ai-generate').hidden = $('#btn-ai-fix').hidden = false;
+      $('#btn-ai-generate').title += ` (${st.provider}: ${st.model})`;
+    }).catch(() => {});
     const q = new URLSearchParams(location.search);
     if (q.get('design')) {
       const { design } = await Api.design(q.get('design'));

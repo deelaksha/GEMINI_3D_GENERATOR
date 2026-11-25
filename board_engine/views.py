@@ -41,7 +41,9 @@ def component_view(design, comp):
         'outline': comp['outline'], 'cut_outline': _r([list(p) for p in pl.cut]),
         'features': [f if f['shape'] == 'circle' else dict(f, polygon=_r(feature_polygon(f)))
                      for f in comp.get('features', [])],
-        'marks': comp.get('marks', []), 'tabs': tabs, 'edges': edges,
+        'marks': comp.get('marks', []), 'hinges': comp.get('hinges', []),
+        'images': [{'id': im['id'], 'corners': im['corners']} for im in comp.get('images', [])],   # outline only: no data in 3D
+        'tabs': tabs, 'edges': edges,
         'placement': comp['placement'], 'matrix_world': _r(pl.frame.matrix4(), 6),
         'world_normal': _r(pl.frame.normal),
         'cut_size': {k: _r(v) for k, v in G.oriented_rect(pl.cut).items() if k in ('length', 'width', 'angle')},
@@ -83,6 +85,7 @@ def production_package(design, opts=None):
     nest_opts['title_block'] = max(float(opts.get('title_block', 14.0)), 12.0)
     nesting = nest(design, nest_opts)
     cut = generate_cut_paths(design, nesting, compensate_kerf=bool(opts.get('compensate_kerf', False)),
+                             shared_edges=bool(opts.get('shared_edges', design['sheet'].get('shared_edges', False))),
                              include_labels=opts.get('labels', True))
     # Geometry can be valid and still not be makeable: fasteners, drilling, assembly order, stock limits
     mfg = manufacturing_report(design, compensate_kerf=bool(opts.get('compensate_kerf', False)))
