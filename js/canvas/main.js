@@ -324,8 +324,9 @@ async function repairPrompt() {
     }
     showPrompt(r.prompt, `Follow-up prompt with ${r.problems} problem(s). Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`);
     if (r.problems > 0) {
-      await copyText(r.prompt, 'Fix prompt');
-      toast(`Copied follow-up fix prompt (${r.problems} issue${r.problems === 1 ? '' : 's'}) to clipboard! Paste it into your AI chat.`);
+      if (await copyText(r.prompt, 'Fix prompt')) {
+        toast(`Copied follow-up fix prompt (${r.problems} issue${r.problems === 1 ? '' : 's'}) to clipboard! Paste it into your AI chat.`);
+      }
     } else {
       toast('No problems to fix — all checks passed!');
     }
@@ -346,8 +347,7 @@ async function changePrompt() {
   try {
     const r = await Api.canvasUpdatePrompt(source, change, { machine: machine(), images: images() });
     showPrompt(r.prompt, `Change prompt: the AI is asked to modify only the affected boards and keep the rest. ${images() ? IMAGES_NOTE + ' ' : ''}Paste its reply into the editor and click <b>Compile</b>.`);
-    await copyText(r.prompt, 'Update prompt');
-    toast('Copied update prompt to clipboard! Paste into your AI chat.');
+    if (await copyText(r.prompt, 'Update prompt')) toast('Copied update prompt to clipboard! Paste into your AI chat.');
   } catch (e) {
     reportError(e);
   } finally {
@@ -355,13 +355,39 @@ async function changePrompt() {
   }
 }
 
+/** Copy to the clipboard. -> true when it really was copied. The Clipboard API exists only on https / localhost
+ *  and needs a fresh click; the textarea fallback is checked too. If both fail, the text is left selected where the
+ *  user can see it (step 2 for prompts, the editor for code) with a clear "press Ctrl+C" message. */
 async function copyText(text, what) {
-  try { await navigator.clipboard.writeText(text); toast(`${what} copied`); }
-  catch (e) {
-    const ta = Object.assign(document.createElement('textarea'), { value: text });
-    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-    toast(`${what} copied`);
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied`); return true; } catch (e) { /* blocked: fall back */ }
   }
+  const ta = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+  Object.assign(ta.style, { position: 'fixed', top: '0', left: '0', width: '1px', height: '1px', opacity: '0' });
+  (document.fullscreenElement || document.body).appendChild(ta);
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  ta.remove();
+  if (ok) { toast(`${what} copied`); return true; }
+  if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+  const key = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘C' : 'Ctrl+C';
+  if (what === 'Code') {
+    cm.focus();
+    cm.execCommand('selectAll');
+  } else {
+    const out = $('#out-prompt');
+    out.value = text;
+    $('#btn-copy-prompt').disabled = false;
+    if (narrow.matches) setPane('prompt');
+    out.focus();
+    out.select();
+    out.scrollTop = 0;
+  }
+  toast(`The browser blocked automatic copying here. The ${what.toLowerCase()} is selected${what === 'Code' ? ' in the editor' : ' in step 2'}: press ${key} to copy it.`, true, 12000);
+  return false;
 }
 
 // ---------------------------------------------------------------------------
