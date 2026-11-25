@@ -51,3 +51,14 @@ def test_routes(client):
     r = client.post('/api/v1/canvas/update-prompt', headers=h, json={'source': src, 'change': '', 'images': True,
                                                                      'machine': {'coloring': True}})
     assert r.status_code == 200 and 'REFERENCE IMAGES' in r.json['prompt'] and '## Colours' in r.json['prompt']
+
+
+def test_my_home_example_is_served_and_compiles_clean(client):
+    from board_engine.canvas import compile_source
+    h = {'Authorization': 'Bearer vw'}
+    assert client.get('/api/v1/canvas/examples/nope', headers=h).status_code == 404
+    r = client.get('/api/v1/canvas/examples/home', headers=h)
+    assert r.status_code == 200
+    res = compile_source(r.json['source'], run_production=False, time_budget=120, machine={'coloring': True})
+    assert res['ok'] and res['summary']['boards'] >= 300 and res['summary']['joined'] == res['summary']['joints']
+    assert not [d for d in res['diagnostics'] if d['severity'] in ('error', 'warning')]

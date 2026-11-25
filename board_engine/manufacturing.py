@@ -890,7 +890,8 @@ def material_issues(design, plates, compensate_kerf=None):
                                     f"{', '.join(f'{t:g}' for t in spec['thicknesses'])} mm.", [pid]))
             # the catalogue minimum is a router rule (the bit throws small parts); a laser (kerf < 1 mm) cuts without
             # force, so small parts only need to be wider than the narrowest tab
-            laser = (m.get('kerf') if m.get('kerf') is not None else spec['kerf']) < LASER_KERF
+            kerf = design['material'].get('kerf')
+            laser = (kerf if kerf is not None else spec['kerf']) < LASER_KERF
             min_part = LASER_MIN_PART if laser else spec['min_part']
             if rect['width'] < min_part:
                 issues.append(issue('PART_BELOW_MIN_SIZE', 'error', 'material',

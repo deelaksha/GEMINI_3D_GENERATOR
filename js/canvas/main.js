@@ -7,7 +7,7 @@
  * compiler as data; nothing is evaluated in the page.
  */
 /* global CodeMirror */
-import { Api, ApiError } from '../studio/api.js?v=2.25';
+import { Api, ApiError } from '../studio/api.js?v=2.28';
 import { Viewport3D } from '../studio/viewport3d.js?v=2.24';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
@@ -606,11 +606,12 @@ function renderDiagnostics() {
   $('#btn-autofix').innerHTML = `<svg><use href="#i-wand"/></svg>Auto-fix safe issues${safe.length ? ` (${safe.length})` : ''}`;
 
   const errCount = ds.filter((d) => d.severity === 'error').length;
+  const problems = ds.filter((d) => d.severity === 'error' || d.severity === 'warning').length;   // info notes are FYI
   const btnRepair = $('#btn-repair-prompt');
   if (btnRepair) {
-    btnRepair.disabled = !ds.length;
+    btnRepair.disabled = !problems;
     btnRepair.classList.toggle('primary', errCount > 0);
-    btnRepair.innerHTML = `<svg><use href="#i-copy"/></svg><span>Copy fix prompt${ds.length ? ` (${ds.length})` : ''}</span>`;
+    btnRepair.innerHTML = `<svg><use href="#i-copy"/></svg><span>Copy fix prompt${problems ? ` (${problems})` : ''}</span>`;
   }
 
   if (!ds.length) {
@@ -621,13 +622,13 @@ function renderDiagnostics() {
 
   // one summary line; the single "Copy fix prompt" button above sends every problem listed here
   const floats = ds.filter((d) => d.code === 'NON_INTEGER_DIMENSION').length;
-  const banner = `
+  const banner = problems ? `
     <div class="diag-banner ${errCount ? 'err' : 'warn'}">
       <div class="diag-banner-text">
         <span class="dot ${errCount ? 'err' : 'warn'}"></span>
-        <span><b>${errCount ? `${errCount} error(s)` : `${ds.length} issue(s)`}${errCount && ds.length > errCount ? `, ${ds.length - errCount} warning(s)` : ''}</b>${floats ? ` (${floats} non-integer size${floats === 1 ? '' : 's'})` : ''} — click <b>Copy fix prompt</b> above: one prompt with all of them for your AI.</span>
+        <span><b>${errCount ? `${errCount} error(s)` : ''}${errCount && problems > errCount ? ', ' : ''}${problems > errCount ? `${problems - errCount} warning(s)` : ''}</b>${floats ? ` (${floats} non-integer size${floats === 1 ? '' : 's'})` : ''} — click <b>Copy fix prompt</b> above: one prompt with all of them for your AI.</span>
       </div>
-    </div>`;
+    </div>` : `<div class="dg ok"><span class="dot ok"></span><div><div class="msg">No errors or warnings${r.layout?.ready_for_production ? ' — ready for production' : ''}. The notes below are for information only.</div></div></div>`;
 
   list.innerHTML = banner + ds.map((d, i) => `<div class="dg" data-i="${i}">
     <span class="dot ${d.severity === 'error' ? 'err' : d.severity === 'warning' ? 'warn' : ''}"></span>
@@ -981,11 +982,25 @@ $('#rs-apply').onclick = applyResize;
 try { $('#in-images').checked = localStorage.getItem(IMAGES_KEY) === '1'; } catch (e) { /* storage unavailable */ }
 $('#in-images').onchange = () => { try { localStorage.setItem(IMAGES_KEY, images() ? '1' : '0'); } catch (e) { /* ignore */ } };
 $('#btn-testfit').onclick = downloadTestFit;
-$('#sel-example').onchange = (e) => {
-  const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,
-    structures: S.spec.structures_example_source }[e.target.value];
-  if (src && (!cm.getValue().trim() || confirm('Replace the editor contents with the example?'))) cm.setValue(src);
+$('#sel-example').onchange = async (e) => {
+  const name = e.target.value;
   e.target.value = '';
+  if (!name || (cm.getValue().trim() && !confirm('Replace the editor contents with the example?'))) return;
+  if (name === 'home') {                 // large example: fetched on demand; its look depends on colouring
+    try {
+      const r = await Api.canvasExample('home');
+      if (!$('#in-coloring').checked) {
+        $('#in-coloring').checked = true;
+        machineChanged();
+      }
+      cm.setValue(r.source);
+      toast('My home loaded (colouring switched on) — click Compile to see it');
+    } catch (err) { reportError(err); }
+    return;
+  }
+  const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,
+    structures: S.spec.structures_example_source }[name];
+  if (src) cm.setValue(src);
 };
 narrow.addEventListener('change', () => setPane(document.body.dataset.pane));
 // Esc cancels a compile; in full screen the first Esc only leaves full screen

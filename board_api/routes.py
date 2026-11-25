@@ -8,6 +8,7 @@ humans and agents). Responses use one envelope:
   failure: {"ok": false, "error": {"status", "message", "issues": [...] , ...}}
 """
 import functools
+import json
 import logging
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
@@ -594,6 +595,21 @@ def _canvas_slug(name):
     import secrets
     base = re.sub(r'[^a-z0-9]+', '-', (name or 'ai-design').lower()).strip('-')[:40] or 'ai-design'
     return f'{base}-{secrets.token_hex(2)}'
+
+
+CANVAS_EXAMPLES = {'home': 'my_home.json'}       # larger examples, fetched only when picked in the editor
+
+
+@bp.get('/canvas/examples/<name>')
+def canvas_example(name):
+    """Source of a larger example design (board_engine/examples/<file>), loaded on demand by the editor."""
+    import os
+    from board_engine.canvas import pretty_json
+    if name not in CANVAS_EXAMPLES:
+        return fail(404, 'not_found', f'no example {name!r}; available: {", ".join(CANVAS_EXAMPLES)}')
+    path = os.path.join(os.path.dirname(build_boat.__code__.co_filename), CANVAS_EXAMPLES[name])
+    with open(path) as f:
+        return jsonify({'ok': True, 'name': name, 'source': pretty_json(json.load(f))})
 
 
 @bp.get('/canvas/spec')

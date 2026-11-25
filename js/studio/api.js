@@ -65,6 +65,7 @@ export const Api = {
   storage: () => request('GET', '/storage'),
   canvasSpec: () => request('GET', '/canvas/spec'),
   canvasPrompt: (opts) => request('POST', '/canvas/prompt', opts),
+  canvasExample: (name) => request('GET', `/canvas/examples/${encodeURIComponent(name)}`),
   canvasCompile: (source, production = true, extra = {}) => request('POST', '/canvas/compile', { source, production, ...extra }, { timeout: 120000 }),
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
   canvasRepairPrompt: (source, machine) => request('POST', '/canvas/repair-prompt', { source, machine }, { timeout: 120000 }),
