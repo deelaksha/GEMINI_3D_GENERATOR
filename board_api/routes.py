@@ -615,15 +615,16 @@ def canvas_spec():
 def canvas_prompt():
     from board_engine.canvas_prompt import build_prompt
     data = body()
-    title = data.get('title')
-    if not isinstance(title, str) or not title.strip():
-        raise SchemaError('title is required', 'title')
+    title, images = data.get('title'), bool(data.get('images'))
+    if not images and (not isinstance(title, str) or not title.strip()):
+        raise SchemaError('title is required (or attach reference images)', 'title')
+    title = title if isinstance(title, str) else ''
     th = data.get('thickness')
     if th not in (None, '') and (isinstance(th, bool) or not isinstance(th, (int, float)) or not 0.5 <= th <= 50):
         raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
     return jsonify({'ok': True, 'prompt': build_prompt(title[:200], str(data.get('requirements') or '')[:4000],
                                                         data.get('material') or None, th or None,
-                                                        data.get('joinery') or None, _machine(data))})
+                                                        data.get('joinery') or None, _machine(data), images)})
 
 
 @bp.post('/canvas/repair-prompt')
@@ -674,14 +675,16 @@ def canvas_update_prompt():
     from board_engine.canvas import compile_source
     from board_engine.canvas_prompt import build_update_prompt
     data = body()
-    change = data.get('change')
-    if not isinstance(change, str) or not change.strip():
+    change, images = data.get('change'), bool(data.get('images'))
+    if not images and (not isinstance(change, str) or not change.strip()):
         raise SchemaError('change (the requested modification) is required', 'change')
+    change = change if isinstance(change, str) else ''
     machine = _machine(data)
     res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
     if res.get('format') is None:
         return fail(422, 'compile_failed', 'the current code is not a design yet; generate it first', issues=res['diagnostics'])
-    return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'], machine)})
+    return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'], machine,
+                                                               images)})
 
 
 def _with_repair_prompt(res, source, machine=None):

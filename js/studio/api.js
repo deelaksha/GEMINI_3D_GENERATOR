@@ -69,7 +69,7 @@ export const Api = {
   canvasFix: (source, fix) => request('POST', '/canvas/fix', { source, fix }),
   canvasRepairPrompt: (source, machine) => request('POST', '/canvas/repair-prompt', { source, machine }, { timeout: 120000 }),
   canvasIntegerFixPrompt: (source) => request('POST', '/canvas/integer-fix-prompt', { source }, { timeout: 120000 }),
-  canvasUpdatePrompt: (source, change) => request('POST', '/canvas/update-prompt', { source, change }, { timeout: 120000 }),
+  canvasUpdatePrompt: (source, change, extra = {}) => request('POST', '/canvas/update-prompt', { source, change, ...extra }, { timeout: 120000 }),
   canvasAiStatus: () => request('GET', '/canvas/ai-status'),
   canvasAiGenerate: (opts) => request('POST', '/canvas/ai-generate', opts, { timeout: 330000 }),
   canvasAiFix: (source, machine) => request('POST', '/canvas/ai-fix', { source, machine }, { timeout: 330000 }),

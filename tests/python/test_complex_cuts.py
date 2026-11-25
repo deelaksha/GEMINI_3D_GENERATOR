@@ -316,3 +316,20 @@ def test_every_part_of_the_complex_example_goes_through_every_output():
     assert all(boards[c]['process'] == 'cnc' for c in ('FLOOR', 'GABLE-F', 'SIDE-R'))
     view = {c['id']: c for c in model3d(d)['components']}
     assert set(view) == ids and view['GABLE-F']['marks'] and all('polygon' in f for f in view['GABLE-B']['features'])
+
+
+def test_profiles_on_boards_thin_along_x_join_a_tilted_roof():
+    """Regression: a profiled board thin along x was mirrored by the face mapping (clockwise outline), so its tilted
+    contact was measured against the far face of the roof (a false 'runs 3 mm into')."""
+    t, d8, run = 3, 8 / 15, 90
+    d = {'format': 'board-design/v1', 'product': {'name': 'truss'}, 'material': {'type': 'plywood', 'thickness': t, 'kerf': 0.15},
+         'boards': [{'id': 'CEIL', 'position': [0, 0, 0], 'size': [120, t, 180]},
+                    {'id': 'TRUSS', 'position': [60, t, 15], 'size': [t, 48, 150],
+                     'profile': {'shape': 'polygon', 'points': [[0, 0], [0, 150], [8, 150], [48, 75], [8, 0]]}},
+                    {'id': 'ROOF', 'position': [0, t, 78], 'size': [120, t, 102],
+                     'rotate': {'axis': 'x', 'angle': 28.0725, 'pivot': [0, t, 180]}}],
+         'connections': [{'id': 'c', 'type': 'tab_slot', 'board': 'TRUSS', 'into': 'CEIL', 'tabs': 1, 'tab_width': 12},
+                         {'id': 'r', 'type': 'tab_slot', 'board': 'TRUSS', 'into': 'ROOF', 'tabs': 1, 'tab_width': 10}]}
+    r = compile_source(json.dumps(d), run_production=False)
+    assert not [x for x in r['diagnostics'] if x['severity'] == 'error'], [x['code'] for x in r['diagnostics'] if x['severity'] == 'error']
+    assert r['summary']['joined'] == 2

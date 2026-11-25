@@ -156,3 +156,32 @@ def test_rail_end_without_its_connection():
     d['connections'] = [c for c in d['connections'] if not (c['board'] == 'MOD' and c['into'] == 'LEG-L')]
     u = found_in(d, 'UNJOINED_CONTACT')
     assert u and "The end of 'MOD' butts against 'LEG-L'" in u[0]['message'] and 'it is the board' in u[0]['calc'][-1]
+
+
+def test_a_gap_held_open_by_a_riser_is_not_a_misplacement():
+    _r, found = build([{'id': 'TOP', 'position': [40, 10, 40], 'size': [60, 6, 40]},
+                       {'id': 'LEG', 'position': [40, 6, 40], 'size': [6, 4, 40]}], [])
+    assert not [x for x in found if x['code'] == 'VISIBLE_GAP' and 'TOP' in x['components']]
+
+
+def test_a_regular_row_is_not_a_mismatched_pair():
+    rafters = [{'id': f'R{i}', 'position': [0, 6, 20 + 9 * i], 'size': [30, 4, 6]} for i in range(9)]
+    rafters += [{'id': f'Q{i}', 'position': [270, 6, 20 + 9 * i], 'size': [30, 4, 6]} for i in range(9)]
+    _r, found = build(rafters, [])
+    assert not [x for x in found if x['code'] == 'MISMATCHED_PAIR']
+
+
+def test_small_parts_are_fine_on_a_laser_but_not_on_a_router():
+    from board_engine.manufacturing import material_issues
+    from board_engine.model import build_plates
+    def narrow(kerf):
+        mat = {'type': 'plywood', 'thickness': 3, **({'kerf': kerf} if kerf is not None else {})}
+        d = {'format': 'board-design/v1', 'product': {'name': 'p'}, 'material': mat,
+             'boards': [{'id': 'B', 'position': [0, 0, 0], 'size': [100, 3, 100]},
+                        {'id': 'RIB', 'position': [40, 3, 20], 'size': [3, 6, 40]}],
+             'connections': [{'id': 'c', 'type': 'tab_slot', 'board': 'RIB', 'into': 'B', 'tabs': 1, 'tab_width': 8}]}
+        r = compile_source(json.dumps(d), run_production=False)
+        return [i for i in material_issues(r['design'], build_plates(r['design'])) if i['code'] == 'PART_BELOW_MIN_SIZE']
+    assert not narrow(0.15)                                   # laser: a 9 mm rib (6 + tab) is fine
+    router = narrow(None)                                     # catalogue router kerf 3.2 mm: below 15 mm
+    assert router and 'on a router' in router[0]['message']

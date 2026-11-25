@@ -873,6 +873,10 @@ def _access_order_issues(design, plan, bodies):
 # Material constraints
 # ---------------------------------------------------------------------------
 
+LASER_KERF = 1.0          # mm: a kerf below this is a laser (or knife) cut, not a router
+LASER_MIN_PART = 3.0      # mm: narrowest laser-cut part (the minimum tab width)
+
+
 def material_issues(design, plates, compensate_kerf=None):
     issues = []
     for pid, pl in plates.items():
@@ -884,11 +888,16 @@ def material_issues(design, plates, compensate_kerf=None):
                 issues.append(issue('NONSTANDARD_THICKNESS', 'warning', 'material',
                                     f"'{pid}' is {pl.t:g} mm {m['type'].replace('_', ' ')}; stock thicknesses are "
                                     f"{', '.join(f'{t:g}' for t in spec['thicknesses'])} mm.", [pid]))
-            if rect['width'] < spec['min_part']:
+            # the catalogue minimum is a router rule (the bit throws small parts); a laser (kerf < 1 mm) cuts without
+            # force, so small parts only need to be wider than the narrowest tab
+            laser = (m.get('kerf') if m.get('kerf') is not None else spec['kerf']) < LASER_KERF
+            min_part = LASER_MIN_PART if laser else spec['min_part']
+            if rect['width'] < min_part:
                 issues.append(issue('PART_BELOW_MIN_SIZE', 'error', 'material',
                                     f"'{pid}' is only {rect['width']:.1f} mm wide; {m['type'].replace('_', ' ')} parts "
-                                    f"narrower than {spec['min_part']:g} mm cannot be cut safely.", [pid],
-                                    width=_r(rect['width'])))
+                                    f"narrower than {min_part:g} mm cannot be cut safely"
+                                    + (" on a laser." if laser else " on a router (with a laser kerf below 1 mm the "
+                                       f"minimum is {LASER_MIN_PART:g} mm)."), [pid], width=_r(rect['width'])))
             if spec['grain'] and not pl.comp.get('grain'):
                 issues.append(issue('GRAIN_UNSPECIFIED', 'info', 'material',
                                     f"'{pid}' has no grain direction; nesting may turn it either way.", [pid]))

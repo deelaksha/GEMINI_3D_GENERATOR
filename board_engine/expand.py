@@ -4,7 +4,7 @@ Structure helpers of board-design/v1, expanded into plain boards and connections
   "assemblies": [{"id", "boards": [...], "connections": [...]}] + "instances": [{"assembly", "id", "offset": [x, y, z],
       "repeat"?, "mirror"?}] -- a reusable sub-assembly; each instance's boards are "<instance>-<board id>".
   board "mirror": {"axis": "x"|"y"|"z", "at": mm} -- also build the mirror image across the plane axis = at ("<id>-M").
-  board "repeat": {"count": 2..200, "step": [dx, dy, dz]} -- an array of copies "<id>-1" .. "<id>-n".
+  board "repeat": {"count": 2 or more, "step": [dx, dy, dz]} -- an array of copies "<id>-1" .. "<id>-n".
 
 Connections follow the copies: a connection naming a repeated board becomes one per copy (two repeated boards with
 the same count pair up copy by copy); a mirrored board's connections are mirrored too ("+x" edges flip). `origin`
@@ -12,8 +12,10 @@ maps every generated id back to the id written in the source, so diagnostics sti
 """
 import copy
 
+from .model import LIMITS
+
 AX = ('x', 'y', 'z')
-MAX_BOARDS = 300
+MAX_BOARDS = LIMITS['max_components']     # a guard against a runaway count, far above any real design
 
 
 class ExpandError(ValueError):
@@ -178,8 +180,10 @@ def expand(data):
             out.append(b)
             continue
         n, step = rp.get('count') if isinstance(rp, dict) else None, rp.get('step') if isinstance(rp, dict) else None
-        if not (isinstance(n, int) and 2 <= n <= 200 and _vec3(step)):
-            raise ExpandError(f"board '{b.get('id')}': \"repeat\" must be {{\"count\": 2..200, \"step\": [dx, dy, dz]}}")
+        if not (isinstance(n, int) and not isinstance(n, bool) and n >= 2 and _vec3(step)):
+            raise ExpandError(f"board '{b.get('id')}': \"repeat\" must be {{\"count\": 2 or more, \"step\": [dx, dy, dz]}}")
+        if len(out) + n > MAX_BOARDS:
+            raise ExpandError(f"board '{b.get('id')}': \"repeat\" count {n} would make more than {MAX_BOARDS:,} boards")
         if not _vec3(b.get('position')):
             out.append(b)
             continue
@@ -192,7 +196,7 @@ def expand(data):
             out.append(nb)
         copies[b['id']] = ids
     if len(out) > MAX_BOARDS:
-        raise ExpandError(f'the structure expands to {len(out)} boards; at most {MAX_BOARDS} are supported')
+        raise ExpandError(f'the structure expands to {len(out):,} boards, more than the {MAX_BOARDS:,} the server accepts')
     if copies and conns:
         new = []
         for c in conns:

@@ -55,13 +55,13 @@ FASTENER_KINDS = ('screw', 'confirmat', 'dowel')
 GRAIN = ('none', 'x', 'y')   # grain direction in the component's local frame
 
 LIMITS = {
-    'max_components': 300,
+    'max_components': 100_000,     # no practical limit; only stops a runaway "repeat" from freezing the server
     'max_outline_points': 2048,   # curved outlines are flattened (shapes.FLATTEN_TOL)
     'max_marks': 400,          # engraved text is one mark per stroke
     'max_hinge_lines': 5000,
-    'max_features': 64,
+    'max_features': 100_000,       # slots, holes, openings on one board (a base with hundreds of slats)
     'max_tabs': 32,
-    'max_joints': 1000,
+    'max_joints': 1_000_000,
     'max_coord': 5000.0,
     'min_thickness': 0.5,
     'max_thickness': 50.0,    # solid-wood worktops / table tops (38-40 mm)

@@ -28,7 +28,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 ```
 - `thickness` between 0.5 and 50 mm. `clearance` = extra width of every slot over the
   tab board thickness (default 0.1); `kerf` defaults from the material catalogue below.
-- At most 300 boards; coordinates within ±5000 mm.
+- No fixed limit on the number of boards (very large designs take longer to check); coordinates within
+  ±5000 mm.
 
 ## board
 ```
@@ -80,7 +81,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
   bent across the cuts (rounded box corners, lamp shades). `lines_along` is the face axis the cuts run along (the bend
   axis). Defaults: spacing half the thickness, 20 mm cuts, bridges = thickness. Keep it at least one thickness inside
   the board edges. The board stays flat in this design (bending is not simulated): model the flat panel.
-- `"repeat": {"count": 2..200, "step": [dx, dy, dz]}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
+- `"repeat": {"count": 2 or more, "step": [dx, dy, dz]}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
   (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
   copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
 - `"mirror": {"axis": "x"|"y"|"z", "at": mm}` on a board also builds its mirror image `"<id>-M"` across the plane
@@ -90,8 +91,8 @@ Shapes (used by `profile`, `openings` and `engravings`):
   "offset": [x, y, z], "repeat"?, "mirror"?}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
   gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
   connections; connect instance boards to the rest by those names under the top-level `"connections"`.
-- Top level `"plan": {"assemblies": [...], "steps": [...], "checks": [...]}` is your design plan, written before
-  `"boards"`; the compiler ignores it.
+- Top level `"plan": {"assemblies": [...], "steps": [...], "checks": [...], "reference"?: [...]}` is your design plan,
+  written before `"boards"` ("reference": what attached reference images show); the compiler ignores it.
 - `"rotate": {"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down

@@ -7,7 +7,7 @@
  * compiler as data; nothing is evaluated in the page.
  */
 /* global CodeMirror */
-import { Api, ApiError } from '../studio/api.js';
+import { Api, ApiError } from '../studio/api.js?v=2.25';
 import { Viewport3D } from '../studio/viewport3d.js?v=2.24';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
@@ -233,15 +233,19 @@ function machineChanged() {
   if (S.result) setStatus('warn', 'Settings changed — compile again');
 }
 
+const IMAGES_KEY = 'board-canvas-images';
+const images = () => $('#in-images').checked;      // the user attaches reference images in their own AI chat
+const IMAGES_NOTE = '<b>Attach your reference image(s) to the same message</b> in your AI chat, together with this prompt.';
+
 async function generatePrompt() {
   const title = $('#in-title').value.trim();
-  if (!title) { $('#in-title').focus(); return toast('Enter a product title first', true); }
+  if (!title && !images()) { $('#in-title').focus(); return toast('Enter a product title first (or tick “I’ll attach reference image(s)”)', true); }
   try {
-    const r = await Api.canvasPrompt({ title, requirements: $('#in-req').value,
+    const r = await Api.canvasPrompt({ title, requirements: $('#in-req').value, images: images(),
       thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking', machine: machine() });   // always glue-free
     $('#out-prompt').value = r.prompt;
     $('#btn-copy-prompt').disabled = false;
-    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. Paste the AI’s JSON reply into the editor and click <b>Compile</b>.`;
+    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. ${images() ? IMAGES_NOTE + ' ' : ''}Paste the AI’s JSON reply into the editor and click <b>Compile</b>.`;
     if (narrow.matches) setPane('prompt');
     toast('Prompt ready — copy it into your AI');
   } catch (e) { reportError(e); }
@@ -272,6 +276,7 @@ async function aiFixLoop(rounds) {
 }
 
 async function aiGenerate() {
+  if (images()) return toast('“Generate with AI” cannot see your images. Use “Generate AI prompt”, then attach the images to that message in your AI chat.', true);
   const title = $('#in-title').value.trim();
   if (!title) { $('#in-title').focus(); return toast('Enter a product title first', true); }
   if (cm.getValue().trim() && !confirm('Replace the code in the editor with a new AI design?')) return;
@@ -308,9 +313,7 @@ async function repairPrompt() {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
   const btn = $('#btn-repair-prompt');
-  const btnBanner = $('#btn-banner-copy-repair');
   if (btn) btn.disabled = true;
-  if (btnBanner) btnBanner.disabled = true;
   try {
     // the prompt built at the end of the last compile, if the code has not changed since (no second compile)
     const r = S.fixPrompt?.source === source ? S.fixPrompt : await Api.canvasRepairPrompt(source, machine());
@@ -325,24 +328,6 @@ async function repairPrompt() {
     reportError(e);
   } finally {
     if (btn) btn.disabled = false;
-    if (btnBanner) btnBanner.disabled = false;
-  }
-}
-
-async function integerFixPrompt() {
-  const source = cm.getValue();
-  if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
-  try {
-    const r = await Api.canvasIntegerFixPrompt(source);
-    if (r.count > 0 || r.prompt) {
-      showPrompt(r.prompt, `Follow-up prompt to fix ${r.count} floating-point dimension(s). Paste it into your AI chat to round all dimensions to clean integers.`);
-      await copyText(r.prompt, 'Integer fix prompt');
-      toast(`Copied prompt to fix ${r.count} floating-point dimension(s)! Paste into your AI chat.`);
-    } else {
-      toast('All dimensions in this design are already clean integers!');
-    }
-  } catch (e) {
-    reportError(e);
   }
 }
 
@@ -350,12 +335,12 @@ async function changePrompt() {
   const source = cm.getValue();
   const change = $('#in-req').value.trim();
   if (!source.trim()) return toast('Paste or open the current design in the editor first', true);
-  if (!change) { $('#in-req').focus(); return toast('Describe the change in the requirements box', true); }
+  if (!change && !images()) { $('#in-req').focus(); return toast('Describe the change in the requirements box (or tick “I’ll attach reference image(s)”)', true); }
   const btn = $('#btn-change-prompt');
   if (btn) btn.disabled = true;
   try {
-    const r = await Api.canvasUpdatePrompt(source, change);
-    showPrompt(r.prompt, 'Change prompt: the AI is asked to modify only the affected boards and keep the rest. Paste its reply into the editor and click <b>Compile</b>.');
+    const r = await Api.canvasUpdatePrompt(source, change, { machine: machine(), images: images() });
+    showPrompt(r.prompt, `Change prompt: the AI is asked to modify only the affected boards and keep the rest. ${images() ? IMAGES_NOTE + ' ' : ''}Paste its reply into the editor and click <b>Compile</b>.`);
     await copyText(r.prompt, 'Update prompt');
     toast('Copied update prompt to clipboard! Paste into your AI chat.');
   } catch (e) {
@@ -634,31 +619,14 @@ function renderDiagnostics() {
     return;
   }
 
-  const floatIssues = ds.filter((d) => d.code === 'NON_INTEGER_DIMENSION');
-  const btnIntegerPrompt = $('#btn-integer-prompt');
-  if (btnIntegerPrompt) {
-    btnIntegerPrompt.hidden = !floatIssues.length;
-    btnIntegerPrompt.innerHTML = `<svg><use href="#i-copy"/></svg><span>Fix floats (${floatIssues.length})</span>`;
-  }
-
-  const floatBanner = floatIssues.length ? `
-    <div class="diag-banner warn" style="margin-bottom: 8px; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1);">
-      <div class="diag-banner-text">
-        <span class="dot warn" style="background:#f59e0b; box-shadow:0 0 6px #f59e0b;"></span>
-        <span><b>${floatIssues.length} Non-Integer Dimension(s) Detected:</b> Requirement: dimensions must be clean whole integers in millimetres.</span>
-      </div>
-      <button class="btn small" id="btn-banner-copy-integer-fix" style="background:#f59e0b; color:#0f172a; font-weight:700; border:none; white-space:nowrap;">
-        <svg><use href="#i-copy"/></svg>Copy Prompt to Fix Floats
-      </button>
-    </div>` : '';
-
-  const banner = floatBanner + `
+  // one summary line; the single "Copy fix prompt" button above sends every problem listed here
+  const floats = ds.filter((d) => d.code === 'NON_INTEGER_DIMENSION').length;
+  const banner = `
     <div class="diag-banner ${errCount ? 'err' : 'warn'}">
       <div class="diag-banner-text">
         <span class="dot ${errCount ? 'err' : 'warn'}"></span>
-        <span><b>${errCount || ds.length} ${errCount ? 'error(s)' : 'issue(s)'} detected:</b> Copy a follow-up fix prompt containing these error diagnostics to send back to your AI.</span>
+        <span><b>${errCount ? `${errCount} error(s)` : `${ds.length} issue(s)`}${errCount && ds.length > errCount ? `, ${ds.length - errCount} warning(s)` : ''}</b>${floats ? ` (${floats} non-integer size${floats === 1 ? '' : 's'})` : ''} — click <b>Copy fix prompt</b> above: one prompt with all of them for your AI.</span>
       </div>
-      <button class="btn small primary" id="btn-banner-copy-repair"><svg><use href="#i-copy"/></svg>Copy Fix Prompt for AI</button>
     </div>`;
 
   list.innerHTML = banner + ds.map((d, i) => `<div class="dg" data-i="${i}">
@@ -669,14 +637,8 @@ function renderDiagnostics() {
       ${d.fixes?.length ? `<div class="fixes">${d.fixes.map((f, k) => `<button class="btn ${f.safe ? 'safe' : ''}" data-fix="${i}:${k}" title="${f.safe ? 'Unambiguous correction' : 'Changes the design — you will be asked to confirm'}">${f.safe ? '✓ ' : ''}${esc(f.title)}</button>`).join('')}</div>` : ''}
     </div></div>`).join('');
 
-  const btnBanner = $('#btn-banner-copy-repair', list);
-  if (btnBanner) btnBanner.onclick = repairPrompt;
-
-  const btnFloatFixBanner = $('#btn-banner-copy-integer-fix', list);
-  if (btnFloatFixBanner) btnFloatFixBanner.onclick = integerFixPrompt;
-
   $$('.dg', list).forEach((el) => (el.onclick = (ev) => {
-    if (ev.target.closest('[data-fix]') || ev.target.closest('#btn-banner-copy-repair')) return;
+    if (ev.target.closest('[data-fix]')) return;
     const d = ds[+el.dataset.i];
     if (!d) return;
     if (d.line) { cm.focus(); cm.setCursor({ line: d.line - 1, ch: 0 }); cm.scrollIntoView({ line: d.line - 1, ch: 0 }, 80); }
@@ -757,7 +719,7 @@ function select(id, source) {
   sheet2d.setSelected(S.selected);
   if (source !== 'code') highlightBoard(S.selected, source !== 'render');
   else highlightBoard(S.selected, false);
-  if (S.selected && source === 'view') view3d.focus(S.selected);
+  // a board clicked in the 3D / 2D view is already on screen: keep the camera where the user put it
   renderBoard();
 }
 
@@ -990,7 +952,6 @@ $('#btn-reset-parts').onclick = () => view3d.resetPulls();
 $('#btn-gen-prompt').onclick = generatePrompt;
 $('#btn-change-prompt').onclick = changePrompt;
 $('#btn-repair-prompt').onclick = repairPrompt;
-if ($('#btn-integer-prompt')) $('#btn-integer-prompt').onclick = integerFixPrompt;
 $('#btn-copy-prompt').onclick = () => copyText($('#out-prompt').value, 'Prompt');
 $('#btn-compile').onclick = () => compile(true);
 $('#btn-format').onclick = formatCode;
@@ -1017,6 +978,8 @@ $('#btn-ai-fix').onclick = aiFix;
 $('#btn-resize').onclick = openResize;
 $('#rs-apply').onclick = applyResize;
 ['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', '#in-coloring', '#in-color-sheets', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
+try { $('#in-images').checked = localStorage.getItem(IMAGES_KEY) === '1'; } catch (e) { /* storage unavailable */ }
+$('#in-images').onchange = () => { try { localStorage.setItem(IMAGES_KEY, images() ? '1' : '0'); } catch (e) { /* ignore */ } };
 $('#btn-testfit').onclick = downloadTestFit;
 $('#sel-example').onchange = (e) => {
   const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,

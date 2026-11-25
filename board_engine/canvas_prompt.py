@@ -711,7 +711,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 ```
 - `thickness` between {LIMITS['min_thickness']:g} and {LIMITS['max_thickness']:g} mm. `clearance` = extra width of every slot over the
   tab board thickness (default {DEFAULT_MATERIAL['clearance']:g}); `kerf` defaults from the material catalogue below.
-- At most {LIMITS['max_components']} boards; coordinates within ±{LIMITS['max_coord']:g} mm.
+- No fixed limit on the number of boards (very large designs take longer to check); coordinates within
+  ±{LIMITS['max_coord']:g} mm.
 
 ## board
 ```
@@ -763,7 +764,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
   bent across the cuts (rounded box corners, lamp shades). `lines_along` is the face axis the cuts run along (the bend
   axis). Defaults: spacing half the thickness, 20 mm cuts, bridges = thickness. Keep it at least one thickness inside
   the board edges. The board stays flat in this design (bending is not simulated): model the flat panel.
-- `"repeat": {{"count": 2..200, "step": [dx, dy, dz]}}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
+- `"repeat": {{"count": 2 or more, "step": [dx, dy, dz]}}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
   (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
   copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
 - `"mirror": {{"axis": "x"|"y"|"z", "at": mm}}` on a board also builds its mirror image `"<id>-M"` across the plane
@@ -773,8 +774,8 @@ Shapes (used by `profile`, `openings` and `engravings`):
   "offset": [x, y, z], "repeat"?, "mirror"?}}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
   gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
   connections; connect instance boards to the rest by those names under the top-level `"connections"`.
-- Top level `"plan": {{"assemblies": [...], "steps": [...], "checks": [...]}}` is your design plan, written before
-  `"boards"`; the compiler ignores it.
+- Top level `"plan": {{"assemblies": [...], "steps": [...], "checks": [...], "reference"?: [...]}}` is your design plan,
+  written before `"boards"` ("reference": what attached reference images show); the compiler ignores it.
 - `"rotate": {{"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down
@@ -979,14 +980,42 @@ side with a front/back pair where that is how the product would be finished; kee
 you change or fix the design unless asked to recolour."""
 
 
+IMAGE_SPEC = """## Reference images (attached to this message)
+The image(s) attached to this message ARE the specification. Reproduce the product they show on this platform as
+exactly as flat boards allow — its shape, proportions, parts and details — not a generic product of the same kind.
+1. STUDY FIRST: before anything else, look at every image and write what you see into "plan" as
+   "reference": [...] — the overall silhouette, every visible part (count them), where each sits, how parts meet,
+   openings, windows and cut-outs, surface lines, text and logos, and colours. If several images are attached, they
+   show the same product from different sides or in detail: combine them.
+2. SIZE AND PROPORTION: take absolute sizes from the requirements. Where none are given, estimate the real-world size
+   from what the product is and record it as an assumption. Take every proportion from the image: measure ratios
+   (height / length, part width / overall width, positions as fractions of the whole) and apply them to the chosen
+   size. Write the main ratios you measured in "plan.reference".
+3. MATCH EVERY VISIBLE PART: the same number of parts, at the same places, with the same proportions. Outlines and
+   curves → "profile" (polygon points or arcs traced from the image); holes, windows and gaps → "openings"; surface
+   lines, panels, text and logos → "engravings"; repeated parts → "repeat"; left / right twins → "mirror".
+4. WHAT FLAT BOARDS CANNOT MAKE (curved surfaces, round solids, bends): build the closest flat-board version — stacked
+   layers, ribs with a skin of panels, faceted panels, "living_hinge" for gentle bends — and say what was
+   approximated in "product.description".
+5. PARTS THE IMAGE DOES NOT SHOW (inside, back, underside): add only what the structure needs to stand and join
+   (glue-free), keeping the visible look unchanged.
+6. COMPARE BEFORE ANSWERING: view your design from the front, the side and the top and check it against the image:
+   is every visible part present, in the right place, with the right proportions and outline? Fix any difference."""
+
+
 def _coloring(machine):
     return bool(machine and machine.get('coloring'))
 
 
-def build_prompt(title, requirements='', material=None, thickness=None, joinery=None, machine=None):
-    title = (title or '').strip() or 'Board product'
+def build_prompt(title, requirements='', material=None, thickness=None, joinery=None, machine=None, images=False):
+    """images: the user will attach reference image(s) to this prompt in their AI chat; they become the
+    specification (see IMAGE_SPEC)."""
+    title = (title or '').strip() or ('The product shown in the attached image(s)' if images else 'Board product')
     req = (requirements or '').strip()
     extra = []
+    if images:
+        extra.append('- Reproduce the product in the attached reference image(s) exactly (see "Reference images" below); '
+                     'where the text and the image disagree on a size, follow the text, on anything else the image.')
     if _coloring(machine):
         extra.append('- Colour every board (see "Colours" below): a coherent palette, unique colours for different roles.')
     if machine and 'kerf' in machine:
@@ -1049,11 +1078,11 @@ INSTRUCTIONS (follow every one):
         Is every small part (fittings, details on a deck or panel) standing with an EDGE on that face, never lying
         flat on it, with its slot >= 2 × thickness from every other slot in that board?
     e3. Do the overall sizes match every size stated in the requirements?
-    f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}
+    f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. Does the design match the attached image(s) from the front, side and top: every visible part, its place, proportions and outline?' if images else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
-{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
+{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}{(chr(10) + IMAGE_SPEC + chr(10)) if images else ''}
 {FINAL_REMINDER}
 """
 
@@ -1183,8 +1212,10 @@ CURRENT DESIGN:
 """
 
 
-def build_update_prompt(source, change, diagnostics=(), machine=None):
-    """Follow-up prompt for an incremental change: modify only the affected boards of an existing design."""
+def build_update_prompt(source, change, diagnostics=(), machine=None, images=False):
+    """Follow-up prompt for an incremental change: modify only the affected boards of an existing design.
+    images: the user attaches reference image(s) in their AI chat; the design is changed to match them."""
+    change = (change or '').strip() or ('Make the design match the attached reference image(s) exactly.' if images else '')
     issues = [d for d in diagnostics if d.get('severity') == 'error']
     return f"""You are the change step of an automated board-design pipeline. Below is an existing, working design in the
 `{FORMAT}` format. Apply the CHANGE REQUEST to it and return the updated design as code only.
@@ -1192,8 +1223,10 @@ def build_update_prompt(source, change, diagnostics=(), machine=None):
 {OUTPUT_CONTRACT}
 
 CHANGE REQUEST:
-{(change or '').strip()}
-
+{change}
+{chr(10) + "REFERENCE IMAGES: the image(s) attached to this message show how the product must look after the change. "
+ "Study them first, then change every board that differs from them (shape, proportions, parts, openings, engravings) "
+ "and keep the rest. Rules 1-7 below still apply; see \"Reference images\" at the end." + chr(10) if images else ''}
 RULES FOR THE UPDATE (follow every one):
 1. Identify the boards and connections the change affects, including dependent ones (e.g. a wider product means
    longer tops, shelves and back panels, and moved side panels).
@@ -1215,6 +1248,6 @@ CURRENT DESIGN:
 
 SPECIFICATION (reference for every field and rule):
 {spec_markdown()}
-{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
+{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}{(chr(10) + IMAGE_SPEC + chr(10)) if images else ''}
 {FINAL_REMINDER}
 """

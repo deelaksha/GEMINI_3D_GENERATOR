@@ -94,6 +94,23 @@ def inspect(plates, joints=(), bodies=None):
     def move(c, k, d):
         return {'action': 'translate', 'component': c, 'delta': [round(d, 3) if j == k else 0.0 for j in range(3)]}
 
+    def _spacer(a, b, k):
+        """A third board standing between the two faces and touching both (a riser, a block, a leg): the gap is
+        held open on purpose and is not a misplacement."""
+        A, B = box[a], box[b]
+        lo_f, hi_f = (A[1][k], B[0][k]) if A[1][k] <= B[0][k] else (B[1][k], A[0][k])
+        plane = [j for j in range(3) if j != k]
+        for c in ids:
+            if c in (a, b):
+                continue
+            C = box[c]
+            # it must stand inside the area where the two faces overlap, not merely touch its rim (the ground under
+            # two upright boards touches both of them but holds nothing apart)
+            if C[0][k] <= lo_f + TOUCH and C[1][k] >= hi_f - TOUCH and all(
+                    min(C[1][j], A[1][j], B[1][j]) - max(C[0][j], A[0][j], B[0][j]) > TOUCH for j in plane):
+                return True
+        return False
+
     touching = {i: [] for i in ids}
     # 1. pair by pair: slits, unjoined contact, almost-flush edges
     for x in range(len(ids)):
@@ -107,7 +124,7 @@ def inspect(plates, joints=(), bodies=None):
                 k = open_axes[0]
                 face = [_overlap(A, B, j) for j in range(3) if j != k]
                 key = (min(find(a), find(b)), max(find(a), find(b)), k, round(g[k], 1))
-                if min(face) >= MIN_FACE and (same or key not in seen_clear):
+                if min(face) >= MIN_FACE and (same or key not in seen_clear) and not _spacer(a, b, k):
                     seen_clear.add(key)                 # between units: one note per unit pair, side and clearance
                     lo, hi = (a, b) if A[1][k] <= B[0][k] else (b, a)
                     gap = box[hi][0][k] - box[lo][1][k]
@@ -235,8 +252,12 @@ def inspect(plates, joints=(), bodies=None):
     for group in clusters.values():
         if len(group) < 2:
             continue
-        s = max(range(3), key=lambda k: max(box[i][0][k] for i in group) - min(box[i][0][k] for i in group))
-        attrs = [('size', k) for k in range(3)] + [('position', k) for k in range(3) if k != s]
+        spread = [max(box[i][0][k] for i in group) - min(box[i][0][k] for i in group) for k in range(3)]
+        s = max(range(3), key=lambda k: spread[k])
+        # positions are compared only along alignment axes: in a row (rafters, slats) the position along the row
+        # varies by design, so any axis where the group spreads widely is a layout axis, not an alignment
+        attrs = [('size', k) for k in range(3)] + [('position', k) for k in range(3)
+                                                   if k != s and (len(group) == 2 or spread[k] <= 2 * STEP)]
         val = lambda i, at: size[i][at[1]] if at[0] == 'size' else box[i][0][at[1]]
         ref_of = {at: (statistics.median(val(i, at) for i in group) if len(group) > 2 else val(group[0], at)) for at in attrs}
         for i in (group if len(group) > 2 else group[1:]):

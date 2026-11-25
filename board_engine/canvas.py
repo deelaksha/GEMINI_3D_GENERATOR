@@ -41,7 +41,7 @@ from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMI
 from .nesting import SHEET_PRESETS
 from .json_repair import repair_json, summarize as _summarize_repair
 from .progress import active as _reporting, report as _progress
-from .shapes import ShapeError, arc_sweep, shape_polygon
+from .shapes import ShapeError, arc_sweep, reverse as reverse_shape, shape_polygon
 from .validation import TOL, _edge_line_intervals, validate_design
 
 FORMAT = 'board-design/v1'
@@ -600,6 +600,10 @@ def _component(bd, mat, diags):
             if out:
                 raise ShapeError(f"the profile leaves the board's box (e.g. point [{out[0][0]:g}, {out[0][1]:g}]); profile "
                                  f"coordinates are [u, v] from the box corner, within [0..{su:g}] × [0..{sv:g}] mm")
+            if G.signed_area(pts) < 0:
+                # counter-clockwise from the start: the face mapping of some orientations (boards thin along x)
+                # mirrors the profile, and edge normals (tilted contact, tabs) are taken from the winding
+                pts, arcs = reverse_shape(pts, arcs)
             comp['outline'] = pts
             if arcs:
                 comp['arcs'] = arcs

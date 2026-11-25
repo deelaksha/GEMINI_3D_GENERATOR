@@ -21,7 +21,7 @@ import logging
 import time
 
 from .deadline import check as check_budget
-from .model import build_plates, find_component, normalize_joint
+from .model import Plate, build_plates, find_component, normalize_joint
 from .validation import TOL, evaluate_joint, validate_component, validate_design
 
 log = logging.getLogger('board_engine.joining')
@@ -47,6 +47,25 @@ def apply_repair(design, repair):
     else:
         raise ValueError(f"unknown repair action {repair['action']}")
     return {'action': repair['action'], 'component': comp['id'], 'feature': feat}
+
+
+def _pair_plates(design, spec):
+    """Plates of the two boards a joint connects: evaluate_joint looks at nothing else, and building every plate of a
+    large design for each joint made joining hundreds of boards quadratic."""
+    out = {}
+    for cid in (spec['a'], spec['b']):
+        comp = find_component(design, cid)
+        if comp is not None:
+            out[cid] = Plate(design, comp)
+    return out
+
+
+def _own(work, cid):
+    """Give `work` its own copy of component `cid` (with its own feature list) before a repair changes it."""
+    for k, c in enumerate(work['components']):
+        if c['id'] == cid:
+            work['components'][k] = dict(c, features=list(c.get('features') or []))
+            return
 
 
 def check_joint(design, spec, tol=TOL):
@@ -89,8 +108,13 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
     before = validate_design(design, tol) if whole_design_check else None
     before_errors = {_issue_key(i) for i in before['issues'] if i['severity'] == 'error'} if before else set()
 
-    work = copy.deepcopy(design)
-    plates = build_plates(work)
+    if whole_design_check:
+        work = copy.deepcopy(design)
+    else:
+        # compiler path: the result replaces `design` straight away, so copy only what this join can change (the
+        # joint list here, a receiver's feature list in _own below) instead of the whole design every time
+        work = dict(design, components=list(design['components']), joints=list(design['joints']))
+    plates = _pair_plates(work, spec)
     res = evaluate_joint(work, plates, spec, tol)
     errors = [i for i in res['issues'] if i['severity'] == 'error']
     fixable = [i for i in errors if i.get('repair')]
@@ -103,6 +127,8 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
             return reject('needs_repair', res['issues'],
                           repairs_available=[i['repair'] for i in fixable])
         for i in fixable:
+            if not whole_design_check:
+                _own(work, i['repair']['component'])
             applied.append(apply_repair(work, i['repair']))
         # Re-validate the modified receivers: a repair must not create new 2D problems
         for rec in {r['component'] for r in applied}:
@@ -112,7 +138,7 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
                            (i.get('feature') in new_feats or i.get('other_feature') in new_feats)]
             if comp_issues:
                 return reject('repair_unsafe', res['issues'] + comp_issues, repairs_attempted=applied)
-        plates = build_plates(work)
+        plates = _pair_plates(work, spec)
         res = evaluate_joint(work, plates, spec, tol)
         if not res['ok']:
             return reject('rejected', res['issues'], repairs_attempted=applied)

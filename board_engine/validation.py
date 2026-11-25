@@ -67,6 +67,25 @@ def _r(v, n=2):
 # 1. Component-level (2D) validation
 # ---------------------------------------------------------------------------
 
+def _close_pairs(polys, gap):
+    """Index pairs (i < j, in the order a full double loop would visit them) of polygons whose bounding boxes are
+    at most `gap` apart: only those can overlap or be closer than `gap`. A sweep over x keeps this near-linear for
+    boards with hundreds of slots instead of comparing every pair."""
+    boxes = []
+    for k, p in enumerate(polys):
+        xs, ys = [q[0] for q in p], [q[1] for q in p]
+        boxes.append((min(xs), max(xs), min(ys), max(ys), k))
+    order = sorted(boxes)
+    pairs = []
+    for n, (ax0, ax1, ay0, ay1, i) in enumerate(order):
+        for bx0, bx1, by0, by1, j in order[n + 1:]:
+            if bx0 - ax1 > gap:
+                break                   # sorted by x: every later box is farther still
+            if by0 - ay1 <= gap and ay0 - by1 <= gap:
+                pairs.append((i, j) if i < j else (j, i))
+    return sorted(pairs)
+
+
 def validate_component(design, comp, tol=TOL):
     out = []
     cid = comp['id']
@@ -167,20 +186,19 @@ def validate_component(design, comp, tol=TOL):
             out.append(issue('NARROW_EDGE_MARGIN', 'warning', 'manufacturing',
                              f"Slot '{f['id']}' on '{cid}' is {m:.2f} mm from the edge "
                              f"(recommended {tol['rec_edge_margin']} mm).", [cid], feature=f['id'], margin=_r(m)))
-    for i in range(len(polys)):
-        for j in range(i + 1, len(polys)):
-            (fa, pa), (fb, pb) = polys[i], polys[j]
-            if G.polygons_overlap(pa, pb):
-                out.append(issue('FEATURE_OVERLAP', 'error', '2d',
-                                 f"Features '{fa['id']}' ({fa['kind']}) and '{fb['id']}' ({fb['kind']}) on '{cid}' overlap.",
+    for i, j in _close_pairs([p for _f, p in polys], tol['min_feature_spacing']):
+        (fa, pa), (fb, pb) = polys[i], polys[j]
+        if G.polygons_overlap(pa, pb):
+            out.append(issue('FEATURE_OVERLAP', 'error', '2d',
+                             f"Features '{fa['id']}' ({fa['kind']}) and '{fb['id']}' ({fb['kind']}) on '{cid}' overlap.",
+                             [cid], feature=fb['id'], other_feature=fa['id']))
+        else:
+            d = G.polygon_distance(pa, pb)
+            if d < tol['min_feature_spacing']:
+                out.append(issue('FEATURE_SPACING', 'error', 'manufacturing',
+                                 f"Features '{fa['id']}' and '{fb['id']}' on '{cid}' are only {d:.2f} mm apart "
+                                 f"(minimum {tol['min_feature_spacing']} mm).",
                                  [cid], feature=fb['id'], other_feature=fa['id']))
-            else:
-                d = G.polygon_distance(pa, pb)
-                if d < tol['min_feature_spacing']:
-                    out.append(issue('FEATURE_SPACING', 'error', 'manufacturing',
-                                     f"Features '{fa['id']}' and '{fb['id']}' on '{cid}' are only {d:.2f} mm apart "
-                                     f"(minimum {tol['min_feature_spacing']} mm).",
-                                     [cid], feature=fb['id'], other_feature=fa['id']))
 
     # Engraving / pockets (partial depth: material stays, so they never count as holes elsewhere)
     if comp.get('marks'):
@@ -1068,9 +1086,11 @@ def _plate_interference(a, b, tol):
                 pq = Q.frame.to_local(w)
                 ivs = _slab_interval(pq[2], vq_loc[2], Q.t / 2.0 - tol['contact'])   # cheapest test first
                 if ivs:
-                    ivs = _intersect(_material_intervals(P, P.frame.to_local(w), vp_loc, 0.0, act_p[k]), ivs)
+                    win = (min(r0 for r0, _r1 in ivs), max(r1 for _r0, r1 in ivs))
+                    ivs = _intersect(_material_intervals(P, P.frame.to_local(w), vp_loc, 0.0, act_p[k], win), ivs)
                 if ivs:
-                    ivs = _intersect(ivs, _material_intervals(Q, pq, vq_loc, tol['contact'], act_q[k]))
+                    win = (min(r0 for r0, _r1 in ivs), max(r1 for _r0, r1 in ivs))
+                    ivs = _intersect(ivs, _material_intervals(Q, pq, vq_loc, tol['contact'], act_q[k], win))
                 if any(r1 - r0 > 1e-6 for r0, r1 in ivs):
                     hit_idx.add(k)
     runs, cur = [], None
@@ -1138,6 +1158,11 @@ def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
 
     act = [([], []) for _ in range(n)]       # (outline edges, cut-out polygons) a station's line can cross
     cut = plate.cut
+    # where a cut-out lies along the sampling lines: the lines are perpendicular to the station direction, so this
+    # r-range is the same for every station of the pass and is computed once (lets a line skip far cut-outs)
+    vv = v_loc[0] * v_loc[0] + v_loc[1] * v_loc[1]
+    r_of = lambda x, y: ((x - p0[0]) * v_loc[0] + (y - p0[1]) * v_loc[1]) / vv
+    along = abs(v_loc[0] * uu[0] + v_loc[1] * uu[1]) < 1e-9
     for i in range(len(cut)):
         e = (cut[i], cut[(i + 1) % len(cut)])
         k0, k1 = stations(e)
@@ -1146,39 +1171,43 @@ def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
     for (_f, poly), (x0, y0, x1, y1) in zip(plate.feature_polys, plate._feature_boxes):
         k0, k1 = stations(((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
         edges = [(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))]   # built once, used per station
+        rs = [r_of(x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+        entry = (edges, min(rs), max(rs)) if along else (edges, -math.inf, math.inf)
         for k in range(k0, k1 + 1):
-            act[k][1].append(edges)
+            act[k][1].append(entry)
     return act
 
 
-def _material_intervals(plate, p, v, shrink, features=None):
+def _material_intervals(plate, p, v, shrink, features=None, window=None):
     """r-intervals where local point p + v*r is solid material (outline minus cut-outs), shrunk by `shrink` mm.
 
-    `features`: the cut-outs this line can touch (precomputed by _station_features); None = test them all."""
+    `features`: the cut-outs this line can touch (precomputed by _station_features); None = test them all.
+    `window`: (r0, r1) the caller keeps only the part of the result inside; cut-outs that lie (with the shrink margin)
+    entirely outside it cannot change that part and are skipped. Only used with `features`."""
     vlen = math.hypot(v[0], v[1])
     if vlen < 1e-9:  # the line crosses this board's plane at a single point
         return [(-1e9, 1e9)] if plate.is_material([p[0], p[1]], shrink) else []
     if _line_misses_box(p, v, plate.bbox2d):
         return []
+    holes = []                          # every cut-out crossing of this line, subtracted in one sweep below
     if features is None:
         ivs = _polygon_line_intervals(plate.cut, p, v)
-        for (_f, poly), box in zip(plate.feature_polys, plate._feature_boxes):
-            if not ivs:
-                break
-            if _line_misses_box(p, v, box):
-                continue
-            holes = _polygon_line_intervals(poly, p, v)
-            if holes:
-                ivs = _subtract(ivs, holes)
+        if ivs:
+            for (_f, poly), box in zip(plate.feature_polys, plate._feature_boxes):
+                if not _line_misses_box(p, v, box):
+                    holes += _polygon_line_intervals(poly, p, v)
     else:
         edges, feats = features
         ivs = _edge_line_intervals(edges, p, v)
-        for hole_edges in feats:
-            if not ivs:
-                break
-            holes = _edge_line_intervals(hole_edges, p, v)
-            if holes:
-                ivs = _subtract(ivs, holes)
+        if ivs:
+            w0, w1 = window if window else (-math.inf, math.inf)
+            m = shrink / vlen + 1e-6
+            for hole_edges, r0, r1 in feats:
+                if r1 < w0 - m or r0 > w1 + m:
+                    continue
+                holes += _edge_line_intervals(hole_edges, p, v)
+    if ivs and holes:
+        ivs = _subtract(ivs, holes) if len(holes) == 1 else _subtract_sorted(ivs, holes)
     d = shrink / vlen
     return [(r0 + d, r1 - d) for r0, r1 in ivs if r1 - r0 > 2 * d]
 
@@ -1196,6 +1225,32 @@ def _intersect(xs, ys):
             lo_, hi_ = max(a0, b0), min(a1, b1)
             if hi_ > lo_:
                 out.append((lo_, hi_))
+    return out
+
+
+def _subtract_sorted(xs, holes):
+    """xs minus the union of holes, by one sweep over both sorted lists: O((n + m) log m) instead of rescanning the
+    remaining intervals once per hole (a line along a board with hundreds of slots crosses hundreds of them)."""
+    merged = []
+    for h0, h1 in sorted(holes):
+        if merged and h0 <= merged[-1][1]:
+            if h1 > merged[-1][1]:
+                merged[-1][1] = h1
+        else:
+            merged.append([h0, h1])
+    out, k = [], 0
+    for a0, a1 in sorted(xs):
+        while k < len(merged) and merged[k][1] <= a0:
+            k += 1
+        cur, j = a0, k
+        while j < len(merged) and merged[j][0] < a1:
+            h0, h1 = merged[j]
+            if h0 > cur:
+                out.append((cur, h0))
+            cur = max(cur, h1)
+            j += 1
+        if cur < a1:
+            out.append((cur, a1))
     return out
 
 
