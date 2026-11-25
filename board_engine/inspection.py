@@ -17,6 +17,8 @@ in front of it) gaps are running clearances and edges need not line up.
                     size or in their alignment; in a group of three or more the odd one out is named.
   UNEVEN_SPACING    three or more identical parallel boards in a row whose spacing is nearly but not exactly even.
   ASYMMETRIC        two identical boards placed as a mirror pair about the product's centre, but off by 0.5 .. 5 mm.
+  HELD_FROM_ABOVE   a board whose every joint is a tab pushing UP into a board above it: glue-free, only friction holds
+                    it and gravity pulls it out of its slots (rafter ends under a soffit, a shelf hung under a top).
 
 Boards tilted off the axes are skipped (their boxes do not show their faces). Each issue carries `calc`: the lines of
 arithmetic that prove it, and a `suggestion` move where one board can simply be shifted.
@@ -353,5 +355,36 @@ def inspect(plates, joints=(), bodies=None):
                              f"{right}: {_f(hi[k])} - {_f(box[right][1][k])} = {mr:.2f} mm from the {AX[k]}max end",
                              f"difference = |{ml:.2f} - {mr:.2f}| = {d:.2f} mm"],
                             [round(v, 1) for v in box[right][0]], move(right, k, mr - ml))
+    # 6. gravity: a board must sit on something, lock sideways or interlock; hanging on upward tabs is not enough
+    floor_y = min((box[i][0][1] for i in ids), default=0.0)
+    partners = {}
+    for j in joints:
+        if j.get('status') == 'joined':
+            partners.setdefault(j['a'], []).append((j['b'], j.get('type')))
+            partners.setdefault(j['b'], []).append((j['a'], j.get('type')))
+    for i in ids:
+        if not partners.get(i) or box[i][0][1] <= floor_y + TOUCH:
+            continue
+        above, held = [], False
+        for o, kind in partners[i]:
+            if kind != 'tab_slot' or o not in box:
+                held = True                     # interlocking / glued / hinged, or a tilted partner: not judged here
+                break
+            if box[o][0][1] >= box[i][1][1] - TOUCH:
+                if o not in above:              # one connection can be several joints (one per tab)
+                    above.append(o)             # the partner is over it: the tab pushes up into the partner
+            else:
+                held = True                     # it sits on the partner, or the tab goes in sideways
+                break
+        if not held and above:
+            add('HELD_FROM_ABOVE', 'warning', [i] + above,
+                f"'{i}' only hangs from {', '.join(repr(o) for o in above)} on tabs pushing up into "
+                f"{'it' if len(above) == 1 else 'them'}: glue-free, only friction holds it and gravity pulls it out of its "
+                f"slots. Give it something to sit on (a ledge or wall plate it tabs down into), or a tab sideways into a wall.",
+                [f"{i}: y {_f(box[i][0][1])} .. {_f(box[i][1][1])} mm",
+                 *(f"{o}: y {_f(box[o][0][1])} .. {_f(box[o][1][1])} mm (above {i}: its tab points up)" for o in above),
+                 f"joints of {i}: " + ', '.join(sorted({f"{k} with {o}" for o, k in partners[i]})),
+                 'nothing under it and no sideways or interlocking joint'],
+                [round(v, 1) for v in box[i][0]])
     issues.sort(key=lambda i: ({'error': 0, 'warning': 1, 'info': 2}[i['severity']], i['code']))
     return {'issues': issues[:MAX_ISSUES], 'boards': boards, 'skipped_tilted': [i for i in plates if i not in box]}

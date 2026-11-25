@@ -2356,16 +2356,80 @@
    "name": "Ceiling and eave soffit"
   },
   {
+   "id": "PLATE-F",
+   "position": [
+    63,
+    70,
+    210
+   ],
+   "size": [
+    228,
+    3,
+    15
+   ],
+   "group": "Rafters",
+   "color": "#5a4030",
+   "name": "Wall plate"
+  },
+  {
+   "id": "PLATE-B",
+   "position": [
+    63,
+    70,
+    81
+   ],
+   "size": [
+    228,
+    3,
+    15
+   ],
+   "group": "Rafters",
+   "color": "#5a4030",
+   "name": "Wall plate"
+  },
+  {
+   "id": "PLATE-L",
+   "position": [
+    48,
+    70,
+    99
+   ],
+   "size": [
+    15,
+    3,
+    108
+   ],
+   "group": "Rafters",
+   "color": "#5a4030",
+   "name": "Wall plate"
+  },
+  {
+   "id": "PLATE-R",
+   "position": [
+    297,
+    70,
+    99
+   ],
+   "size": [
+    15,
+    3,
+    108
+   ],
+   "group": "Rafters",
+   "color": "#5a4030",
+   "name": "Wall plate"
+  },
+  {
    "id": "RAF-F0",
    "position": [
     70,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2374,13 +2438,13 @@
    "id": "RAF-B0",
    "position": [
     70,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2389,13 +2453,13 @@
    "id": "RAF-F1",
    "position": [
     79,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2404,13 +2468,13 @@
    "id": "RAF-B1",
    "position": [
     79,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2419,13 +2483,13 @@
    "id": "RAF-F2",
    "position": [
     88,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2434,13 +2498,13 @@
    "id": "RAF-B2",
    "position": [
     88,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2449,13 +2513,13 @@
    "id": "RAF-F3",
    "position": [
     97,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2464,13 +2528,13 @@
    "id": "RAF-B3",
    "position": [
     97,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2479,13 +2543,13 @@
    "id": "RAF-F4",
    "position": [
     106,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2494,13 +2558,13 @@
    "id": "RAF-B4",
    "position": [
     106,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2509,13 +2573,13 @@
    "id": "RAF-F5",
    "position": [
     115,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2524,13 +2588,13 @@
    "id": "RAF-B5",
    "position": [
     115,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2539,13 +2603,13 @@
    "id": "RAF-F6",
    "position": [
     124,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2554,13 +2618,13 @@
    "id": "RAF-B6",
    "position": [
     124,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2569,13 +2633,13 @@
    "id": "RAF-F7",
    "position": [
     133,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2584,13 +2648,13 @@
    "id": "RAF-B7",
    "position": [
     133,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2599,13 +2663,13 @@
    "id": "RAF-F8",
    "position": [
     142,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2614,13 +2678,13 @@
    "id": "RAF-B8",
    "position": [
     142,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2629,13 +2693,13 @@
    "id": "RAF-F9",
    "position": [
     151,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2644,13 +2708,13 @@
    "id": "RAF-B9",
    "position": [
     151,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2659,13 +2723,13 @@
    "id": "RAF-F10",
    "position": [
     160,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2674,13 +2738,13 @@
    "id": "RAF-B10",
    "position": [
     160,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2689,13 +2753,13 @@
    "id": "RAF-F11",
    "position": [
     169,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2704,13 +2768,13 @@
    "id": "RAF-B11",
    "position": [
     169,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2719,13 +2783,13 @@
    "id": "RAF-F12",
    "position": [
     178,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2734,13 +2798,13 @@
    "id": "RAF-B12",
    "position": [
     178,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2749,13 +2813,13 @@
    "id": "RAF-F13",
    "position": [
     187,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2764,13 +2828,13 @@
    "id": "RAF-B13",
    "position": [
     187,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2779,13 +2843,13 @@
    "id": "RAF-F14",
    "position": [
     196,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2794,13 +2858,13 @@
    "id": "RAF-B14",
    "position": [
     196,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2809,13 +2873,13 @@
    "id": "RAF-F15",
    "position": [
     205,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2824,13 +2888,13 @@
    "id": "RAF-B15",
    "position": [
     205,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2839,13 +2903,13 @@
    "id": "RAF-F16",
    "position": [
     214,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2854,13 +2918,13 @@
    "id": "RAF-B16",
    "position": [
     214,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2869,13 +2933,13 @@
    "id": "RAF-F17",
    "position": [
     223,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2884,13 +2948,13 @@
    "id": "RAF-B17",
    "position": [
     223,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2899,13 +2963,13 @@
    "id": "RAF-F18",
    "position": [
     232,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2914,13 +2978,13 @@
    "id": "RAF-B18",
    "position": [
     232,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2929,13 +2993,13 @@
    "id": "RAF-F19",
    "position": [
     241,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2944,13 +3008,13 @@
    "id": "RAF-B19",
    "position": [
     241,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2959,13 +3023,13 @@
    "id": "RAF-F20",
    "position": [
     250,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2974,13 +3038,13 @@
    "id": "RAF-B20",
    "position": [
     250,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -2989,13 +3053,13 @@
    "id": "RAF-F21",
    "position": [
     259,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3004,13 +3068,13 @@
    "id": "RAF-B21",
    "position": [
     259,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3019,13 +3083,13 @@
    "id": "RAF-F22",
    "position": [
     268,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3034,13 +3098,13 @@
    "id": "RAF-B22",
    "position": [
     268,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3049,13 +3113,13 @@
    "id": "RAF-F23",
    "position": [
     277,
-    74,
-    216
+    73,
+    213
    ],
    "size": [
     3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3064,28 +3128,13 @@
    "id": "RAF-B23",
    "position": [
     277,
-    74,
+    73,
     63
    ],
    "size": [
     3,
-    4,
-    27
-   ],
-   "group": "Rafters",
-   "color": "#3b2a1e"
-  },
-  {
-   "id": "RAF-F24",
-   "position": [
-    286,
-    74,
-    216
-   ],
-   "size": [
-    3,
-    4,
-    27
+    5,
+    30
    ],
    "group": "Rafters",
    "color": "#3b2a1e"
@@ -3094,12 +3143,12 @@
    "id": "RAF-L0",
    "position": [
     30,
-    74,
+    73,
     103
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3108,13 +3157,13 @@
   {
    "id": "RAF-R0",
    "position": [
-    303,
-    74,
+    300,
+    73,
     103
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3124,12 +3173,12 @@
    "id": "RAF-L1",
    "position": [
     30,
-    74,
+    73,
     112
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3138,13 +3187,13 @@
   {
    "id": "RAF-R1",
    "position": [
-    303,
-    74,
+    300,
+    73,
     112
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3154,12 +3203,12 @@
    "id": "RAF-L2",
    "position": [
     30,
-    74,
+    73,
     121
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3168,13 +3217,13 @@
   {
    "id": "RAF-R2",
    "position": [
-    303,
-    74,
+    300,
+    73,
     121
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3184,12 +3233,12 @@
    "id": "RAF-L3",
    "position": [
     30,
-    74,
+    73,
     130
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3198,13 +3247,13 @@
   {
    "id": "RAF-R3",
    "position": [
-    303,
-    74,
+    300,
+    73,
     130
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3214,12 +3263,12 @@
    "id": "RAF-L4",
    "position": [
     30,
-    74,
+    73,
     139
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3228,13 +3277,13 @@
   {
    "id": "RAF-R4",
    "position": [
-    303,
-    74,
+    300,
+    73,
     139
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3244,12 +3293,12 @@
    "id": "RAF-L5",
    "position": [
     30,
-    74,
+    73,
     148
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3258,13 +3307,13 @@
   {
    "id": "RAF-R5",
    "position": [
-    303,
-    74,
+    300,
+    73,
     148
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3274,12 +3323,12 @@
    "id": "RAF-L6",
    "position": [
     30,
-    74,
+    73,
     157
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3288,13 +3337,13 @@
   {
    "id": "RAF-R6",
    "position": [
-    303,
-    74,
+    300,
+    73,
     157
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3304,12 +3353,12 @@
    "id": "RAF-L7",
    "position": [
     30,
-    74,
+    73,
     166
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3318,13 +3367,13 @@
   {
    "id": "RAF-R7",
    "position": [
-    303,
-    74,
+    300,
+    73,
     166
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3334,12 +3383,12 @@
    "id": "RAF-L8",
    "position": [
     30,
-    74,
+    73,
     175
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3348,13 +3397,13 @@
   {
    "id": "RAF-R8",
    "position": [
-    303,
-    74,
+    300,
+    73,
     175
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3364,12 +3413,12 @@
    "id": "RAF-L9",
    "position": [
     30,
-    74,
+    73,
     184
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3378,13 +3427,13 @@
   {
    "id": "RAF-R9",
    "position": [
-    303,
-    74,
+    300,
+    73,
     184
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3394,12 +3443,12 @@
    "id": "RAF-L10",
    "position": [
     30,
-    74,
+    73,
     193
    ],
    "size": [
-    27,
-    4,
+    30,
+    5,
     3
    ],
    "group": "Rafters",
@@ -3408,43 +3457,13 @@
   {
    "id": "RAF-R10",
    "position": [
-    303,
-    74,
+    300,
+    73,
     193
    ],
    "size": [
-    27,
-    4,
-    3
-   ],
-   "group": "Rafters",
-   "color": "#3b2a1e"
-  },
-  {
-   "id": "RAF-L11",
-   "position": [
     30,
-    74,
-    202
-   ],
-   "size": [
-    27,
-    4,
-    3
-   ],
-   "group": "Rafters",
-   "color": "#3b2a1e"
-  },
-  {
-   "id": "RAF-R11",
-   "position": [
-    303,
-    74,
-    202
-   ],
-   "size": [
-    27,
-    4,
+    5,
     3
    ],
    "group": "Rafters",
@@ -28435,12 +28454,52 @@
    "tab_width": 12
   },
   {
+   "id": "PLATE-F>W-F",
+   "type": "tab_slot",
+   "board": "PLATE-F",
+   "into": "W-F",
+   "tabs": 4,
+   "tab_width": 4
+  },
+  {
+   "id": "PLATE-B>W-B",
+   "type": "tab_slot",
+   "board": "PLATE-B",
+   "into": "W-B",
+   "tabs": 5,
+   "tab_width": 8
+  },
+  {
+   "id": "PLATE-L>W-L",
+   "type": "tab_slot",
+   "board": "PLATE-L",
+   "into": "W-L",
+   "tabs": 1,
+   "tab_width": 8
+  },
+  {
+   "id": "PLATE-R>W-R",
+   "type": "tab_slot",
+   "board": "PLATE-R",
+   "into": "W-R",
+   "tabs": 1,
+   "tab_width": 8
+  },
+  {
    "id": "RAF-F0>CEILING",
    "type": "tab_slot",
    "board": "RAF-F0",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F0>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F0",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B0>CEILING",
@@ -28451,12 +28510,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B0>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B0",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F1>CEILING",
    "type": "tab_slot",
    "board": "RAF-F1",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F1>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F1",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B1>CEILING",
@@ -28467,12 +28542,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B1>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B1",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F2>CEILING",
    "type": "tab_slot",
    "board": "RAF-F2",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F2>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F2",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B2>CEILING",
@@ -28483,12 +28574,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B2>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B2",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F3>CEILING",
    "type": "tab_slot",
    "board": "RAF-F3",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F3>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F3",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B3>CEILING",
@@ -28499,12 +28606,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B3>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B3",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F4>CEILING",
    "type": "tab_slot",
    "board": "RAF-F4",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F4>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F4",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B4>CEILING",
@@ -28515,12 +28638,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B4>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B4",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F5>CEILING",
    "type": "tab_slot",
    "board": "RAF-F5",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F5>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F5",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B5>CEILING",
@@ -28531,12 +28670,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B5>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B5",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F6>CEILING",
    "type": "tab_slot",
    "board": "RAF-F6",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F6>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F6",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B6>CEILING",
@@ -28547,12 +28702,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B6>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B6",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F7>CEILING",
    "type": "tab_slot",
    "board": "RAF-F7",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F7>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F7",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B7>CEILING",
@@ -28563,12 +28734,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B7>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B7",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F8>CEILING",
    "type": "tab_slot",
    "board": "RAF-F8",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F8>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F8",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B8>CEILING",
@@ -28579,12 +28766,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B8>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B8",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F9>CEILING",
    "type": "tab_slot",
    "board": "RAF-F9",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F9>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F9",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B9>CEILING",
@@ -28595,12 +28798,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B9>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B9",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F10>CEILING",
    "type": "tab_slot",
    "board": "RAF-F10",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F10>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F10",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B10>CEILING",
@@ -28611,12 +28830,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B10>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B10",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F11>CEILING",
    "type": "tab_slot",
    "board": "RAF-F11",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F11>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F11",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B11>CEILING",
@@ -28627,12 +28862,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B11>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B11",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F12>CEILING",
    "type": "tab_slot",
    "board": "RAF-F12",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F12>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F12",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B12>CEILING",
@@ -28643,12 +28894,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B12>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B12",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F13>CEILING",
    "type": "tab_slot",
    "board": "RAF-F13",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F13>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F13",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B13>CEILING",
@@ -28659,12 +28926,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B13>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B13",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F14>CEILING",
    "type": "tab_slot",
    "board": "RAF-F14",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F14>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F14",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B14>CEILING",
@@ -28675,12 +28958,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B14>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B14",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F15>CEILING",
    "type": "tab_slot",
    "board": "RAF-F15",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F15>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F15",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B15>CEILING",
@@ -28691,12 +28990,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B15>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B15",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F16>CEILING",
    "type": "tab_slot",
    "board": "RAF-F16",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F16>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F16",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B16>CEILING",
@@ -28707,12 +29022,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B16>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B16",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F17>CEILING",
    "type": "tab_slot",
    "board": "RAF-F17",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F17>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F17",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B17>CEILING",
@@ -28723,12 +29054,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B17>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B17",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F18>CEILING",
    "type": "tab_slot",
    "board": "RAF-F18",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F18>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F18",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B18>CEILING",
@@ -28739,12 +29086,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B18>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B18",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F19>CEILING",
    "type": "tab_slot",
    "board": "RAF-F19",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F19>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F19",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B19>CEILING",
@@ -28755,12 +29118,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B19>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B19",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F20>CEILING",
    "type": "tab_slot",
    "board": "RAF-F20",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F20>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F20",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B20>CEILING",
@@ -28771,12 +29150,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B20>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B20",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F21>CEILING",
    "type": "tab_slot",
    "board": "RAF-F21",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F21>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F21",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B21>CEILING",
@@ -28787,12 +29182,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B21>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B21",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F22>CEILING",
    "type": "tab_slot",
    "board": "RAF-F22",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F22>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F22",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B22>CEILING",
@@ -28803,12 +29214,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-B22>PLATE-B",
+   "type": "tab_slot",
+   "board": "RAF-B22",
+   "into": "PLATE-B",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-F23>CEILING",
    "type": "tab_slot",
    "board": "RAF-F23",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-F23>PLATE-F",
+   "type": "tab_slot",
+   "board": "RAF-F23",
+   "into": "PLATE-F",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-B23>CEILING",
@@ -28819,12 +29246,12 @@
    "tab_width": 8
   },
   {
-   "id": "RAF-F24>CEILING",
+   "id": "RAF-B23>PLATE-B",
    "type": "tab_slot",
-   "board": "RAF-F24",
-   "into": "CEILING",
+   "board": "RAF-B23",
+   "into": "PLATE-B",
    "tabs": 1,
-   "tab_width": 8
+   "tab_width": 4
   },
   {
    "id": "RAF-L0>CEILING",
@@ -28835,12 +29262,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L0>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L0",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R0>CEILING",
    "type": "tab_slot",
    "board": "RAF-R0",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R0>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R0",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L1>CEILING",
@@ -28851,12 +29294,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L1>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L1",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R1>CEILING",
    "type": "tab_slot",
    "board": "RAF-R1",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R1>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R1",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L2>CEILING",
@@ -28867,12 +29326,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L2>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L2",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R2>CEILING",
    "type": "tab_slot",
    "board": "RAF-R2",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R2>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R2",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L3>CEILING",
@@ -28883,12 +29358,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L3>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L3",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R3>CEILING",
    "type": "tab_slot",
    "board": "RAF-R3",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R3>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R3",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L4>CEILING",
@@ -28899,12 +29390,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L4>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L4",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R4>CEILING",
    "type": "tab_slot",
    "board": "RAF-R4",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R4>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R4",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L5>CEILING",
@@ -28915,12 +29422,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L5>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L5",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R5>CEILING",
    "type": "tab_slot",
    "board": "RAF-R5",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R5>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R5",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L6>CEILING",
@@ -28931,12 +29454,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L6>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L6",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R6>CEILING",
    "type": "tab_slot",
    "board": "RAF-R6",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R6>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R6",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L7>CEILING",
@@ -28947,12 +29486,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L7>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L7",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R7>CEILING",
    "type": "tab_slot",
    "board": "RAF-R7",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R7>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R7",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L8>CEILING",
@@ -28963,12 +29518,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L8>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L8",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R8>CEILING",
    "type": "tab_slot",
    "board": "RAF-R8",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R8>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R8",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L9>CEILING",
@@ -28979,12 +29550,28 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L9>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L9",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R9>CEILING",
    "type": "tab_slot",
    "board": "RAF-R9",
    "into": "CEILING",
    "tabs": 1,
    "tab_width": 8
+  },
+  {
+   "id": "RAF-R9>PLATE-R",
+   "type": "tab_slot",
+   "board": "RAF-R9",
+   "into": "PLATE-R",
+   "tabs": 1,
+   "tab_width": 4
   },
   {
    "id": "RAF-L10>CEILING",
@@ -28995,6 +29582,14 @@
    "tab_width": 8
   },
   {
+   "id": "RAF-L10>PLATE-L",
+   "type": "tab_slot",
+   "board": "RAF-L10",
+   "into": "PLATE-L",
+   "tabs": 1,
+   "tab_width": 4
+  },
+  {
    "id": "RAF-R10>CEILING",
    "type": "tab_slot",
    "board": "RAF-R10",
@@ -29003,20 +29598,12 @@
    "tab_width": 8
   },
   {
-   "id": "RAF-L11>CEILING",
+   "id": "RAF-R10>PLATE-R",
    "type": "tab_slot",
-   "board": "RAF-L11",
-   "into": "CEILING",
+   "board": "RAF-R10",
+   "into": "PLATE-R",
    "tabs": 1,
-   "tab_width": 8
-  },
-  {
-   "id": "RAF-R11>CEILING",
-   "type": "tab_slot",
-   "board": "RAF-R11",
-   "into": "CEILING",
-   "tabs": 1,
-   "tab_width": 8
+   "tab_width": 4
   },
   {
    "id": "TRUSS-1>CEILING",

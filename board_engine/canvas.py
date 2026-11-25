@@ -1476,7 +1476,8 @@ def _preview(comps, design=None):
 
 
 # found by the geometric inspection; a move may undo something deliberate (an inset, an asymmetry), so always confirm
-_EYE_CHECKS = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC', 'OFF_CENTRE', 'MISMATCHED_PAIR', 'UNJOINED_CONTACT')
+_EYE_CHECKS = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC', 'OFF_CENTRE', 'MISMATCHED_PAIR', 'UNJOINED_CONTACT',
+               'HELD_FROM_ABOVE')
 
 
 def _laid_out(raw):

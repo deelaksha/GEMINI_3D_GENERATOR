@@ -916,6 +916,50 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 4. Square to each other: boards are axis aligned unless they use `rotate`; tabs insert perpendicular to the receiving face.
 5. Every board must fit on one stock sheet; standard thicknesses are preferred (table below).
 
+## Detailed models (buildings, vehicles, scale models) — how to build them so they compile first time
+A detailed model is many simple, well-joined parts (hundreds are fine; there is no part limit), organised by "group"
+and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing on or locking into the layer below:
+1. Ground board (the display base) -> raised floor / plinth (walls under a floor board, floor 5-6 mm wider all round)
+   -> walls (plain rectangles, `finger` at the corners, `tab_slot` into the floor and up into a ceiling board)
+   -> ceiling / eave soffit board (it overhangs the walls: the eaves) -> roof structure -> roof skin -> surface detail
+   -> fittings -> surroundings (plants, yard items: each tabbed into the ground).
+2. Sloped roofs: tilt the panels with `rotate` about the eave line (pivot on the lower face at the eave). Pick a pitch
+   from a whole-number triangle so every length is whole millimetres: 8-15-17 (28.07 deg: run 15 -> rise 8, slope 17),
+   3-4-5 (36.87 deg) or 5-12-13 (22.62 deg). Panels end where their lower faces meet (ridge, hips): cut hip panels as
+   trapezoids / triangles with a polygon `profile`. Support them with vertical trusses standing on the ceiling whose
+   `profile` top edges follow the panels' lower faces exactly; tab the trusses into the ceiling and into each panel.
+3. Surface detail on a tilted panel (tile courses, battens, solar cells, planks): build each piece flat, standing on
+   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot) as the
+   panel - it then stands square on the panel and `tab_slot` joins it. Split long courses into pieces (about 40 mm)
+   with 1 mm gaps, and put gaps where trusses or other joints meet the panel so no two slots share a place.
+4. Two colours on one wall (a painted band, a plinth stripe): a separate board standing on the floor in front of the
+   wall, tabbed into the floor. Door / window frames: an opening in the wall plus a coloured lining board behind it
+   with its own smaller openings (the frame, mullions, a grill); a dark inner wall further in makes openings read as
+   a dark interior.
+5. Nothing may hang: a part whose only joints are tabs pushing UP into a board above it falls out (HELD_FROM_ABOVE).
+   Give it something to sit on - e.g. rafter ends under the eaves sit on a wall plate (a strip tabbed sideways into
+   the wall) and tab up into the soffit - or tab it sideways into a wall.
+6. Slots: keep slots in one board >= 2 x thickness apart and never at the same place from both faces; tabs into a
+   wall must land on solid wall clear of its openings (tabs are spread evenly along the contact, one thickness in
+   from each end - choose the board length and "tabs" so they miss the openings); small parts use small `tab_width`.
+7. Texture and visibility: per-face `color`s (colouring on) with slightly varied shades for repeated parts,
+   `engravings` for stone courses, planks and outlines, wavy `profile` tops for tile courses, dark undersides for
+   eaves. Small parts are fine on a laser: write the laser kerf in "material" (e.g. "kerf": 0.15); with a kerf below
+   1 mm the minimum part width is 3 mm instead of the router minimum in the table below.
+Snippet (front roof slope, one truss, one tile piece - all whole millimetres, pitch 8-15-17, panel 3 mm):
+```jsonc
+{{"id": "R-F", "position": [30, 81, 141], "size": [300, 3, 102],
+  "rotate": {{"axis": "x", "angle": 28.0725, "pivot": [30, 81, 243]}},
+  "profile": {{"shape": "polygon", "points": [[0, 102], [300, 102], [210, 0], [90, 0]]}}}},
+{{"id": "TRUSS-1", "position": [150, 81, 78], "size": [3, 48, 150],
+  "profile": {{"shape": "polygon", "points": [[0, 0], [0, 150], [8, 150], [48, 75], [8, 0]]}}}},
+{{"id": "TILE-F1", "position": [70, 84, 236], "size": [40, 4, 3],
+  "rotate": {{"axis": "x", "angle": 28.0725, "pivot": [30, 81, 243]}},
+  "profile": {{"shape": "polygon", "points": [[0, 0], [40, 0], [40, 3], [38, 4], [36, 3], [34, 4], [32, 3], [0, 3]]}}}}
+```
+(connections: TRUSS-1 -> CEILING, TRUSS-1 -> R-F, TILE-F1 -> R-F, all `tab_slot`; the truss's profile is [height,
+depth] because it is thin along x: face coordinates follow the in-plane axes in x, y, z order.)
+
 ## Material catalogue (type | standard thicknesses mm | kerf mm | grain | minimum part mm)
 | type | thicknesses | kerf | grain | min part |
 |---|---|---|---|---|
@@ -1056,6 +1100,8 @@ INSTRUCTIONS (follow every one):
    run. Then decompose the product into every board it needs (nothing implied, nothing missing). Give each a short
    unique id (at most 24 characters) and put the boards of each sub-assembly in the same "group". For repeated or
    symmetric parts use "repeat", "mirror" and "assemblies"/"instances" instead of listing every copy.
+   For a building, vehicle or scale model, build a DETAILED model (see "Detailed models"): structure first, then
+   surface detail (tile courses, rafters, frames, planks) as many small joined parts, every visible feature present.
 3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
    CRITICAL INTEGER RULE: {INTEGER_RULE}
 4. Account for board thickness everywhere so boards touch exactly and never overlap
@@ -1077,6 +1123,7 @@ INSTRUCTIONS (follow every one):
     e2. Walk the connections from the base board: is EVERY board reached? Does every board touch another one?
         Is every small part (fittings, details on a deck or panel) standing with an EDGE on that face, never lying
         flat on it, with its slot >= 2 × thickness from every other slot in that board?
+        Does every part SIT on something or lock sideways (no part held only by tabs pushing up into a board above)?
     e3. Do the overall sizes match every size stated in the requirements?
     f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. Does the design match the attached image(s) from the front, side and top: every visible part, its place, proportions and outline?' if images else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).

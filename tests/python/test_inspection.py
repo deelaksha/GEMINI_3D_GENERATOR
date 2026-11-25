@@ -5,7 +5,8 @@ import pytest
 
 from board_engine.canvas import compile_source
 
-CODES = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC', 'OFF_CENTRE', 'MISMATCHED_PAIR', 'UNJOINED_CONTACT')
+CODES = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC', 'OFF_CENTRE', 'MISMATCHED_PAIR', 'UNJOINED_CONTACT',
+         'HELD_FROM_ABOVE')
 
 
 def build(extra, conns):
@@ -185,3 +186,18 @@ def test_small_parts_are_fine_on_a_laser_but_not_on_a_router():
     assert not narrow(0.15)                                   # laser: a 9 mm rib (6 + tab) is fine
     router = narrow(None)                                     # catalogue router kerf 3.2 mm: below 15 mm
     assert router and 'on a router' in router[0]['message']
+
+
+def test_a_part_hanging_on_upward_tabs_is_flagged_and_a_seated_one_is_not():
+    top = {'id': 'TOP', 'position': [0, 60, 0], 'size': [200, 6, 100]}
+    legs = [{'id': 'LEG-L', 'position': [10, 6, 20], 'size': [6, 54, 60]}, {'id': 'LEG-R', 'position': [184, 6, 20], 'size': [6, 54, 60]}]
+    hang = {'id': 'HANGER', 'position': [60, 50, 30], 'size': [6, 10, 40]}     # under the top, held by one tab up into it
+    _r, found = build([top, *legs, hang], [('LEG-L', 'BASE'), ('LEG-R', 'BASE'), ('LEG-L', 'TOP'), ('LEG-R', 'TOP'), ('HANGER', 'TOP')])
+    h = [x for x in found if x['code'] == 'HELD_FROM_ABOVE']
+    assert [x['components'] for x in h] == [['HANGER', 'TOP']] and 'its tab points up' in h[0]['calc'][1]
+    ledge = {'id': 'LEDGE', 'position': [55, 44, 25], 'size': [30, 6, 50]}      # a ledge to sit on, on its own post
+    seated = dict(hang, position=[60, 50, 30])
+    post = {'id': 'POST', 'position': [72, 6, 25], 'size': [6, 38, 50]}          # beside the hanger: its own slot
+    _r, found = build([top, *legs, seated, ledge, post], [('LEG-L', 'BASE'), ('LEG-R', 'BASE'), ('LEG-L', 'TOP'), ('LEG-R', 'TOP'),
+                                                         ('HANGER', 'TOP'), ('HANGER', 'LEDGE'), ('POST', 'BASE'), ('POST', 'LEDGE')])
+    assert not [x for x in found if x['code'] == 'HELD_FROM_ABOVE' and x['components'][0] == 'HANGER']

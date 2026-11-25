@@ -62,3 +62,20 @@ def test_my_home_example_is_served_and_compiles_clean(client):
     res = compile_source(r.json['source'], run_production=False, time_budget=120, machine={'coloring': True})
     assert res['ok'] and res['summary']['boards'] >= 300 and res['summary']['joined'] == res['summary']['joints']
     assert not [d for d in res['diagnostics'] if d['severity'] in ('error', 'warning')]
+
+
+def test_detailed_models_snippet_in_the_spec_compiles():
+    """The roof snippet the AI is told to copy must itself be a working tilted panel + truss + tile."""
+    from board_engine.canvas import compile_source
+    from board_engine.canvas_prompt import spec_markdown
+    md = spec_markdown()
+    sn = md[md.index('Snippet (front roof slope'):]
+    sn = sn[sn.index('```jsonc') + 8: sn.index('```', sn.index('```jsonc') + 8)]
+    parts = json.loads('[' + sn.strip() + ']')
+    d = {'format': 'board-design/v1', 'product': {'name': 's'}, 'material': {'type': 'plywood', 'thickness': 3, 'kerf': 0.15},
+         'boards': [{'id': 'CEILING', 'position': [30, 78, 63], 'size': [300, 3, 180]}] + parts,
+         'connections': [{'id': 'a', 'type': 'tab_slot', 'board': 'TRUSS-1', 'into': 'CEILING', 'tabs': 1, 'tab_width': 12},
+                         {'id': 'b', 'type': 'tab_slot', 'board': 'TRUSS-1', 'into': 'R-F', 'tabs': 1, 'tab_width': 10},
+                         {'id': 'c', 'type': 'tab_slot', 'board': 'TILE-F1', 'into': 'R-F', 'tabs': 1, 'tab_width': 8}]}
+    r = compile_source(json.dumps(d), run_production=False)
+    assert r['ok'] and r['summary']['joined'] == 3 and not [x for x in r['diagnostics'] if x['severity'] in ('error', 'warning')]
