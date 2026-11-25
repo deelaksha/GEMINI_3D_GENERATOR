@@ -313,12 +313,17 @@ async function repairPrompt() {
   const source = cm.getValue();
   if (!source.trim()) return toast('Paste the AI’s code into the editor first', true);
   const btn = $('#btn-repair-prompt');
-  if (btn) btn.disabled = true;
+  const label = btn?.innerHTML;
   try {
     // the prompt built at the end of the last compile, if the code has not changed since (no second compile)
-    const r = S.fixPrompt?.source === source ? S.fixPrompt : await Api.canvasRepairPrompt(source, machine());
+    let r = S.fixPrompt?.source === source ? S.fixPrompt : null;
+    if (!r) {                             // the code changed since the last compile: the server checks it again
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span>Building fix prompt…</span>'; }
+      toast('Checking the current code to build the fix prompt…', false, 4000);
+      r = await Api.canvasRepairPrompt(source, machine());
+    }
     showPrompt(r.prompt, `Follow-up prompt with ${r.problems} problem(s). Paste it into the same AI chat, then paste its reply into the editor and click <b>Compile</b>.`);
-    if (r.problems > 0 || r.prompt) {
+    if (r.problems > 0) {
       await copyText(r.prompt, 'Fix prompt');
       toast(`Copied follow-up fix prompt (${r.problems} issue${r.problems === 1 ? '' : 's'}) to clipboard! Paste it into your AI chat.`);
     } else {
@@ -327,7 +332,7 @@ async function repairPrompt() {
   } catch (e) {
     reportError(e);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn && label) { btn.innerHTML = label; btn.disabled = false; }
   }
 }
 

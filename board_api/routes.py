@@ -704,9 +704,10 @@ def canvas_update_prompt():
 
 
 def _with_repair_prompt(res, source, machine=None):
-    """Attach the follow-up fix prompt for a compile that found errors, built from this result (no second compile)."""
+    """Attach the follow-up fix prompt for a compile that found errors or warnings, built from this result (no
+    second compile), so "Copy fix prompt" copies it at once."""
     from board_engine.canvas_prompt import build_repair_prompt
-    if res.get('summary', {}).get('errors') or any(d['severity'] == 'error' for d in res['diagnostics']):
+    if any(d['severity'] in ('error', 'warning') for d in res['diagnostics']):
         blocking = (res.get('layout') or {}).get('blocking_issues', [])
         res['repair_prompt'] = build_repair_prompt(source, res['diagnostics'], blocking, machine)
         res['repair_problems'] = res['repair_prompt'].count('\n- [')
