@@ -67,7 +67,9 @@ async function buildPreview(boards) {
 
 self.onmessage = async ({ data: { source, production, timeout, machine, requirements } }) => {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeout);
+  // an idle timeout: a large design may compile for minutes, but the server reports progress all the way through
+  let timer = setTimeout(() => ctl.abort(), timeout);
+  const alive = () => { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), timeout); };
   const fail = (status, message) => self.postMessage({ type: 'error', status, message });
   let building = 0;
   loadGeometry().catch(() => { /* no preview without three.js; the compile itself is unaffected */ });
@@ -89,6 +91,7 @@ self.onmessage = async ({ data: { source, production, timeout, machine, requirem
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      alive();
       bytes += chunk.value.length;
       buf += decoder.decode(chunk.value, { stream: true });
       let nl;
@@ -116,7 +119,7 @@ self.onmessage = async ({ data: { source, production, timeout, machine, requirem
     }
     if (!done) fail(0, 'The connection to the compiler was lost before it finished. Please try again.');
   } catch (e) {
-    if (e.name === 'AbortError') fail(408, `The compiler did not finish within ${Math.round(timeout / 1000)} s. Please try again.`);
+    if (e.name === 'AbortError') fail(408, `The compiler sent no progress for ${Math.round(timeout / 1000)} s. Please try again.`);
     else if (e instanceof SyntaxError) fail(0, 'The compiler sent an unreadable reply. Please try again.');
     else fail(0, 'Cannot reach the server — check your connection.');
   } finally {

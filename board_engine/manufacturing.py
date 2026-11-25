@@ -584,7 +584,7 @@ def find_contacts(design, plates, tol=TOL):
                 gap = abs(sep) - (a.t + b.t) / 2.0
                 if -tol['contact'] <= gap <= GAP_SEARCH:
                     from .validation import _projected_overlap
-                    area, _c = _projected_overlap(a, b)
+                    area, _c = _projected_overlap(a, b, need=tol['min_lap_area'])
                     if area >= tol['min_lap_area']:
                         rec = {'a': a.id, 'b': b.id, 'relation': 'face', 'gap': _r(gap), 'contact_area': _r(area, 1),
                                'normal': G.v_scale(a.frame.normal, 1.0 if sep < 0 else -1.0),

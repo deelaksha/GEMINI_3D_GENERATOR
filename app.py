@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = Flask(__name__, static_folder=None)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable static file caching during active development
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # bounded API payloads (large multi-thousand-board designs fit)
+app.config['MAX_CONTENT_LENGTH'] = 128 * 1024 * 1024  # bounded API payloads (large multi-thousand-board designs fit)
 
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'), format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 

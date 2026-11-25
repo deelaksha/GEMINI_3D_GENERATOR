@@ -86,7 +86,10 @@ def _close_pairs(polys, gap):
     return sorted(pairs)
 
 
-def validate_component(design, comp, tol=TOL):
+def validate_component(design, comp, tol=TOL, only_features=None):
+    """2D checks of one component. `only_features`: ids of the features a caller cares about (a join checking the
+    slot it just added): the per-feature and feature-pair checks then run only for those - every issue about them is
+    still found, without re-checking the board's other slots each time."""
     out = []
     cid = comp['id']
     t = thickness_of(design, comp)
@@ -153,6 +156,8 @@ def validate_component(design, comp, tol=TOL):
         fids.add(f['id'])
         poly = feature_polygon(f)
         polys.append((f, poly))
+        if only_features is not None and f['id'] not in only_features:
+            continue
         if f['shape'] == 'polygon':
             bx = G.bbox(poly)
             size = min(bx[2] - bx[0], bx[3] - bx[1])
@@ -188,6 +193,8 @@ def validate_component(design, comp, tol=TOL):
                              f"(recommended {tol['rec_edge_margin']} mm).", [cid], feature=f['id'], margin=_r(m)))
     for i, j in _close_pairs([p for _f, p in polys], tol['min_feature_spacing']):
         (fa, pa), (fb, pb) = polys[i], polys[j]
+        if only_features is not None and fa['id'] not in only_features and fb['id'] not in only_features:
+            continue
         if G.polygons_overlap(pa, pb):
             out.append(issue('FEATURE_OVERLAP', 'error', '2d',
                              f"Features '{fa['id']}' ({fa['kind']}) and '{fb['id']}' ({fb['kind']}) on '{cid}' overlap.",
@@ -968,18 +975,33 @@ def _eval_face_lap(design, a, b, joint, tol, issues):
     return {'location': location, 'contact_area': _r(area, 1)}
 
 
-def _grid(plate, max_points=6000):
+def _grid(plate, max_points=6000, window=None):
+    """Sample points over the plate's bounding box; `window` (x0, y0, x1, y1, plate-local) keeps only the points
+    inside it - the same points, without visiting the rest."""
     x0, y0, x1, y1 = plate.bbox2d
     step = max(0.5, math.sqrt(max((x1 - x0) * (y1 - y0), 1.0) / max_points))
     nx, ny = int((x1 - x0) / step) + 1, int((y1 - y0) / step) + 1
-    for i in range(nx):
-        for j in range(ny):
+    i0, i1, j0, j1 = 0, nx, 0, ny
+    if window is not None:
+        wx0, wy0, wx1, wy1 = window
+        i0, i1 = max(0, int(math.floor((wx0 - x0) / step - 0.5))), min(nx, int(math.ceil((wx1 - x0) / step - 0.5)) + 1)
+        j0, j1 = max(0, int(math.floor((wy0 - y0) / step - 0.5))), min(ny, int(math.ceil((wy1 - y0) / step - 0.5)) + 1)
+    for i in range(i0, i1):
+        for j in range(j0, j1):
             yield [x0 + (i + 0.5) * step, y0 + (j + 0.5) * step], step
 
 
-def _projected_overlap(a, b):
+def _projected_overlap(a, b, need=None):
+    """Area (mm²) of a's material that lies on b's material, seen along a's normal, and its centroid. Samples a's
+    grid, but only the part of it under b's outline (the other points cannot count, so the result is the same);
+    `need`: stop as soon as the area reaches it (callers that only ask "at least this much?")."""
     area, acc, cnt = 0.0, [0.0, 0.0, 0.0], 0
-    for p, step in _grid(a):
+    x0, y0, x1, y1 = a.bbox2d
+    bx0, by0, bx1, by1 = b.bbox2d
+    corners = [a.frame.to_local(b.frame.to_world([x, y, 0.0])) for x in (bx0, bx1) for y in (by0, by1)]
+    wx0, wx1 = min(c[0] for c in corners), max(c[0] for c in corners)
+    wy0, wy1 = min(c[1] for c in corners), max(c[1] for c in corners)
+    for p, step in _grid(a, window=(wx0, wy0, wx1, wy1)):
         if not a.is_material(p, 0.0):
             continue
         w = a.frame.to_world(p)
@@ -988,6 +1010,8 @@ def _projected_overlap(a, b):
             area += step * step
             acc = G.v_add(acc, w)
             cnt += 1
+            if need is not None and area >= need:
+                break
     return area, (G.v_scale(acc, 1.0 / cnt) if cnt else None)
 
 

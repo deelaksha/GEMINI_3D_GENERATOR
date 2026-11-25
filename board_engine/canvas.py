@@ -62,7 +62,9 @@ TYPE_ALIASES = {
 BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_board')
 INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
 AXES = 'xyz'
-MAX_SOURCE = 50_000_000                 # characters: a guard against runaway input, far above any real design
+MAX_SOURCE = 100_000_000                # characters: a guard against runaway input, far above any real design
+BUDGET_BOARDS = 900                     # the time budget covers this many boards; bigger designs get more, in proportion
+MAX_BUDGET = 900                        # s: never more than 15 minutes of compiling, however large the design
 SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambiguous (auto-fixable)
 
 
@@ -1515,6 +1517,9 @@ def _compile_source(text, design_id, run_production, time_budget, machine):
             n = len(data['boards'])
             result['diagnostics'].append(diag('info', 'STRUCTURE_EXPANDED', f'{len(origin)} board(s) / connection(s) generated '
                                               f'from repeat, mirror and assemblies ({n} boards in total).'))
+    if time_budget:                             # big designs get time in proportion to their size (default 0.1 s / board)
+        parts = data.get('boards') if isinstance(data.get('boards'), list) else data.get('components')
+        time_budget = max(time_budget, min(MAX_BUDGET, time_budget * len(parts or []) / BUDGET_BOARDS))
     try:
         with _budget(time_budget):
             if 'components' in data and 'boards' not in data:

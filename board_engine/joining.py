@@ -133,7 +133,7 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
         # Re-validate the modified receivers: a repair must not create new 2D problems
         for rec in {r['component'] for r in applied}:
             new_feats = {r['feature']['id'] for r in applied if r['component'] == rec}
-            comp_issues = [i for i in validate_component(work, find_component(work, rec), tol)
+            comp_issues = [i for i in validate_component(work, find_component(work, rec), tol, only_features=new_feats)
                            if i['severity'] == 'error' and
                            (i.get('feature') in new_feats or i.get('other_feature') in new_feats)]
             if comp_issues:

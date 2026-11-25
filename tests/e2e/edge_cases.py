@@ -100,9 +100,13 @@ def run():
             note='unknown fields are silently ignored (no warning) — see bug tracker' if not any(
                 'unknown' in d['message'].lower() for d in b.get('diagnostics', [])) else 'unknown fields reported')
         big = '{"boards": [' + ','.join(['{"id": "B%d", "position": [0,0,0], "size": [10,18,10]}' % i for i in range(60000)]) + ']}'
+        client.application.config['BOARD_TIME_BUDGET'] = 1       # large designs are accepted: just bound the run here
         r = client.post('/api/v1/canvas/compile', data=json.dumps({'source': big}), content_type='application/json', headers=H)
+        body = json.dumps(r.get_json(silent=True))
         add('EC-19', 'Extremely large JSON response (≈3.5 MB)', f'{len(big)} chars', r.status_code, r.get_json(silent=True) or {},
-            'refused with 413 (body limit) or SOURCE_TOO_LARGE', r.status_code == 413 or 'SOURCE_TOO_LARGE' in json.dumps(r.get_json(silent=True)))
+            'accepted (no size refusal) and ends with a result or COMPILE_TIMEOUT, never a crash',
+            r.status_code == 200 and 'SOURCE_TOO_LARGE' not in body and 'COMPILER_ERROR' not in body)
+        client.application.config.pop('BOARD_TIME_BUDGET', None)
 
         # --- repeated requests: identical results
         outs = [compile_(good)[1] for _ in range(3)]

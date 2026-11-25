@@ -7,7 +7,7 @@
  * compiler as data; nothing is evaluated in the page.
  */
 /* global CodeMirror */
-import { Api, ApiError } from '../studio/api.js?v=2.28';
+import { Api, ApiError } from '../studio/api.js?v=2.35';
 import { Viewport3D } from '../studio/viewport3d.js?v=2.24';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
@@ -442,7 +442,7 @@ let compileJob = null;
  *  Api.canvasCompile(source, false). */
 function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.19', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./compile-worker.js?v=2.20', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
     let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
