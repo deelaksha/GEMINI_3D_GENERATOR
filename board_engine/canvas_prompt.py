@@ -6,6 +6,7 @@ fastener catalogues, joint/connection types, joinery modes) so the prompt can ne
 The bundled example is compiled by the test-suite and must produce zero errors.
 """
 import json
+import re
 
 from .canvas import CONNECTION_TYPES, FORMAT, pretty_json
 from .manufacturing import FASTENERS, MATERIALS
@@ -1108,11 +1109,57 @@ def _coloring(machine):
     return bool(machine and machine.get('coloring'))
 
 
+def _file_name(text, suffix=''):
+    """A file name for the design: the product name (or title) as a slug."""
+    name = text
+    try:
+        name = (json.loads(text).get('product') or {}).get('name') or 'design'
+    except (ValueError, TypeError, AttributeError):
+        pass
+    slug = re.sub(r'[^a-z0-9]+', '_', str(name or 'design').lower()).strip('_')[:50] or 'design'
+    return f'{slug}{suffix}.json'
+
+
+def _contract(machine, fname):
+    """The output contract: a downloadable .json file (the user's choice, default) or code in the chat."""
+    if not (machine and machine.get('file')):
+        return OUTPUT_CONTRACT
+    return f"""OUTPUT CONTRACT (strict — deliver a FILE: the user downloads it and opens it in the compiler):
+- Deliver the COMPLETE design as ONE downloadable file named `{fname}` (UTF-8, strict JSON, nothing else in it).
+  Use your code / file tool: write a short script that BUILDS the design - loops for rows of tiles, rafters, slats
+  and other repeated parts, exact whole-millimetre arithmetic - then saves the file. Do NOT paste the JSON in the
+  chat. There is no size limit: the file may hold thousands of boards; never simplify to keep it small.
+- Before saving, the script must CHECK the design and fix anything that fails: it parses as JSON; every board id is
+  unique; every connection's "board" and "into" exist; every size, position and profile / opening coordinate is a
+  whole number; exactly one of each board's three sizes equals its thickness; every board appears in at least one
+  connection. Run the script, then attach the file.
+- Your chat reply is only the file (its download link) - no explanation. Anything for the user goes into
+  "product.description" inside the file.
+- Only if you cannot create files: reply with the complete design as ONE ```json code block instead (if it is too
+  long for one reply, use the multi-part replies below - never shorten it).
+- Never ask a question or refuse: if something cannot be met exactly, deliver the best complete design and explain
+  the limitation in "product.description".
+
+{_SHARED_RULES}"""
+
+
+# the rules both contracts share: no size limit, multi-part replies, strict JSON
+_SHARED_RULES = OUTPUT_CONTRACT[OUTPUT_CONTRACT.index('- NO SIZE LIMIT'):OUTPUT_CONTRACT.index('- Anything you want to tell')].rstrip()
+
+
+def _final(machine, fname):
+    if not (machine and machine.get('file')):
+        return FINAL_REMINDER
+    return (f'FINAL REMINDER: deliver the complete design as the downloadable file `{fname}` built and checked by your '
+            f'script (only if you cannot create files: one ```json code block) — no other text, nothing left out.')
+
+
 def build_prompt(title, requirements='', material=None, thickness=None, joinery=None, machine=None, images=False):
     """images: the user will attach reference image(s) to this prompt in their AI chat; they become the
     specification (see IMAGE_SPEC)."""
     title = (title or '').strip() or ('The product shown in the attached image(s)' if images else 'Board product')
     req = (requirements or '').strip()
+    fname = _file_name(title)
     extra = []
     if images:
         extra.append('- Reproduce the product in the attached reference image(s) exactly (see "Reference images" below); '
@@ -1141,7 +1188,7 @@ It is compiled automatically: rendered in 3D, every joint, gap and overlap valid
 and cutting files produced. Invented fields are ignored and invalid geometry is rejected, so follow the
 specification exactly.
 
-{OUTPUT_CONTRACT}
+{_contract(machine, fname)}
 
 {DESIGN_TEAM}
 
@@ -1193,7 +1240,7 @@ INSTRUCTIONS (follow every one):
 
 {spec_markdown()}
 {(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}{(chr(10) + IMAGE_SPEC + chr(10)) if images else ''}
-{FINAL_REMINDER}
+{_final(machine, fname)}
 """
 
 
@@ -1246,11 +1293,12 @@ def build_repair_prompt(source, diagnostics, blocking=(), machine=None):
     seen = {d['message'] for d in diagnostics}
     diagnostics = list(diagnostics) + [dict(b, severity='error') for b in blocking if b.get('message') not in seen]
     syntax = any(d.get('code') == 'JSON_SYNTAX' for d in diagnostics)
+    fname = _file_name(source or '', '_fixed')
     floats = sum(1 for d in diagnostics if d.get('code') == 'NON_INTEGER_DIMENSION')
     return f"""You are the repair step of an automated board-design pipeline. The compiler checked the design below (format
 `{FORMAT}`) and found the problems listed. Return the corrected design as code only.
 
-{OUTPUT_CONTRACT}
+{_contract(machine, fname)}
 
 YOUR ROLE - three specialists one after another inside this single reply (the only output is the JSON):
 1. DIAGNOSTICIAN - reads every problem with its calculation and finds the root cause: one misplaced or mis-sized
@@ -1295,7 +1343,7 @@ YOUR PREVIOUS JSON:
 SPECIFICATION (reference for every field and rule):
 {spec_markdown()}
 {(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
-{FINAL_REMINDER}
+{_final(machine, fname)}
 """
 
 
@@ -1339,10 +1387,11 @@ def build_update_prompt(source, change, diagnostics=(), machine=None, images=Fal
     images: the user attaches reference image(s) in their AI chat; the design is changed to match them."""
     change = (change or '').strip() or ('Make the design match the attached reference image(s) exactly.' if images else '')
     issues = [d for d in diagnostics if d.get('severity') == 'error']
+    fname = _file_name(source or '', '_updated')
     return f"""You are the change step of an automated board-design pipeline. Below is an existing, working design in the
 `{FORMAT}` format. Apply the CHANGE REQUEST to it and return the updated design as code only.
 
-{OUTPUT_CONTRACT}
+{_contract(machine, fname)}
 
 YOUR ROLE - three specialists one after another inside this single reply (the only output is the JSON):
 1. CHANGE ANALYST - works out exactly what the request changes and every board and connection that depends on it.
@@ -1380,5 +1429,5 @@ CURRENT DESIGN:
 SPECIFICATION (reference for every field and rule):
 {spec_markdown()}
 {(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}{(chr(10) + IMAGE_SPEC + chr(10)) if images else ''}
-{FINAL_REMINDER}
+{_final(machine, fname)}
 """

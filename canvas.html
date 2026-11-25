@@ -30,6 +30,7 @@
     <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-format" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9m0 0-4 4m4-4 4 4M5 4h14"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   </svg>
 
@@ -93,6 +94,7 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
           <label class="check full laser-only" style="flex-direction:row;align-items:center;gap:8px" title="Parts are nested one kerf apart so neighbouring edges are cut once: less cutting time and material"><input type="checkbox" id="in-shared" /> Shared cut lines (cut touching edges once)</label>
           <label class="check full" style="flex-direction:row;align-items:center;gap:8px" title="On: the AI colours every board (per face if needed), the 3D view, sheets and outputs use the colours and include a painting guide. Off: plain material, as before"><input type="checkbox" id="in-coloring" /> Include colouring</label>
           <label class="check full" style="flex-direction:row;align-items:center;gap:8px" title="On: the prompt tells the AI that the image(s) you attach to the same message in your AI chat are the design to reproduce exactly (shape, proportions, every visible part). The images stay in your AI chat; nothing is uploaded here."><input type="checkbox" id="in-images" /> I'll attach reference image(s) in the AI chat</label>
+          <label class="check full" style="flex-direction:row;align-items:center;gap:8px" title="On: the prompt asks the AI to build the design with a script and give you a downloadable .json file (no size limit, checked before saving). Open it here with “Open .json” or drag it onto the editor. Off: the AI writes the code in the chat."><input type="checkbox" id="in-file" /> AI delivers a downloadable .json file</label>
           <label class="check full laser-only" id="row-color-sheets" hidden style="flex-direction:row;align-items:center;gap:8px" title="For pre-coloured / dyed sheets: parts of different colours never share a sheet"><input type="checkbox" id="in-color-sheets" /> Cut each colour from its own sheets</label>
           <button class="btn full laser-only" id="btn-testfit" type="button" title="A small comb with slots from −0.1 to +0.3 mm plus a tab: cut it first to find the right slot fit">Download test-fit piece (.svg)</button>
           <button class="btn primary full" id="btn-ai-generate" hidden title="Ask the AI configured on the server for the design, compile it, and let the AI fix any errors (up to 2 rounds)">Generate with AI</button>
@@ -114,6 +116,8 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
     <section class="cv-col cv-center cv-pane" data-pane-id="code">
       <div class="cv-toolbar">
         <div class="cv-tb-group">
+          <button class="tool" id="btn-open-file" title="Open a .json design file from the AI (several part files are merged) — or drag files onto the editor"><svg><use href="#i-upload"/></svg><span>Open .json</span></button>
+          <input type="file" id="in-open-file" accept=".json,.txt,application/json,text/plain" multiple hidden />
           <select class="input small" id="sel-example" title="Load an example design">
             <option value="">Load example…</option><option value="spec">Study table (from the prompt)</option><option value="complex">Gabled cottage (complex cuts)</option><option value="structures">Desk organiser (finger joints + egg-crate)</option><option value="home">My home (from your photos, coloured)</option>
           </select>
@@ -205,6 +209,6 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
     <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
     <div class="dlg-body" id="import-body"></div></dialog>
   <div class="toast" id="toast" role="status"></div>
-  <script type="module" src="js/canvas/main.js?v=2.33"></script>
+  <script type="module" src="js/canvas/main.js?v=2.34"></script>
 </body>
 </html>

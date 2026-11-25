@@ -62,7 +62,7 @@ TYPE_ALIASES = {
 BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_board')
 INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
 AXES = 'xyz'
-MAX_SOURCE = 1_000_000
+MAX_SOURCE = 50_000_000                 # characters: a guard against runaway input, far above any real design
 SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambiguous (auto-fixable)
 
 
@@ -249,7 +249,7 @@ def parse_source(text):
     if not isinstance(text, str) or not text.strip():
         return None, '', 0, [diag('error', 'EMPTY_SOURCE', 'Paste the design JSON returned by the AI.')]
     if len(text) > MAX_SOURCE:
-        return None, '', 0, [diag('error', 'SOURCE_TOO_LARGE', f'Source is larger than {MAX_SOURCE} characters.')]
+        return None, '', 0, [diag('error', 'SOURCE_TOO_LARGE', f'Source is larger than {MAX_SOURCE:,} characters.')]
     text = text.lstrip('\ufeff')
     parts = _design_parts(text)
     if parts:                           # a design the AI sent in several replies: merge, then compile the whole

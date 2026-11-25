@@ -73,3 +73,22 @@ def test_every_prompt_gives_the_ai_roles_criteria_and_known_mistakes():
     for p in (gen, rep, upd):
         assert SUCCESS_CRITERIA in p and COMMON_MISTAKES in p
         assert p.index('OUTPUT CONTRACT') < p.index('YOUR ROLE') < p.index('SPECIFICATION' if 'SPECIFICATION (' in p else '## ')
+
+
+def test_file_delivery_prompts_and_setting(tmp_path):
+    from board_engine.canvas_prompt import OUTPUT_CONTRACT, build_prompt, build_repair_prompt
+    f = build_prompt('Steam Locomotive 482', machine={'file': True})
+    assert '`steam_locomotive_482.json`' in f and 'script must CHECK' in f and 'MULTI-PART REPLIES' in f
+    assert OUTPUT_CONTRACT not in f and 'downloadable file `steam_locomotive_482.json`' in f.rsplit('\n', 3)[-2]
+    assert OUTPUT_CONTRACT in build_prompt('Steam Locomotive 482')                       # chat delivery unchanged
+    src = json.dumps({'format': 'board-design/v1', 'product': {'name': 'Steam Locomotive 482'}, 'boards': []})
+    assert '`steam_locomotive_482_fixed.json`' in build_repair_prompt(src, [], machine={'file': True})
+    import importlib
+    os.environ.update(BOARD_INSTANCE_DIR=str(tmp_path), BOARD_API_KEYS='vw:viewer', BOARD_SKIP_SEED='1')
+    import app as app_module
+    importlib.reload(app_module)
+    c = app_module.app.test_client()
+    r = c.post('/api/v1/canvas/prompt', headers={'Authorization': 'Bearer vw'}, json={'title': 'Loco', 'machine': {'file': True}})
+    assert r.status_code == 200 and '`loco.json`' in r.json['prompt']
+    for k in ('BOARD_INSTANCE_DIR', 'BOARD_API_KEYS', 'BOARD_SKIP_SEED'):
+        os.environ.pop(k, None)

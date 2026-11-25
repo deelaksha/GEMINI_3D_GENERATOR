@@ -192,7 +192,12 @@ function syncBed() {
 
 /** {kerf, sheet: {width, height}, measured?, fit?} as the API takes it (out-of-range input falls back to defaults). */
 function machine() {
-  if (!LASER) return $('#in-coloring').checked ? { coloring: true } : null;
+  if (!LASER) {
+    const m = {};
+    if ($('#in-coloring').checked) m.coloring = true;
+    if ($('#in-file').checked) m.file = true;           // the AI delivers a downloadable .json file
+    return Object.keys(m).length ? m : null;
+  }
   const num = (el, lo, hi, d) => { const v = parseFloat($(el).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : d; };
   const m = { kerf: num('#in-kerf', 0.01, 1, MACHINE_DEFAULT.kerf),
     sheet: { width: num('#in-bed-w', 50, 5000, MACHINE_DEFAULT.w), height: num('#in-bed-h', 50, 5000, MACHINE_DEFAULT.h) } };
@@ -202,6 +207,7 @@ function machine() {
     if (v !== null) m[k] = v;
   }
   if ($('#in-shared').checked) m.shared_edges = true;
+  if ($('#in-file').checked) m.file = true;
   if ($('#in-coloring').checked) {
     m.coloring = true;
     if ($('#in-color-sheets').checked) m.color_sheets = true;
@@ -236,6 +242,8 @@ function machineChanged() {
 const IMAGES_KEY = 'board-canvas-images';
 const images = () => $('#in-images').checked;      // the user attaches reference images in their own AI chat
 const IMAGES_NOTE = '<b>Attach your reference image(s) to the same message</b> in your AI chat, together with this prompt.';
+const FILE_KEY = 'board-canvas-file';
+const FILE_NOTE = 'The AI will give you a <b>.json file</b>: download it, then click <b>Open .json</b> above the editor (or drag the file onto it).';
 
 async function generatePrompt() {
   const title = $('#in-title').value.trim();
@@ -245,7 +253,7 @@ async function generatePrompt() {
       thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking', machine: machine() });   // always glue-free
     $('#out-prompt').value = r.prompt;
     $('#btn-copy-prompt').disabled = false;
-    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. ${images() ? IMAGES_NOTE + ' ' : ''}Paste the AI’s JSON reply into the editor and click <b>Compile</b>. Large designs may come in parts (“part 1 of 3”): reply <b>continue</b> until all parts are written, then paste them all here together — they are merged automatically.`;
+    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. ${images() ? IMAGES_NOTE + ' ' : ''}${$('#in-file').checked ? FILE_NOTE + ' If it writes code in the chat instead, paste it into the editor.' : 'Paste the AI’s JSON reply into the editor and click <b>Compile</b>.'} Large designs may come in parts (“part 1 of 3”): reply <b>continue</b> until all parts are written, then open / paste them all together — they are merged automatically.`;
     if (narrow.matches) setPane('prompt');
     toast('Prompt ready — copy it into your AI');
   } catch (e) { reportError(e); }
@@ -1022,6 +1030,33 @@ $('#btn-resize').onclick = openResize;
 $('#rs-apply').onclick = applyResize;
 ['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', '#in-coloring', '#in-color-sheets', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
 try { $('#in-images').checked = localStorage.getItem(IMAGES_KEY) === '1'; } catch (e) { /* storage unavailable */ }
+try { $('#in-file').checked = localStorage.getItem(FILE_KEY) !== '0'; } catch (e) { $('#in-file').checked = true; }   // on by default
+$('#in-file').onchange = () => {
+  try { localStorage.setItem(FILE_KEY, $('#in-file').checked ? '1' : '0'); } catch (e) { /* ignore */ }
+  S.fixPrompt = null;                     // prompts already built ask for the other delivery
+};
+
+/** Load one or more design files from the AI (several part files are merged by the compiler) and compile them. */
+async function openDesignFiles(files) {
+  files = [...files].filter((f) => /\.(json|txt)$/i.test(f.name) || /json|text/.test(f.type));
+  if (!files.length) return toast('Choose the .json file the AI gave you', true);
+  if (cm.getValue().trim() && !confirm(`Replace the editor contents with ${files.length === 1 ? files[0].name : `${files.length} files`}?`)) return;
+  try {
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const texts = await Promise.all(files.map((f) => f.text()));
+    cm.setValue(texts.join('\n\n'));
+    toast(`Opened ${files.length === 1 ? files[0].name : `${files.length} files (merged when compiled)`} — compiling…`);
+    if (narrow.matches) setPane('code');
+    await compile(true);
+  } catch (e) { reportError(e); }
+}
+$('#btn-open-file').onclick = () => $('#in-open-file').click();
+$('#in-open-file').onchange = (e) => { openDesignFiles(e.target.files); e.target.value = ''; };
+cm.on('drop', (_cm, e) => {                // dropping a file replaces the design instead of inserting its text
+  if (!e.dataTransfer?.files?.length) return;
+  e.preventDefault();
+  openDesignFiles(e.dataTransfer.files);
+});
 $('#in-images').onchange = () => { try { localStorage.setItem(IMAGES_KEY, images() ? '1' : '0'); } catch (e) { /* ignore */ } };
 $('#btn-testfit').onclick = downloadTestFit;
 $('#sel-example').onchange = async (e) => {

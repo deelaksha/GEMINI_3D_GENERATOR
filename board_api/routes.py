@@ -570,7 +570,7 @@ def _machine(data):
     if m is None:
         return None
     if isinstance(m, dict) and 'kerf' not in m and 'sheet' not in m:
-        return {k: True for k in ('coloring',) if m.get(k)} or None
+        return {k: True for k in ('coloring', 'file') if m.get(k)} or None
     sheet = m.get('sheet') if isinstance(m, dict) else None
     ok = lambda v, lo, hi: isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
     if not (isinstance(m, dict) and ok(m.get('kerf'), 0.01, 5) and isinstance(sheet, dict)
@@ -584,7 +584,7 @@ def _machine(data):
             if not ok(m[k], lo, hi):
                 raise SchemaError(f'machine.{k} must be between {lo} and {hi} mm', f'machine.{k}')
             out[k] = float(m[k])
-    for k in ('shared_edges', 'coloring', 'color_sheets'):            # optional switches
+    for k in ('shared_edges', 'coloring', 'color_sheets', 'file'):    # optional switches (file: AI delivers a .json file)
         if m.get(k):
             out[k] = True
     return out
