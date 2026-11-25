@@ -169,6 +169,81 @@ def _syntax_fix(text, body, off):
             'source': text[:start] + fixed + text[start + len(body):], 'edits': []}
 
 
+PART_LISTS = ('boards', 'connections', 'assemblies', 'instances')
+
+
+def _design_parts(text):
+    """The parts of a multi-part design (several ```json blocks or JSON objects pasted one after another, each with
+    "part": {"index", "of"}), or None for an ordinary single design."""
+    blocks = [m.group(1) for m in re.finditer(r'```(?:json|JSON|jsonc|json5)?[ \t]*\n(.*?)```', text, re.S)]
+    objs = []
+    if len(blocks) > 1:
+        for b in blocks:
+            try:
+                objs.append(json.loads(_strip_comments(b)))
+            except json.JSONDecodeError:
+                return None
+    elif not blocks:
+        dec, i, src = json.JSONDecoder(), 0, _strip_comments(text)
+        while True:
+            j = src.find('{', i)
+            if j < 0:
+                break
+            try:
+                obj, i = dec.raw_decode(src, j)
+            except json.JSONDecodeError:
+                return None
+            objs.append(obj)
+    else:
+        try:
+            objs = [json.loads(_strip_comments(blocks[0]))]
+        except json.JSONDecodeError:
+            return None
+    objs = [o for o in objs if isinstance(o, dict)]
+    if not objs or not all(isinstance(o.get('part'), dict) for o in objs):
+        return None
+    if len(objs) == 1 and objs[0]['part'].get('of') == 1:
+        return None                     # "part 1 of 1": an ordinary design (the "part" key is ignored)
+    return objs
+
+
+def _merge_parts(objs):
+    """One diagnostic for a pasted multi-part design: PARTS_MERGED with the merged design as an automatic fix, or
+    PART_MISSING naming the parts still to paste."""
+    num = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+    total = max([num(o['part'].get('of')) or 0 for o in objs] + [len(objs)])
+    by_index = {}
+    for o in objs:
+        by_index.setdefault(num(o['part'].get('index')) or 0, o)
+    missing = [i for i in range(1, total + 1) if i not in by_index]
+    if missing:
+        return diag('error', 'PART_MISSING', f"This design comes in {total} parts but part(s) {', '.join(map(str, missing))} "
+                    f"{'is' if len(missing) == 1 else 'are'} not in the editor. In the AI chat, reply \"continue\" until "
+                    f"all {total} parts are written, then paste every part here (one after another) and compile.",
+                    parts=total, missing=missing)
+    merged = {k: v for k, v in by_index[1].items() if k != 'part'}
+    for k in PART_LISTS:
+        merged[k] = list(merged.get(k) or [])
+    plan = dict(merged.get('plan') or {})
+    for i in range(2, total + 1):
+        o = by_index[i]
+        for k in PART_LISTS:
+            merged[k] += [x for x in o.get(k) or []]
+        for k, v in (o.get('plan') or {}).items():
+            plan[k] = (plan.get(k) or []) + v if isinstance(v, list) else plan.get(k, v)
+    if plan:
+        merged['plan'] = plan
+    for k in ('assemblies', 'instances'):
+        if not merged[k]:
+            del merged[k]
+    source = pretty_json(merged)
+    fix = {'id': 'merge-parts', 'kind': 'repair_json', 'title': f'Merge the {total} parts into one design', 'safe': True,
+           'summary': f"merged {total} parts: {len(merged['boards'])} boards, {len(merged['connections'])} connections",
+           'changes': [], 'source': source, 'edits': []}
+    return diag('error', 'PARTS_MERGED', f"The design was pasted in {total} parts; they are merged into one design "
+                f"({len(merged['boards'])} boards) - compile again to check it.", fixes=[fix], parts=total)
+
+
 def parse_source(text):
     """-> (data, json_text, line_offset, diagnostics)."""
     if not isinstance(text, str) or not text.strip():
@@ -176,6 +251,9 @@ def parse_source(text):
     if len(text) > MAX_SOURCE:
         return None, '', 0, [diag('error', 'SOURCE_TOO_LARGE', f'Source is larger than {MAX_SOURCE} characters.')]
     text = text.lstrip('\ufeff')
+    parts = _design_parts(text)
+    if parts:                           # a design the AI sent in several replies: merge, then compile the whole
+        return None, text, 0, [_merge_parts(parts)]
     body, off = _extract(text)
     try:
         data = json.loads(_strip_comments(body))

@@ -245,7 +245,7 @@ async function generatePrompt() {
       thickness: parseFloat($('#in-thickness').value), joinery: 'interlocking', machine: machine() });   // always glue-free
     $('#out-prompt').value = r.prompt;
     $('#btn-copy-prompt').disabled = false;
-    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. ${images() ? IMAGES_NOTE + ' ' : ''}Paste the AI’s JSON reply into the editor and click <b>Compile</b>.`;
+    $('#prompt-meta').innerHTML = `${r.prompt.length.toLocaleString()} characters · self-contained, works in any AI chat. ${images() ? IMAGES_NOTE + ' ' : ''}Paste the AI’s JSON reply into the editor and click <b>Compile</b>. Large designs may come in parts (“part 1 of 3”): reply <b>continue</b> until all parts are written, then paste them all here together — they are merged automatically.`;
     if (narrow.matches) setPane('prompt');
     toast('Prompt ready — copy it into your AI');
   } catch (e) { reportError(e); }
@@ -494,7 +494,8 @@ function applySyntaxRepair(fix) {
   const lines = [...new Set(fix.changes.map((c) => c.line - 1))].filter((l) => l < cm.lineCount());
   const marks = lines.map((l) => cm.addLineClass(l, 'background', 'cm-fixed-line'));
   setTimeout(() => marks.forEach((h) => cm.removeLineClass(h, 'background', 'cm-fixed-line')), 4000);
-  toast(`Fixed the JSON syntax automatically — ${fix.summary}. Press Ctrl+Z to undo.`, false, 7000);
+  toast(fix.id === 'merge-parts' ? `Merged the parts into one design — ${fix.summary}. Press Ctrl+Z to undo.`
+    : `Fixed the JSON syntax automatically — ${fix.summary}. Press Ctrl+Z to undo.`, false, 7000);
 }
 
 async function compile(production = true) {
@@ -533,7 +534,8 @@ async function compile(production = true) {
         (ev) => { if (show) { preview.event(ev); loader.progress(ev); } },
         (p) => { if (show && preview.active) preview.show(p); });
       // a JSON syntax error the compiler can repair is fixed in the editor and compiled again, once
-      const fix = !first.model3d && !repaired && first.diagnostics[0]?.code === 'JSON_SYNTAX' &&
+      // (a design pasted in several parts is merged the same way)
+      const fix = !first.model3d && !repaired && ['JSON_SYNTAX', 'PARTS_MERGED'].includes(first.diagnostics[0]?.code) &&
         first.diagnostics[0].fixes?.find((f) => f.kind === 'repair_json');
       if (!fix || cm.getValue() !== source) break;
       repaired = true;

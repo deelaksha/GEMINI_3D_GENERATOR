@@ -204,6 +204,25 @@ def inspect(plates, joints=(), bodies=None):
                         mid(a, b), move(small, k, delta))
                     break
 
+    # 1b. hinged doors: the hinge-side edge flush with the outer face of the board it hangs on, the same height
+    for j in joints:
+        if j.get('type') != 'hinge' or j.get('status') != 'joined' or j['a'] not in box or j['b'] not in box:
+            continue
+        door, side = j['a'], j['b']
+        k = thin[side]                          # across the side: its outer face is the nearer of its two faces
+        off = min((box[door][0][k] - box[side][0][k], 'min'), (box[door][1][k] - box[side][1][k], 'max'), key=lambda o: abs(o[0]))
+        h = next(x for x in range(3) if x not in (k, thin[door]))
+        checks = [(k, off[1], off[0])] + [(h, nm, box[door][e][h] - box[side][e][h]) for e, nm in ((0, 'min'), (1, 'max'))]
+        for ax, name, d in checks:
+            if TOUCH < abs(d) <= STEP:
+                add('MISALIGNED', 'warning', [door, side],
+                    f"Door '{door}' is {abs(d):.1f} mm off the {name} {AX[ax]} edge of '{side}', the board it hangs on: an "
+                    f"overlay door lines up with it exactly. Move or resize '{door}' by {-d:g} mm along {AX[ax]}.",
+                    [f"{door}.{AX[ax]}{name} = {_f(box[door][0 if name == 'min' else 1][ax])} mm",
+                     f"{side}.{AX[ax]}{name} = {_f(box[side][0 if name == 'min' else 1][ax])} mm",
+                     f"offset = {d:+.2f} mm (flush <= {TOUCH} mm)"],
+                    [round(v, 1) for v in box[door][0]], move(door, ax, -d) if ax == k else None)
+
     # 2. overhangs that are nearly, but not exactly, equal at both ends
     for b in ids:
         under = [p for p in touching[b] if rigid(b, p)]

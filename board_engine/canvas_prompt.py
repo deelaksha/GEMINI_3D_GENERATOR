@@ -999,13 +999,61 @@ OUTPUT_CONTRACT = """OUTPUT CONTRACT (strict — your reply is pasted straight i
 - No text before or after the code block: no greeting, explanation, summary, list of changes, notes or questions.
 - Output every board and every connection in full. Never abbreviate: no "...", no "// unchanged", no "rest stays the
   same", no placeholders, no references to an earlier answer.
+- NO SIZE LIMIT: there is no maximum number of boards or lines. Never simplify, merge or leave out parts to keep the
+  answer short — a faithful model of a complex object often needs hundreds or thousands of boards. Keep it compact
+  instead: write each board and each connection on ONE line, and use "repeat", "mirror" and "assemblies" /
+  "instances" for repeated parts (one line can make a whole row of tiles, rafters or slats).
+- MULTI-PART REPLIES: if the complete design will not fit in one reply, split it - never shorten it. Decide the number
+  of parts N first (about 250 boards per part). Each reply is ONE ```json block: part 1 is
+  {"part": {"index": 1, "of": N}, "format": ..., "plan": ..., "product": ..., "material": ..., "joinery": ...,
+  "boards": [the first boards], "connections": [their connections]}; every later part k is
+  {"part": {"index": k, "of": N}, "boards": [...], "connections": [...]}. End each reply after its code block; the
+  user answers "continue" for the next part. Ids are unique across all parts; a connection may name boards of any
+  part. The user pastes all parts together and the compiler merges them.
 - Strict JSON: double quotes, no comments, no trailing commas, no formulas or expressions — only literal numbers.
 - Anything you want to tell the user (assumptions, what changed, what could not be done) goes ONLY in the
   "product.description" string.
 - Never ask a question or refuse: if something cannot be met exactly, return the best complete design and explain the
   limitation in "product.description"."""
 
-FINAL_REMINDER = 'FINAL REMINDER: your entire reply is one ```json code block with the complete design — no other text.'
+FINAL_REMINDER = ('FINAL REMINDER: your entire reply is one ```json code block with the complete design (or, for a design '
+                  'too large for one reply, the next part of it) — no other text, nothing simplified or left out.')
+
+DESIGN_TEAM = """YOUR ROLE - a design team of four specialists working one after another inside this single reply (do the
+work in your head; the only output is the JSON):
+1. ANALYST - reads the product, the requirements (and any reference images) and lists every part, size and feature
+   that must exist. Writes "plan.reference" (with images: the measured inventory).
+2. ARCHITECT - splits the product into sub-assemblies and layers (base -> structure -> skin -> details -> fittings),
+   fixes the overall size, the origin and every board's role. Writes "plan.assemblies" and "plan.steps".
+3. JOINERY ENGINEER - places every board in whole millimetres with thickness accounted for, chooses each joint from
+   the geometry, keeps slots apart and tabs on solid material, makes every part sit or lock (nothing hangs). Writes
+   "boards" and "connections".
+4. INSPECTOR - checks the finished JSON against the SUCCESS CRITERIA, the COMMON MISTAKES and the SELF-CHECK and
+   has every problem fixed before handing over. Writes "plan.checks" (what was verified, with board ids).
+Each specialist builds on the previous one's result without undoing it; when the Inspector finds a problem, the
+specialist responsible fixes it before the reply is written."""
+
+SUCCESS_CRITERIA = """SUCCESS CRITERIA (the compiler measures every one of these):
+- 0 errors and 0 warnings; every connection joined;
+- one connected structure: every board touches and is joined into it - nothing floats, nothing hangs on upward tabs;
+- every requirement (size, count, feature) and every inventory item present at the right place and size;
+- whole millimetres everywhere, a standard thickness, every part fits on a stock sheet."""
+
+COMMON_MISTAKES = """COMMON MISTAKES (each is a compile error or warning - avoid them up front):
+1. Forgetting thickness: leg height = overall height - top thickness; a shelf between two sides is the inner width.
+2. A board with two sizes (or none) equal to its thickness: ambiguous orientation / thickness mismatch.
+3. tab_slot onto the receiving board's EDGE: "board" must sit on the broad FACE of "into", inset >= one thickness
+   from its edges (at an edge it is a finger corner).
+4. Two boards lying flat face to face (parallel faces): they cannot be joined - stand one of them upright.
+5. Two boards tabbing into one board at the same place from opposite faces, or slots closer than 2 x thickness.
+6. A tab landing in an opening or beyond the receiving board's outline (shaped profiles, windows, doors).
+7. A part held only by tabs pushing UP into a board above it (it falls out) - give it something to sit on.
+8. Edges almost flush (0.5-5 mm off), twins that differ slightly, overhangs nearly but not exactly equal - make
+   them exact.
+9. Profile / engraving points outside the board's box or on the wrong axes: face coordinates follow the board's
+   in-plane axes in x, y, z order (a board thin along x uses [y, z]).
+10. Tilted boards: a straight edge must lie flat on the other board's face at the same pitch; pivot on the lower face.
+11. Abbreviating or shrinking the design to fit a reply - use the compact style or multi-part replies instead."""
 
 INTEGER_RULE = ('All sizes, positions, product.overall values and profile / opening / engraving coordinates are whole '
                 'millimetres (integers such as 30, 38, 150 — never 30.27). Only the material thickness and clearance '
@@ -1027,10 +1075,15 @@ you change or fix the design unless asked to recolour."""
 IMAGE_SPEC = """## Reference images (attached to this message)
 The image(s) attached to this message ARE the specification. Reproduce the product they show on this platform as
 exactly as flat boards allow — its shape, proportions, parts and details — not a generic product of the same kind.
-1. STUDY FIRST: before anything else, look at every image and write what you see into "plan" as
-   "reference": [...] — the overall silhouette, every visible part (count them), where each sits, how parts meet,
-   openings, windows and cut-outs, surface lines, text and logos, and colours. If several images are attached, they
-   show the same product from different sides or in detail: combine them.
+1. ANALYSE FIRST, THOROUGHLY - take as long as you need; accuracy matters far more than speed or length:
+   a. Work out which side of the object each image shows (front, left, right, back, top, detail) and combine them.
+   b. Measure: take the overall width and height of each view as 1.0 and read every element's box as fractions
+      (x 0.22-0.30, y 0.40-0.70), like reading a grid laid over the photo.
+   c. Inventory EVERY visible element with a short id, its count and those fractions: walls, roof planes, openings,
+      frames, panes and bars, steps, posts, rails, tiles / courses, rafters, trims, fittings, plants, signs, colours.
+      Count repeated elements one by one (tiles per row, rows, rafters, balusters, panes, steps).
+   d. Write the inventory into "plan.reference" as one line per element, e.g.
+      "W1 left window: front, x 0.22-0.30 y 0.40-0.70, blue frame, iron grill 3 x 4 panes".
 2. SIZE AND PROPORTION: take absolute sizes from the requirements. Where none are given, estimate the real-world size
    from what the product is and record it as an assumption. Take every proportion from the image: measure ratios
    (height / length, part width / overall width, positions as fractions of the whole) and apply them to the chosen
@@ -1043,8 +1096,12 @@ exactly as flat boards allow — its shape, proportions, parts and details — n
    approximated in "product.description".
 5. PARTS THE IMAGE DOES NOT SHOW (inside, back, underside): add only what the structure needs to stand and join
    (glue-free), keeping the visible look unchanged.
-6. COMPARE BEFORE ANSWERING: view your design from the front, the side and the top and check it against the image:
-   is every visible part present, in the right place, with the right proportions and outline? Fix any difference."""
+6. BUILD AND TICK OFF: build the inventory element by element; in "plan.checks" write one line per inventory id
+   naming the board ids that make it ("W1 -> W-F opening win-l, LINING g00..g23"). Every inventory line must be
+   ticked off - nothing visible may be missing, merged into a plain board or left out to save space.
+7. COMPARE BEFORE ANSWERING: view your design from the front, the side and the top and check it against the image:
+   is every visible part present, in the right place, with the right count, proportions and outline? Fix any
+   difference. If the result is large, use the compact style and the multi-part replies of the output contract."""
 
 
 def _coloring(machine):
@@ -1076,7 +1133,7 @@ def build_prompt(title, requirements='', material=None, thickness=None, joinery=
     if joinery:
         extra.append(f"- Joinery: {joinery} ({'glue-free tab & slot only' if joinery == 'interlocking' else 'screws / dowels / hinges allowed'})")
     req_block = '\n'.join(filter(None, [req, *extra])) or '- Choose sensible standard dimensions for this product.'
-    return f"""You are an expert furniture / product designer and CAD engineer working as the design step of an automated
+    return f"""You are an expert product designer, model maker and CAD engineer working as the design step of an automated
 board-design pipeline.
 
 TASK: Design the product below as a flat-board design in the exact JSON format `{FORMAT}` specified further down.
@@ -1085,6 +1142,12 @@ and cutting files produced. Invented fields are ignored and invalid geometry is 
 specification exactly.
 
 {OUTPUT_CONTRACT}
+
+{DESIGN_TEAM}
+
+{SUCCESS_CRITERIA}
+
+{COMMON_MISTAKES}
 
 PRODUCT: {title}
 
@@ -1114,7 +1177,7 @@ INSTRUCTIONS (follow every one):
 8. Define a connection for every place two boards meet, so every board is held (loose lids / drawers rest on top of
    a held board).
 9. Use only the fields, types and values listed in the specification; do not invent functions or fields.
-10. SELF-CHECK before answering and correct the JSON if any answer is "no":
+10. SELF-CHECK (the INSPECTOR) before answering and correct the JSON if any answer is "no":
     a. Does exactly one of each board's three sizes equal its thickness?
     b. For every connection, does the end face of "board" lie exactly on a face of "into" (gap 0)?
     c. Do the boards' combined extents equal product.overall in length, height and depth?
@@ -1188,6 +1251,18 @@ def build_repair_prompt(source, diagnostics, blocking=(), machine=None):
 `{FORMAT}`) and found the problems listed. Return the corrected design as code only.
 
 {OUTPUT_CONTRACT}
+
+YOUR ROLE - three specialists one after another inside this single reply (the only output is the JSON):
+1. DIAGNOSTICIAN - reads every problem with its calculation and finds the root cause: one misplaced or mis-sized
+   board often causes several problems; boards that are NOT ATTACHED come first.
+2. REPAIR ENGINEER - applies every "Suggested fix" exactly, makes the smallest change for the rest and updates the
+   boards and connections that depend on a changed board.
+3. INSPECTOR - confirms each listed problem is gone and nothing new broke, against the SUCCESS CRITERIA and the
+   COMMON MISTAKES below, before handing over.
+
+{SUCCESS_CRITERIA}
+
+{COMMON_MISTAKES}
 
 REPAIR RULES (follow every one):
 1. Fix every [ERROR]. Fix every [WARNING] too, unless the fix would change what the product is meant to be; then leave
@@ -1268,6 +1343,15 @@ def build_update_prompt(source, change, diagnostics=(), machine=None, images=Fal
 `{FORMAT}` format. Apply the CHANGE REQUEST to it and return the updated design as code only.
 
 {OUTPUT_CONTRACT}
+
+YOUR ROLE - three specialists one after another inside this single reply (the only output is the JSON):
+1. CHANGE ANALYST - works out exactly what the request changes and every board and connection that depends on it.
+2. ENGINEER - makes that change, recomputes the dependent sizes and positions, keeps everything else identical.
+3. INSPECTOR - checks the result against the SUCCESS CRITERIA and the COMMON MISTAKES below before handing over.
+
+{SUCCESS_CRITERIA}
+
+{COMMON_MISTAKES}
 
 CHANGE REQUEST:
 {change}

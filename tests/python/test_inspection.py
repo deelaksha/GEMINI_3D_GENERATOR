@@ -201,3 +201,19 @@ def test_a_part_hanging_on_upward_tabs_is_flagged_and_a_seated_one_is_not():
     _r, found = build([top, *legs, seated, ledge, post], [('LEG-L', 'BASE'), ('LEG-R', 'BASE'), ('LEG-L', 'TOP'), ('LEG-R', 'TOP'),
                                                          ('HANGER', 'TOP'), ('HANGER', 'LEDGE'), ('POST', 'BASE'), ('POST', 'LEDGE')])
     assert not [x for x in found if x['code'] == 'HELD_FROM_ABOVE' and x['components'][0] == 'HANGER']
+
+
+def test_a_hinged_door_that_does_not_line_up_with_its_side_is_flagged():
+    import copy
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'e2e'))
+    from products import CASES
+    cab = next(c for c in CASES if c['id'] == 'E2E-03')['design']
+    msgs = lambda d: [x['message'] for x in compile_source(json.dumps(d), run_production=False)['diagnostics']
+                      if x['code'] == 'MISALIGNED' and 'Door' in x['message']]
+    assert not msgs(cab)
+    for field, k, v, edge in (('position', 0, 2, 'min x'), ('size', 1, 797, 'max y')):
+        d = copy.deepcopy(cab)
+        next(b for b in d['boards'] if b['id'] == 'DOOR')[field][k] = v
+        m = msgs(d)
+        assert m and f'off the {edge} edge of' in m[0]
