@@ -196,6 +196,7 @@ def parse_source(text):
 
 
 _ORIGIN = contextvars.ContextVar('expanded_ids', default={})   # generated id -> id written in the source
+_REQUIREMENTS = contextvars.ContextVar('requirements', default=None)   # the requirement text of this compile
 
 
 def _id_line(src, ident, off):
@@ -1397,13 +1398,24 @@ def _auto_sheet(design, mat, data):
     return {'width': float(max(W, H)), 'height': float(min(W, H)), 'spacing': 6.0}
 
 
-def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None, machine=None):
+def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None, machine=None,
+                   requirements=None):
     """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic.
     time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget).
     machine: {'kerf': mm, 'sheet': {'width', 'height'}, 'measured'?: mm, 'fit'?: mm} of the cutting machine (e.g. a
     laser's kerf and bed, the board's measured thickness and the fit found with the test-fit piece); it overrides the
     material's catalogue kerf, slot clearance and the stock sheet, so every check, the nesting and the cut files use
-    the real machine and board."""
+    the real machine and board.
+    requirements: the free-text requirements the design was made from; sizes stated there are checked against it."""
+    token = _REQUIREMENTS.set(requirements)
+    try:
+        return _compile_source(text, design_id, run_production, time_budget, machine)
+    finally:
+        _REQUIREMENTS.reset(token)
+        _ORIGIN.set({})
+
+
+def _compile_source(text, design_id, run_production, time_budget, machine):
     data, src, off, diags = parse_source(text)
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
@@ -1459,6 +1471,21 @@ def _preview(comps, design=None):
     return out
 
 
+# found by the geometric inspection; a move may undo something deliberate (an inset, an asymmetry), so always confirm
+_EYE_CHECKS = ('VISIBLE_GAP', 'MISALIGNED', 'UNEVEN_SPACING', 'ASYMMETRIC')
+
+
+def _laid_out(raw):
+    """A board placed by position + size on the axes (no tilt), so that box is exactly what is seen."""
+    ok = lambda v: isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v)
+    return isinstance(raw, dict) and ok(raw.get('position')) and ok(raw.get('size')) and not raw.get('rotate')
+
+
+def _laser(machine):
+    """The laser cutter settings (kerf, bed), or None when only switches such as colouring were sent."""
+    return machine if machine and 'kerf' in machine else None
+
+
 def _machine_fit(mat, machine):
     """Slots for the real board: clearance = (measured - nominal thickness) + the fit chosen on the test-fit piece
     (slot width = nominal thickness + clearance = measured + fit). Without either, the design's clearance stays."""
@@ -1482,7 +1509,7 @@ def _compile_native(data, design_id, result, run_production, machine=None):
     d = dict(data)
     d.setdefault('id', design_id)
     design = normalize_design(d)
-    if machine:
+    if _laser(machine):
         design['material']['kerf'] = float(machine['kerf'])
         _machine_fit(design['material'], machine)
         design['sheet'] = _machine_sheet(machine)
@@ -1514,7 +1541,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
     mat = _check_material(data.get('material'), diags, src, off)
     if mat is None:
         return result
-    if machine:
+    if _laser(machine):
         mat['kerf'] = float(machine['kerf'])   # the machine's real kerf, not the catalogue value
         _machine_fit(mat, machine)
     mounting = product.get('mounting', data.get('mounting'))
@@ -1741,7 +1768,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
             result['partial'] = True
             held.add(bid)
             joints = [jt for jt in joints if jt[0]['a'] in comps and jt[0]['b'] in comps]
-    design['sheet'] = _machine_sheet(machine) if machine else _auto_sheet(design, mat, data)
+    design['sheet'] = _machine_sheet(machine) if _laser(machine) else _auto_sheet(design, mat, data)
     if coloring and any(c.get('colors') for c in design['components']):
         design['coloring'] = True
         design['color_sheets'] = bool(machine.get('color_sheets'))     # each colour cut from its own (pre-coloured) sheets
@@ -1780,8 +1807,9 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
     lo = [min(q[i] for q in corners) for i in range(3)]
     hi = [max(q[i] for q in corners) for i in range(3)]
     for name, i in (('length', 0), ('height', 1), ('depth', 2)):
-        if _num(ov.get(name)) and abs((hi[i] - lo[i]) - ov[name]) > 0.5:
-            diags.append(diag('warning', 'OVERALL_MISMATCH', f"The boards span {hi[i] - lo[i]:.1f} mm in {AXES[i]} ({name}) but "
+        off_by = abs((hi[i] - lo[i]) - ov[name]) if _num(ov.get(name)) else 0
+        if off_by > 0.5:                # beyond 1 % / 2 mm the product is not the size asked for
+            diags.append(diag('error' if off_by > max(2.0, ov[name] * 0.01) else 'warning', 'OVERALL_MISMATCH', f"The boards span {hi[i] - lo[i]:.1f} mm in {AXES[i]} ({name}) but "
                               f"product.overall.{name} is {ov[name]:g} mm.", path=f'product.overall.{name}',
                               line=_key_line(src, name, off)))
     result['source_map'] = source_map
@@ -1815,13 +1843,21 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     _progress('model', 0, 2)
     support = support_report(design)
     _progress('model', 1, 2)
+    from .connectivity import analyze
+    from .model import build_plates
+    from .inspection import inspect
+    plates = build_plates(design)
+    conn = analyze(design, plates, support)
+    bodies = {cid: ([float(v) for v in bd.raw['position']], [bd.raw['position'][k] + bd.raw['size'][k] for k in range(3)])
+              for cid, bd in boards.items() if _laid_out(bd.raw)}
+    insp = inspect(plates, {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined'}, bodies,
+                   conn['groups'])
+    covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
     known = {(d.get('connection'), d['code']) for d in diags}
     resting = {cid for cid, v in support['components'].items() if v['status'] in ('resting', 'unsupported')}
-    for i in report['issues']:
-        if i['code'] in ('JOINT_NOT_JOINED',):
-            continue
-        if i['code'] == 'FLOATING_COMPONENT' and set(i['components']) <= resting:
-            continue                    # reported more precisely below as RESTING_COMPONENT / UNSUPPORTED_COMPONENT
+    for i in report['issues'] + conn['issues'] + insp['issues']:
+        if i['code'] in ('JOINT_NOT_JOINED', 'FLOATING_COMPONENT'):
+            continue                    # loose boards are reported by the connectivity analysis (ISOLATED_BOARD, ...)
         if _follow_on(i, held, failed_pairs):
             continue                    # a consequence of an error already reported for that board / connection
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
@@ -1832,7 +1868,7 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
             pos = [round(bd.raw['position'][k] + sug['delta'][k], 4) for k in range(3)]
             mag = math.sqrt(sum(v * v for v in sug['delta']))
             fixes = [{'id': f"move-{bd.id}", 'title': f"Move '{bd.id}' by [{', '.join(f'{v:g}' for v in sug['delta'])}] mm",
-                      'safe': mag <= SAFE_MOVE, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}]
+                      'safe': mag <= SAFE_MOVE and i['code'] not in _EYE_CHECKS, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}]
         pair = [c for c in i.get('components', []) if c in boards]
         if i['code'] == 'COLLISION' and raw_conns is not None and len(pair) == 2 and _cross_lap_cuttable(boards[pair[0]], boards[pair[1]]) \
                 and not any(j['a'] in pair and j['b'] in pair for j in design['joints']):
@@ -1843,10 +1879,12 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
                           {'id': f'{pair[0]}-x-{pair[1]}', 'type': 'cross_lap', 'board': pair[0], 'into': pair[1]}]}]}]
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp,
                           line=boards[comp].line if comp in boards else None, components=i.get('components'),
-                          location=i.get('location'), fixes=fixes))
+                          location=i.get('location'), fixes=fixes, calc=i.get('calc')))
     for i in support['issues']:
         if _follow_on(i, held, failed_pairs) or (held and i['code'] in _STABILITY):
             continue                    # stability of a partly built structure says nothing about the real product
+        if i['code'] in ('UNSUPPORTED_COMPONENT', 'RESTING_COMPONENT') and set(i['components']) <= covered:
+            continue                    # already reported as floating / not joined
         comp = next((c for c in i['components'] if c in boards), None)
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp, line=boards[comp].line if comp else None,
                           components=i['components'] or None, location=i.get('location')))
@@ -1856,6 +1894,14 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     result['validation'] = {'valid': report['valid'], 'complete': report['complete'], 'summary': report['summary']}
     result['model3d'] = model3d(design, report)
     _progress('model', 2, 2)
+    result['connectivity'] = {k: conn[k] for k in ('groups', 'main', 'isolated', 'not_joined')}
+    result['inspection'] = {'boards': insp['boards'], 'skipped_tilted': insp['skipped_tilted']}
+    if _REQUIREMENTS.get():
+        from .requirements import check_requirements
+        b = result['model3d']['bounds']
+        for i in check_requirements(_REQUIREMENTS.get(), [b['max'][k] - b['min'][k] for k in range(3)]):
+            diags.append(diag(i['severity'], i['code'], i['message'], required=i['required'], actual=i['actual'],
+                              dimension=i['dimension'], calc=i['calc']))
     if run_production and design['components']:
         try:
             pkg = production_package(design, {'compensate_kerf': True})
@@ -1894,7 +1940,8 @@ def _follow_on(issue, held, failed_pairs):
     comps = issue.get('components') or []
     if issue['code'] in ('COLLISION', 'NEAR_MISS_GAP') and len(comps) >= 2 and frozenset(comps[:2]) in failed_pairs:
         return True
-    return issue['code'] in ('FLOATING_COMPONENT', 'RESTING_COMPONENT', 'UNSUPPORTED_COMPONENT', 'UNJOINED_TAB') \
+    return issue['code'] in ('FLOATING_COMPONENT', 'RESTING_COMPONENT', 'UNSUPPORTED_COMPONENT', 'UNJOINED_TAB',
+                             'ISOLATED_BOARD', 'NOT_JOINED', 'DISCONNECTED') \
         and bool(comps) and set(comps) <= set(held)
 
 

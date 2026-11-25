@@ -67,6 +67,10 @@
 .dg .dot { margin-top: 6px; }
 .dg .meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .dg .msg { font-size: 12.5px; overflow-wrap: anywhere; }
+.dg .calc { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+.dg .calc summary { cursor: pointer; width: max-content; }
+.dg .calc pre { margin: 4px 0 0; padding: 6px 8px; font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
 .dg .fixes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .dg .fixes .btn { height: 26px; font-size: 12px; }
 .dg .fixes .btn.safe { border-color: rgba(52, 199, 123, .55); color: #8be8b4; }

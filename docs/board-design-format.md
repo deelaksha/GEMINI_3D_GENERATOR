@@ -196,8 +196,14 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
   a fixed box standing on its runner board; draw a folding product in its open position.
 
 ## Support and stability (checked)
+- The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
+  main assembly by a chain of connections. Errors: ISOLATED_BOARD (touches nothing, floats in the air), DISCONNECTED
+  (a group of boards apart from the main assembly), NOT_JOINED (touches the assembly but has no connection). The only
+  exception is a flat board lying loose on top (a lift-off lid or tray), which is a warning.
 - Every board must be held: joined to the product (directly or through others), or **resting on top of** a held board
   (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
+- Sizes written in the requirements ("length 1200 mm", "80 cm wide", "1200 x 600 x 750 mm" = length x depth x height)
+  are checked against the built design (REQUIREMENT_MISMATCH).
 - A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
   A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
   `"product": {"mounting": "wall"}` and give the product a back rail or back panel at z = 0.

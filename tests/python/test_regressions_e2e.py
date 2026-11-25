@@ -76,7 +76,7 @@ def test_bug007_unsupported_board_blocks_compile_and_production():
     d = copy.deepcopy(EXAMPLE)
     d['boards'].append({"id": "LOOSE", "position": [300, 200, 60], "size": [400, 18, 280]})
     r = compile_source(json.dumps(d))
-    assert 'UNSUPPORTED_COMPONENT' in _codes(r) and not r['ok']
+    assert 'ISOLATED_BOARD' in _codes(r) and not r['ok']
     pkg = production_package(r['design'], {'compensate_kerf': True})      # e.g. a saved / API design
     assert not pkg['ready_for_production'] and 'UNSUPPORTED_COMPONENT' in {i['code'] for i in pkg['blocking_issues']}
     ok = production_package(compile_source(json.dumps(EXAMPLE), run_production=False)['design'], {'compensate_kerf': True})
@@ -92,7 +92,7 @@ def test_bug007_resting_lid_is_allowed_and_reported():
                                                                     ("LEFT", "BACK"), ("LEFT", "FRONT"), ("RIGHT", "BACK"), ("RIGHT", "FRONT"))]
     r = compile_source(_src(walls, conns, material=P6))
     assert r['ok'] and r['layout']['ready_for_production']
-    assert 'RESTING_COMPONENT' in _codes(r, 'info') and 'FLOATING_COMPONENT' not in _codes(r, 'warning')
+    assert 'NOT_JOINED' in _codes(r, 'warning') and not _codes(r) & {'ISOLATED_BOARD', 'NOT_JOINED', 'DISCONNECTED'}
     assert r['support']['components']['LID']['status'] == 'resting'
 
 

@@ -72,10 +72,11 @@ def test_claim_parallel_faces_cannot_be_joined():
 def test_claim_board_held_by_nothing_is_an_error_but_a_resting_one_is_not():
     d = json.loads(json.dumps(EXAMPLE))
     d['boards'].append({"id": "BOX", "position": [300, 750, 200], "size": [200, 18, 150]})        # lies on the top
+    d['product']['overall']['height'] += 18
     r = compile_source(json.dumps(d))
     assert r['ok'] and r['support']['components']['BOX']['status'] == 'resting'
     d['boards'][-1]['position'][1] = 900                                                           # in mid-air
-    assert 'UNSUPPORTED_COMPONENT' in _errs(compile_source(json.dumps(d)))
+    assert 'ISOLATED_BOARD' in _errs(compile_source(json.dumps(d)))
 
 
 def test_repair_prompt_carries_the_diagnostics_and_the_source():

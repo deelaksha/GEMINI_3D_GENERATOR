@@ -266,7 +266,7 @@ case('E2E-16', 'Table with a floating board', ['negative', 'unsupported-structur
          B('TOP', [0, 482, 0], [600, 18, 400]), B('LEG-L', [40, 0, 40], [18, 482, 320]), B('LEG-R', [542, 0, 40], [18, 482, 320]),
          B('LOOSE', [100, 200, 60], [400, 18, 280])],
         [C('l', 'tab_slot', 'LEG-L', 'TOP'), C('r', 'tab_slot', 'LEG-R', 'TOP')], overall=(600, 500, 400)),
-     {'compiles': False, 'error_codes': ['UNSUPPORTED_COMPONENT'], 'ready': False, 'components': 4, 'unsupported': ['LOOSE']})
+     {'compiles': False, 'error_codes': ['ISOLATED_BOARD'], 'ready': False, 'components': 4, 'unsupported': ['LOOSE']})
 
 # E2E-17 negative: shelves at equal heights on both sides of a shared panel (two tabs, one through-slot) -------
 _neg = copy.deepcopy(CASES[[c['id'] for c in CASES].index('E2E-06')]['design'])

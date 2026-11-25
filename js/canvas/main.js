@@ -159,6 +159,9 @@ function fillThickness() {
 // Laser cutter: bed and kerf drive the prompt, every check, the nesting and the cut files
 // ---------------------------------------------------------------------------
 const MACHINE_KEY = 'board-canvas-laser';
+// Laser-cutter support (bed, kerf, test fit, speeds, shared cuts, colour sheets, cut-file download) is switched off for
+// now: compiles use the material's own values and the automatic sheet. Set to true to bring the laser controls back.
+const LASER = false;
 const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true, shared: false, coloring: false, colorSheets: true,
   measured: '', fit: '', cut: '', engrave: '', price: '' };
 const MACHINE_FIELDS = { measured: '#in-measured', fit: '#in-fit', cut: '#in-cut-speed', engrave: '#in-engrave-speed', price: '#in-price' };
@@ -175,11 +178,13 @@ function loadMachine() {
   $('#in-coloring').checked = m.coloring;
   $('#in-color-sheets').checked = m.colorSheets;
   Object.entries(MACHINE_FIELDS).forEach(([k, id]) => { $(id).value = m[k]; });
+  $$('.laser-only').forEach((el) => { if (!LASER) el.hidden = true; });
   syncBed();
 }
 
 function syncBed() {
-  $('#row-color-sheets').hidden = !$('#in-coloring').checked;
+  $('#row-color-sheets').hidden = !LASER || !$('#in-coloring').checked;
+  if (!LASER) return;
   const custom = $('#in-bed').value === 'custom';
   $$('.bed-custom').forEach((el) => (el.hidden = !custom));
   if (!custom) [$('#in-bed-w').value, $('#in-bed-h').value] = $('#in-bed').value.split('x');
@@ -187,6 +192,7 @@ function syncBed() {
 
 /** {kerf, sheet: {width, height}, measured?, fit?} as the API takes it (out-of-range input falls back to defaults). */
 function machine() {
+  if (!LASER) return $('#in-coloring').checked ? { coloring: true } : null;
   const num = (el, lo, hi, d) => { const v = parseFloat($(el).value); return Number.isFinite(v) && v >= lo && v <= hi ? v : d; };
   const m = { kerf: num('#in-kerf', 0.01, 1, MACHINE_DEFAULT.kerf),
     sheet: { width: num('#in-bed-w', 50, 5000, MACHINE_DEFAULT.w), height: num('#in-bed-h', 50, 5000, MACHINE_DEFAULT.h) } };
@@ -216,15 +222,15 @@ async function downloadTestFit() {
 
 function machineChanged() {
   syncBed();
-  const m = machine();
+  const num = (el, d) => (Number.isFinite(parseFloat($(el).value)) ? parseFloat($(el).value) : d);
   try {
-    localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: m.sheet.width, h: m.sheet.height,
-      kerf: m.kerf, labels: $('#in-labels').checked, shared: $('#in-shared').checked,
+    localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: num('#in-bed-w', MACHINE_DEFAULT.w),
+      h: num('#in-bed-h', MACHINE_DEFAULT.h), kerf: num('#in-kerf', MACHINE_DEFAULT.kerf), labels: $('#in-labels').checked, shared: $('#in-shared').checked,
       coloring: $('#in-coloring').checked, colorSheets: $('#in-color-sheets').checked,
       ...Object.fromEntries(Object.entries(MACHINE_FIELDS).map(([k, id]) => [k, $(id).value])) }));
   } catch (e) { /* ignore */ }
   S.fixPrompt = null;                         // built for the old settings
-  if (S.result) setStatus('warn', 'Laser settings changed — compile again');
+  if (S.result) setStatus('warn', 'Settings changed — compile again');
 }
 
 async function generatePrompt() {
@@ -412,7 +418,7 @@ let compileJob = null;
  *  Api.canvasCompile(source, false). */
 function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.18', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./compile-worker.js?v=2.19', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
     let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
@@ -433,7 +439,7 @@ function compileStream(source, onProgress, onPreview) {
       else reject(new ApiError(data.status, { error: { message: data.message } }));
     };
     worker.onerror = (e) => { e.preventDefault(); end(); reject(new ApiError(0, { error: { message: 'The compile worker could not start.' } })); };
-    worker.postMessage({ source, production: false, timeout: 120000, machine: machine() });
+    worker.postMessage({ source, production: false, timeout: 120000, machine: machine(), requirements: $('#in-req').value });
   });
 }
 
@@ -544,7 +550,7 @@ async function compile(production = true) {
     if (production && first.model3d) {
       setStatus(first.compiled ? 'ok' : 'err', `${$('#compile-status').innerText} · preparing cut sheets…`);
       try {
-        const full = await Api.canvasCompile(source, true, { repair_prompt: true, machine: machine() });
+        const full = await Api.canvasCompile(source, true, { repair_prompt: true, machine: machine(), requirements: $('#in-req').value });
         if (cm.getValue() === source) { S.result = full; render(true); showStatus(full); offerFixPrompt(full, source); }
       } catch (e) {
         showStatus(first);
@@ -591,7 +597,7 @@ function render(keepCamera = false) {
     if (!keepCamera) view3d._framed = false;
     view3d.load(r.model3d);
     const s = r.summary;
-    const j = r.job?.totals;
+    const j = LASER && r.job?.totals;
     $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`
       + (j ? ` · cut ${j.cut_length_m} m · ~${j.minutes} min${j.material_cost !== undefined ? ` · cost ${j.material_cost}` : ''}` : '');
     const paint = r.painting?.colors;
@@ -659,6 +665,7 @@ function renderDiagnostics() {
     <span class="dot ${d.severity === 'error' ? 'err' : d.severity === 'warning' ? 'warn' : ''}"></span>
     <div><div class="meta">${esc(d.code)}${d.board ? ' · ' + esc(d.board) : ''}${d.line ? ' · line ' + d.line : ''}</div>
       <div class="msg">${esc(d.message)}</div>
+      ${d.calc?.length ? `<details class="calc"><summary>Calculation</summary><pre>${d.calc.map(esc).join('\n')}</pre></details>` : ''}
       ${d.fixes?.length ? `<div class="fixes">${d.fixes.map((f, k) => `<button class="btn ${f.safe ? 'safe' : ''}" data-fix="${i}:${k}" title="${f.safe ? 'Unambiguous correction' : 'Changes the design — you will be asked to confirm'}">${f.safe ? '✓ ' : ''}${esc(f.title)}</button>`).join('')}</div>` : ''}
     </div></div>`).join('');
 

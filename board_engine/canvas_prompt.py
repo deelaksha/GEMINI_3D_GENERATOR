@@ -879,8 +879,14 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
   a fixed box standing on its runner board; draw a folding product in its open position.
 
 ## Support and stability (checked)
+- The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
+  main assembly by a chain of connections. Errors: ISOLATED_BOARD (touches nothing, floats in the air), DISCONNECTED
+  (a group of boards apart from the main assembly), NOT_JOINED (touches the assembly but has no connection). The only
+  exception is a flat board lying loose on top (a lift-off lid or tray), which is a warning.
 - Every board must be held: joined to the product (directly or through others), or **resting on top of** a held board
   (a lift-off lid, a drawer standing on its runner, a stacked module). A board held by nothing is an error.
+- Sizes written in the requirements ("length 1200 mm", "80 cm wide", "1200 x 600 x 750 mm" = length x depth x height)
+  are checked against the built design (REQUIREMENT_MISMATCH).
 - A floor-standing product must not tip over when empty: its centre of mass must lie inside its floor footprint.
   A horizontal board held on one side only (a cantilever) is reported. For shelves fixed to a wall set
   `"product": {{"mounting": "wall"}}` and give the product a back rail or back panel at z = 0.
@@ -972,7 +978,7 @@ def build_prompt(title, requirements='', material=None, thickness=None, joinery=
     extra = []
     if _coloring(machine):
         extra.append('- Colour every board (see "Colours" below): a coherent palette, unique colours for different roles.')
-    if machine:
+    if machine and 'kerf' in machine:
         # nesting keeps a 10 mm margin all round and a 14 mm strip for the printed sheet label
         w, h = machine['sheet']['width'] - 20, machine['sheet']['height'] - 34
         extra.append(f"- Cut on a laser cutter with a {machine['sheet']['width']:g} × {machine['sheet']['height']:g} mm bed and a "
@@ -1028,6 +1034,8 @@ INSTRUCTIONS (follow every one):
     c. Do the boards' combined extents equal product.overall in length, height and depth?
     d. Is any space occupied by two boards (other than boards joined with cross_lap)?
     e. Are all ids unique and at most 24 characters? Is every board held?
+    e2. Walk the connections from the base board: is EVERY board reached? Does every board touch another one?
+    e3. Do the overall sizes match every size stated in the requirements?
     f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
@@ -1073,7 +1081,8 @@ def _problem_lines(diagnostics, limit=60):
         fix = (d.get('fixes') or [None])[0]
         rows.append(f"- [{sev.upper()} {code}] {d['message']}" + (f" ({where})" if where else '')
                     + (f" (and {len(ds) - 1} more like this)" if len(ds) > 1 else '')
-                    + (f" Suggested fix: {_fix_text(fix)}." if fix and fix.get('kind') != 'repair_json' else ''))
+                    + (f" Suggested fix: {_fix_text(fix)}." if fix and fix.get('kind') != 'repair_json' else '')
+                    + (f" Calculation: {'; '.join(d['calc'])}." if d.get('calc') else ''))
     more = len(rows) - limit
     return '\n'.join(rows[:limit] + ([f'- … and {more} more distinct problems'] if more > 0 else [])) or '- (none)'
 

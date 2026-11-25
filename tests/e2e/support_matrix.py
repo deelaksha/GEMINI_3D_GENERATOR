@@ -74,9 +74,9 @@ def cases():
     floating = copy.deepcopy(ex)
     floating['boards'].append({"id": "LOOSE", "position": [300, 300, 60], "size": [400, 18, 280]})
     r = compile_source(json.dumps(floating), run_production=False)
-    add('SP-07', 'Unsupported horizontal board in mid-air', 'UNSUPPORTED_COMPONENT error',
+    add('SP-07', 'Unsupported horizontal board in mid-air', 'ISOLATED_BOARD error',
         {'errors': sorted({x['code'] for x in r['diagnostics'] if x['severity'] == 'error'})},
-        lambda r: 'UNSUPPORTED_COMPONENT' in r['errors'])
+        lambda r: 'ISOLATED_BOARD' in r['errors'])
     hang = copy.deepcopy(ex)
     hang['boards'].append({"id": "SIGN", "position": [500, 532, 200], "size": [200, 200, 18]})       # hangs under the top
     hang['connections'].append({"id": "SIGN-TOP", "type": "tab_slot", "board": "SIGN", "into": "TOP"})

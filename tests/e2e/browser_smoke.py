@@ -92,8 +92,8 @@ def run(root):
                 pg.evaluate('() => document.fullscreenElement && document.exitFullscreen()')
                 time.sleep(0.2)
 
-            # the study table's 1200 mm top needs a large-format laser bed (the default 600 x 400 rightly rejects it)
-            pg.select_option('#in-bed', '1300x900')
+            # laser support is off: the compile picks a sheet that fits the study table's 1200 mm top by itself
+            assert pg.evaluate("() => document.querySelector('#in-bed').closest('label').hidden")
             set_code(json.dumps(EXAMPLE, indent=2))
             pg.click('#btn-compile')
             settle()

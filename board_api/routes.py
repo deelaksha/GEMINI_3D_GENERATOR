@@ -563,10 +563,13 @@ def export_file(did, fmt):
 # ---------------------------------------------------------------------------
 
 def _machine(data):
-    """The cutting machine the canvas user set up ({'kerf': mm, 'sheet': {'width', 'height'}}), or None."""
+    """The cutting machine the canvas user set up ({'kerf': mm, 'sheet': {'width', 'height'}}), or None.
+    Without kerf and sheet (laser support switched off) only the switches are kept, e.g. {'coloring': True}."""
     m = data.get('machine')
     if m is None:
         return None
+    if isinstance(m, dict) and 'kerf' not in m and 'sheet' not in m:
+        return {k: True for k in ('coloring',) if m.get(k)} or None
     sheet = m.get('sheet') if isinstance(m, dict) else None
     ok = lambda v, lo, hi: isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
     if not (isinstance(m, dict) and ok(m.get('kerf'), 0.01, 5) and isinstance(sheet, dict)
@@ -691,13 +694,19 @@ def _with_repair_prompt(res, source, machine=None):
     return res
 
 
+def _requirements(data):
+    """The free-text requirements sent with a compile (sizes stated there are checked against the design)."""
+    r = data.get('requirements')
+    return r[:4000] if isinstance(r, str) and r.strip() else None
+
+
 @bp.post('/canvas/compile')
 @require('viewer')
 def canvas_compile():
     from board_engine.canvas import compile_source
     data = body()
     res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget(),
-                         machine=_machine(data))
+                         machine=_machine(data), requirements=_requirements(data))
     if data.get('repair_prompt'):
         _with_repair_prompt(res, data.get('source'), _machine(data))
     if not data.get('include_design'):
@@ -725,6 +734,7 @@ def canvas_compile_stream():
     data = body()
     source, production, seconds = data.get('source'), bool(data.get('production', True)), budget()
     include_design, want_prompt, machine = bool(data.get('include_design')), bool(data.get('repair_prompt')), _machine(data)
+    requirements = _requirements(data)
     events, cancelled = queue.Queue(), threading.Event()
     state = {'stage': -1, 'sent': 0.0}
     t0 = time.monotonic()
@@ -745,7 +755,8 @@ def canvas_compile_stream():
     def work():
         try:
             with reporting(reporter):
-                res = compile_source(source, run_production=production, time_budget=seconds, machine=machine)
+                res = compile_source(source, run_production=production, time_budget=seconds, machine=machine,
+                                     requirements=requirements)
             if want_prompt:
                 _with_repair_prompt(res, source, machine)
             if not include_design:
@@ -822,7 +833,7 @@ def canvas_export():
             '',
             f"Material   : {mat.get('name')} ({mat['type']}), {mat['thickness']:g} mm thick",
             *([f"Machine    : laser cutter, {machine['sheet']['width']:g} x {machine['sheet']['height']:g} mm bed, "
-               f"{machine['kerf']:g} mm kerf"] if machine else []),
+               f"{machine['kerf']:g} mm kerf"] if machine and 'kerf' in machine else []),
             f"Sheets     : {n['sheet_count']} x {n['sheet']['width']:g} x {n['sheet']['height']:g} mm, {parts} parts",
             f"Units      : millimetres, scale 1:1 - import / print at 100 %, never 'fit to page'",
             f"Kerf       : paths already compensated for a {cut['kerf_compensation']:g} mm kerf "
@@ -935,7 +946,8 @@ def canvas_test_fit():
     """The test-fit comb + tab for the laser (SVG or DXF): slots of measured thickness + -0.1..+0.3 mm."""
     from board_engine.testfit import test_fit_files
     data = body()
-    machine = _machine(data) or {'kerf': 0.15}
+    machine = _machine(data) or {}
+    machine.setdefault('kerf', 0.15)
     t = data.get('thickness')
     if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0.5 <= t <= 50:
         raise SchemaError('thickness (the measured board thickness) must be between 0.5 and 50 mm', 'thickness')

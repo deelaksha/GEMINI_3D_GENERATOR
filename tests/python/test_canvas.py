@@ -187,8 +187,10 @@ def test_invalid_designs_give_clear_diagnostics(mutate, code):
 
 def test_overall_dimension_mismatch_warns():
     bad = copy.deepcopy(EXAMPLE)
-    bad['product']['overall']['height'] = 768
+    bad['product']['overall']['height'] = 755
     assert 'OVERALL_MISMATCH' in codes(compile_source(json.dumps(bad)), 'warning')
+    bad['product']['overall']['height'] = 700
+    assert 'OVERALL_MISMATCH' in codes(compile_source(json.dumps(bad)), 'error')
 
 
 def test_parse_tolerates_ai_formatting_and_reports_positions():
