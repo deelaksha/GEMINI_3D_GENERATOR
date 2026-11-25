@@ -80,6 +80,18 @@ Shapes (used by `profile`, `openings` and `engravings`):
   bent across the cuts (rounded box corners, lamp shades). `lines_along` is the face axis the cuts run along (the bend
   axis). Defaults: spacing half the thickness, 20 mm cuts, bridges = thickness. Keep it at least one thickness inside
   the board edges. The board stays flat in this design (bending is not simulated): model the flat panel.
+- `"repeat": {"count": 2..200, "step": [dx, dy, dz]}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
+  (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
+  copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
+- `"mirror": {"axis": "x"|"y"|"z", "at": mm}` on a board also builds its mirror image `"<id>-M"` across the plane
+  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings and hinges are mirrored; text stays
+  readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
+- Top level `"assemblies": [{"id", "boards": [...], "connections": [...]}]` with `"instances": [{"assembly", "id",
+  "offset": [x, y, z], "repeat"?, "mirror"?}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
+  gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
+  connections; connect instance boards to the rest by those names under the top-level `"connections"`.
+- Top level `"plan": {"assemblies": [...], "steps": [...], "checks": [...]}` is your design plan, written before
+  `"boards"`; the compiler ignores it.
 - `"rotate": {"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down

@@ -763,6 +763,18 @@ Shapes (used by `profile`, `openings` and `engravings`):
   bent across the cuts (rounded box corners, lamp shades). `lines_along` is the face axis the cuts run along (the bend
   axis). Defaults: spacing half the thickness, 20 mm cuts, bridges = thickness. Keep it at least one thickness inside
   the board edges. The board stays flat in this design (bending is not simulated): model the flat panel.
+- `"repeat": {{"count": 2..200, "step": [dx, dy, dz]}}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
+  (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
+  copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
+- `"mirror": {{"axis": "x"|"y"|"z", "at": mm}}` on a board also builds its mirror image `"<id>-M"` across the plane
+  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings and hinges are mirrored; text stays
+  readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
+- Top level `"assemblies": [{{"id", "boards": [...], "connections": [...]}}]` with `"instances": [{{"assembly", "id",
+  "offset": [x, y, z], "repeat"?, "mirror"?}}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
+  gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
+  connections; connect instance boards to the rest by those names under the top-level `"connections"`.
+- Top level `"plan": {{"assemblies": [...], "steps": [...], "checks": [...]}}` is your design plan, written before
+  `"boards"`; the compiler ignores it.
 - `"rotate": {{"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down
@@ -938,10 +950,28 @@ INTEGER_RULE = ('All sizes, positions, product.overall values and profile / open
                 'may have decimals.')
 
 
+COLOR_SPEC = """## Colours (colouring is ON)
+Give every board a colour. Write `"color"` on the board: one colour for the whole board, or
+`{"front": ..., "back": ..., "edges": ...}` for different faces (front = the face on the +thickness side; a face left out
+stays natural board). `"material": {..., "color": ...}` sets the default for boards without their own.
+Accepted formats: "#rrggbb", "#rgb", "rgb(r, g, b)", "hsl(h, s%, l%)", CSS colour names ("tomato", "navy",
+"forestgreen", ...), or [r, g, b] (0..255).
+Rules: choose a coherent palette of 2-6 colours that suits the product; boards with the same role share a colour and
+different roles get clearly different, unique colours (a roof, the walls, a door, the trim); paint only the visible
+side with a front/back pair where that is how the product would be finished; keep every board's colour unchanged when
+you change or fix the design unless asked to recolour."""
+
+
+def _coloring(machine):
+    return bool(machine and machine.get('coloring'))
+
+
 def build_prompt(title, requirements='', material=None, thickness=None, joinery=None, machine=None):
     title = (title or '').strip() or 'Board product'
     req = (requirements or '').strip()
     extra = []
+    if _coloring(machine):
+        extra.append('- Colour every board (see "Colours" below): a coherent palette, unique colours for different roles.')
     if machine:
         # nesting keeps a 10 mm margin all round and a 14 mm strip for the printed sheet label
         w, h = machine['sheet']['width'] - 20, machine['sheet']['height'] - 34
@@ -976,8 +1006,10 @@ INSTRUCTIONS (follow every one):
    conflict, follow the explicit number. Write every such decision in "product.description" as "Assumptions: …".
    If the product needs something listed under "What this generator cannot build", build the closest supported
    version and say what was left out in the description. Do not ask questions — decide and record the assumption.
-2. Decompose the product into every board it needs (nothing implied, nothing missing). Give each a short unique id
-   (at most 24 characters) and put the boards of each sub-assembly in the same "group".
+2. PLAN FIRST: write a top-level "plan" before "boards": the sub-assemblies, the build steps and the checks you will
+   run. Then decompose the product into every board it needs (nothing implied, nothing missing). Give each a short
+   unique id (at most 24 characters) and put the boards of each sub-assembly in the same "group". For repeated or
+   symmetric parts use "repeat", "mirror" and "assemblies"/"instances" instead of listing every copy.
 3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
    CRITICAL INTEGER RULE: {INTEGER_RULE}
 4. Account for board thickness everywhere so boards touch exactly and never overlap
@@ -996,11 +1028,11 @@ INSTRUCTIONS (follow every one):
     c. Do the boards' combined extents equal product.overall in length, height and depth?
     d. Is any space occupied by two boards (other than boards joined with cross_lap)?
     e. Are all ids unique and at most 24 characters? Is every board held?
-    f. Is every size and position a whole number of millimetres?
+    f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
-
+{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
 {FINAL_REMINDER}
 """
 
@@ -1046,7 +1078,7 @@ def _problem_lines(diagnostics, limit=60):
     return '\n'.join(rows[:limit] + ([f'- … and {more} more distinct problems'] if more > 0 else [])) or '- (none)'
 
 
-def build_repair_prompt(source, diagnostics, blocking=()):
+def build_repair_prompt(source, diagnostics, blocking=(), machine=None):
     """Follow-up prompt: hand the generator's diagnostics (and the production blockers: fasteners, stock, cut paths)
     back to the AI and ask for a minimal correction, returned as code only."""
     seen = {d['message'] for d in diagnostics}
@@ -1084,7 +1116,7 @@ YOUR PREVIOUS JSON:
 
 SPECIFICATION (reference for every field and rule):
 {spec_markdown()}
-
+{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
 {FINAL_REMINDER}
 """
 
@@ -1124,7 +1156,7 @@ CURRENT DESIGN:
 """
 
 
-def build_update_prompt(source, change, diagnostics=()):
+def build_update_prompt(source, change, diagnostics=(), machine=None):
     """Follow-up prompt for an incremental change: modify only the affected boards of an existing design."""
     issues = [d for d in diagnostics if d.get('severity') == 'error']
     return f"""You are the change step of an automated board-design pipeline. Below is an existing, working design in the
@@ -1156,6 +1188,6 @@ CURRENT DESIGN:
 
 SPECIFICATION (reference for every field and rule):
 {spec_markdown()}
-
+{(chr(10) + COLOR_SPEC + chr(10)) if _coloring(machine) else ''}
 {FINAL_REMINDER}
 """

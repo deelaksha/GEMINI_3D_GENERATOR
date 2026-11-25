@@ -12,7 +12,7 @@ import { Viewport3D } from '../studio/viewport3d.js';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
 import { CompileLoader } from './compile-loader.js?v=2.20';
-import { AssemblyPreview } from './assembly-preview.js?v=2.20';
+import { AssemblyPreview } from './assembly-preview.js?v=2.21';
 import { renderDraftingSvg, renderDraftingGuide, formatDraftingSpecsText, bindCadInspectorEvents } from '../studio/drafting.js?v=2.5';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -159,7 +159,8 @@ function fillThickness() {
 // Laser cutter: bed and kerf drive the prompt, every check, the nesting and the cut files
 // ---------------------------------------------------------------------------
 const MACHINE_KEY = 'board-canvas-laser';
-const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true, shared: false, measured: '', fit: '', cut: '', engrave: '', price: '' };
+const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true, shared: false, coloring: false, colorSheets: true,
+  measured: '', fit: '', cut: '', engrave: '', price: '' };
 const MACHINE_FIELDS = { measured: '#in-measured', fit: '#in-fit', cut: '#in-cut-speed', engrave: '#in-engrave-speed', price: '#in-price' };
 
 function loadMachine() {
@@ -171,11 +172,14 @@ function loadMachine() {
   $('#in-kerf').value = m.kerf;
   $('#in-labels').checked = m.labels;
   $('#in-shared').checked = m.shared;
+  $('#in-coloring').checked = m.coloring;
+  $('#in-color-sheets').checked = m.colorSheets;
   Object.entries(MACHINE_FIELDS).forEach(([k, id]) => { $(id).value = m[k]; });
   syncBed();
 }
 
 function syncBed() {
+  $('#row-color-sheets').hidden = !$('#in-coloring').checked;
   const custom = $('#in-bed').value === 'custom';
   $$('.bed-custom').forEach((el) => (el.hidden = !custom));
   if (!custom) [$('#in-bed-w').value, $('#in-bed-h').value] = $('#in-bed').value.split('x');
@@ -192,6 +196,10 @@ function machine() {
     if (v !== null) m[k] = v;
   }
   if ($('#in-shared').checked) m.shared_edges = true;
+  if ($('#in-coloring').checked) {
+    m.coloring = true;
+    if ($('#in-color-sheets').checked) m.color_sheets = true;
+  }
   return m;
 }
 
@@ -212,6 +220,7 @@ function machineChanged() {
   try {
     localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: m.sheet.width, h: m.sheet.height,
       kerf: m.kerf, labels: $('#in-labels').checked, shared: $('#in-shared').checked,
+      coloring: $('#in-coloring').checked, colorSheets: $('#in-color-sheets').checked,
       ...Object.fromEntries(Object.entries(MACHINE_FIELDS).map(([k, id]) => [k, $(id).value])) }));
   } catch (e) { /* ignore */ }
   S.fixPrompt = null;                         // built for the old settings
@@ -403,7 +412,7 @@ let compileJob = null;
  *  Api.canvasCompile(source, false). */
 function compileStream(source, onProgress, onPreview) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./compile-worker.js?v=2.17', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./compile-worker.js?v=2.18', import.meta.url), { type: 'module' });
     const end = () => { worker.terminate(); compileJob = null; };
     let settled = false;
     compileJob = { cancel: () => { end(); reject(Object.assign(new Error('Compilation cancelled'), { cancelled: true })); } };
@@ -585,7 +594,10 @@ function render(keepCamera = false) {
     const j = r.job?.totals;
     $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`
       + (j ? ` · cut ${j.cut_length_m} m · ~${j.minutes} min${j.material_cost !== undefined ? ` · cost ${j.material_cost}` : ''}` : '');
-    $('#pv-summary').title = j ? r.job.sheets.map((x) => `Sheet ${x.sheet}: cut ${x.cut_length_m} m, engrave ${x.engrave_length_m} m, ${x.pierces} pierces, ~${x.minutes} min, offcut ${x.offcut_m2} m²`).join('\n') + `\n${r.job.note}` : '';
+    const paint = r.painting?.colors;
+    if (paint?.length) $('#pv-summary').textContent += ` · ${paint.length} colour${paint.length === 1 ? '' : 's'}`;
+    $('#pv-summary').title = (j ? r.job.sheets.map((x) => `Sheet ${x.sheet}: cut ${x.cut_length_m} m, engrave ${x.engrave_length_m} m, ${x.pierces} pierces, ~${x.minutes} min, offcut ${x.offcut_m2} m²`).join('\n') + `\n${r.job.note}` : '')
+      + (paint?.length ? '\n\nPainting guide:\n' + paint.map((c) => `${c.name} ${c.color}: ${c.area_m2} m² — ${c.parts.map((p) => `${p.id} (${p.faces.join('/')})`).join(', ')}`).join('\n') : '');
   }
   if (r?.layout) { sheet2d._fitted = false; sheet2d.load(r.layout, { mode: 'production', states: Object.fromEntries(r.model3d.components.map((c) => [c.id, c.state])) }); }
   if (S.selected && !r?.model3d?.components.some((c) => c.id === S.selected)) S.selected = null;
@@ -990,7 +1002,7 @@ $('#btn-ai-generate').onclick = aiGenerate;
 $('#btn-ai-fix').onclick = aiFix;
 $('#btn-resize').onclick = openResize;
 $('#rs-apply').onclick = applyResize;
-['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
+['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', '#in-coloring', '#in-color-sheets', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
 $('#btn-testfit').onclick = downloadTestFit;
 $('#sel-example').onchange = (e) => {
   const src = S.spec && { spec: S.spec.example_source, complex: S.spec.complex_example_source,

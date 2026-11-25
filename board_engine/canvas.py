@@ -23,6 +23,7 @@ furniture.panel() places boards, furniture.edge_facing() finds edges, joining.jo
 through the validation / safe-repair pipeline (slots are generated there), validate_design() and the
 production package do the rest. Diagnostics carry the source line and, where possible, code-level fixes.
 """
+import contextvars
 import copy
 import difflib
 import hashlib
@@ -194,7 +195,11 @@ def parse_source(text):
     return data, body, off, []
 
 
+_ORIGIN = contextvars.ContextVar('expanded_ids', default={})   # generated id -> id written in the source
+
+
 def _id_line(src, ident, off):
+    ident = _ORIGIN.get().get(ident, ident)
     m = re.search(r'"id"\s*:\s*"' + re.escape(str(ident)) + r'"', src)
     return src[:m.start()].count('\n') + 1 + off if m else None
 
@@ -759,6 +764,30 @@ def _text_marks(m, k, kind, p, bd, to_local, su, sv, diags):
     return [dict({'id': f'{base}-{n + 1}', 'kind': 'engrave', 'points': [to_local(q) for q in stroke], 'closed': False},
                  **({'depth': depth} if depth is not None else {}), **({'note': text} if n == 0 else {}))
             for n, stroke in enumerate(text_strokes(text, pos[0], pos[1], h, align))]
+
+
+def _apply_colors(comp, bd, data, diags):
+    """board "color" / "colour": one colour for the whole board, or {"front", "back", "edges", "all"?} (front = the
+    face on the +thickness side). Any format colors.parse_color accepts; the material's "color" is the default."""
+    from .colors import parse_color
+    raw = bd.raw.get('color', bd.raw.get('colour'))
+    mat = data.get('material') if isinstance(data.get('material'), dict) else {}
+    base = raw.get('all') if isinstance(raw, dict) else raw
+    if base is None:
+        base = mat.get('color', mat.get('colour'))
+    faces = {k: (raw.get(k) if isinstance(raw, dict) and raw.get(k) is not None else base)
+             for k in ('front', 'back', 'edges')}
+    if all(v is None for v in faces.values()):
+        return
+    try:
+        out = {k: parse_color(v) for k, v in faces.items() if v is not None}
+    except ValueError as e:
+        diags.append(diag('error', 'COLOR_INVALID', f"Board '{bd.id}': {e}.", path=f'boards[{bd.index}].color', board=bd.id,
+                          line=bd.line))
+        return
+    natural = '#d9b98b'                              # faces left without a colour stay plain board
+    comp['colors'] = {k: out.get(k, natural) for k in ('front', 'back', 'edges')}
+    comp['color'] = comp['colors']['front']
 
 
 def _living_hinges(raw, bd, comp, to_local, su, sv, diags):
@@ -1380,6 +1409,18 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
     if data is None:
         return result
     _progress('parse', 1, 1)
+    if 'boards' in data:                        # repeat / mirror / assemblies -> plain boards and connections
+        from .expand import ExpandError, expand
+        try:
+            data, origin = expand(data)
+        except ExpandError as e:
+            result['diagnostics'].append(diag('error', 'STRUCTURE_INVALID', str(e).capitalize() + '.'))
+            return result
+        if origin:
+            _ORIGIN.set(origin)
+            n = len(data['boards'])
+            result['diagnostics'].append(diag('info', 'STRUCTURE_EXPANDED', f'{len(origin)} board(s) / connection(s) generated '
+                                              f'from repeat, mirror and assemblies ({n} boards in total).'))
     try:
         with _budget(time_budget):
             if 'components' in data and 'boards' not in data:
@@ -1410,6 +1451,7 @@ def _preview(comps, design=None):
                 feats.append({'shape': 'circle', 'center': f['center'], 'diameter': f['diameter']} if f.get('shape') == 'circle'
                              else {'polygon': r2(feature_polygon(f))})
             out.append({'id': c['id'], 'cut_outline': r2(c['outline']), 'features': feats,
+                        **({'color': c['color']} if c.get('colors') else {}),
                         'thickness': c.get('thickness') or thickness_of(design, c),
                         'matrix_world': [round(v, 6) for v in _frame(c).matrix4()]})
         except Exception:
@@ -1495,10 +1537,16 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
                           board=fi.get('board'), line=fi.get('line'),
                           fixes=[fi['fix']] if fi.get('fix') else None))
 
+    coloring = bool(machine and machine.get('coloring'))
     comps = {}
     for n, (bid, bd) in enumerate(boards.items()):
         _progress('geometry', n, len(boards))
         comps[bid] = _component(bd, mat, diags)
+        if coloring:
+            _apply_colors(comps[bid], bd, data, diags)
+    if not coloring and any(isinstance(b, dict) and (b.get('color') or b.get('colour')) for b in data.get('boards') or []):
+        diags.append(diag('info', 'COLORS_IGNORED', 'The design has board colours, but colouring is off: boards are shown '
+                          'and cut as plain material. Turn on "Include colouring" to use them.'))
     comps0 = copy.deepcopy(comps)      # unrotated: edge directions ("+x", ...) always refer to the unrotated box
     for bid, bd in boards.items():
         if bd.rot:
@@ -1694,6 +1742,9 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
             held.add(bid)
             joints = [jt for jt in joints if jt[0]['a'] in comps and jt[0]['b'] in comps]
     design['sheet'] = _machine_sheet(machine) if machine else _auto_sheet(design, mat, data)
+    if coloring and any(c.get('colors') for c in design['components']):
+        design['coloring'] = True
+        design['color_sheets'] = bool(machine.get('color_sheets'))     # each colour cut from its own (pre-coloured) sheets
     design['source'] = {'format': FORMAT, 'code': None}
 
     for n, (j, c, cid, cline) in enumerate(joints):
@@ -1819,6 +1870,9 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
             raise
         except Exception as e:
             diags.append(diag('warning', 'PRODUCTION_UNAVAILABLE', f'Cut sheets could not be computed: {e}'))
+    if design.get('coloring'):
+        from .painting import painting_guide
+        result['painting'] = painting_guide(design)
     errors = sum(1 for d in diags if d['severity'] == 'error')
     if errors and result.get('layout'):
         # the production checks only see the part of the design that compiled: any compile error blocks production

@@ -66,7 +66,8 @@ export class Sheet2D {
         const holes = inner.filter((p) => p.closed !== false);         // living-hinge lines are open cuts, not holes
         const d = ptsToD(outline) + holes.map((p) => (p.shape === 'circle' ? circleD(p.center, p.radius) : ptsToD(p.points))).join('');
         const state = states[part];
-        const body = el('path', { d, 'fill-rule': 'evenodd', fill: mode === 'production' ? '#fffdf8' : '#d6b483',
+        const pmColor = layout.nesting.placements.find((p) => p.id === part)?.color;     // colouring on
+        const body = el('path', { d, 'fill-rule': 'evenodd', fill: pmColor || (mode === 'production' ? '#fffdf8' : '#d6b483'),
           stroke: 'none', class: 'part-body' }, pg);
         if (state === 'error') body.setAttribute('fill', '#e9a4a4');
         for (const p of inner) {

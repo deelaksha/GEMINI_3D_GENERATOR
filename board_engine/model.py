@@ -301,6 +301,12 @@ def normalize_component(c, path='component'):
     if c.get('thickness') is not None:
         out['thickness'] = _num(c['thickness'], path + '.thickness',
                                 LIMITS['min_thickness'], LIMITS['max_thickness'])
+    if c.get('colors') is not None:            # per-face finish (colouring on): front / back / edges, #rrggbb
+        cols = c['colors']
+        if not (isinstance(cols, dict) and set(cols) <= {'front', 'back', 'edges'}
+                and all(isinstance(v, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', v) for v in cols.values())):
+            raise SchemaError(f'{path}.colors must be {{"front", "back", "edges"}} of #rrggbb', path + '.colors')
+        out['colors'] = dict(cols)
     if c.get('color') is not None:
         col = _text(c.get('color'), path + '.color', 16)
         if not re.match(r'^#[0-9a-fA-F]{6}$', col):

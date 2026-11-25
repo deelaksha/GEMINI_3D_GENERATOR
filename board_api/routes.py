@@ -580,8 +580,9 @@ def _machine(data):
             if not ok(m[k], lo, hi):
                 raise SchemaError(f'machine.{k} must be between {lo} and {hi} mm', f'machine.{k}')
             out[k] = float(m[k])
-    if m.get('shared_edges'):
-        out['shared_edges'] = True
+    for k in ('shared_edges', 'coloring', 'color_sheets'):            # optional switches
+        if m.get(k):
+            out[k] = True
     return out
 
 
@@ -630,9 +631,10 @@ def canvas_repair_prompt():
     from board_engine.canvas_prompt import build_repair_prompt
     data = body()
     src = data.get('source')
-    res = compile_source(src, run_production=True, time_budget=budget(), machine=_machine(data))
+    machine = _machine(data)
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
     blocking = (res.get('layout') or {}).get('blocking_issues', [])
-    prompt = build_repair_prompt(src, res['diagnostics'], blocking)
+    prompt = build_repair_prompt(src, res['diagnostics'], blocking, machine)
     return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
                     'problems': prompt.count('\n- [')})
 
@@ -672,18 +674,19 @@ def canvas_update_prompt():
     change = data.get('change')
     if not isinstance(change, str) or not change.strip():
         raise SchemaError('change (the requested modification) is required', 'change')
-    res = compile_source(data.get('source'), run_production=False, time_budget=budget())
+    machine = _machine(data)
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
     if res.get('format') is None:
         return fail(422, 'compile_failed', 'the current code is not a design yet; generate it first', issues=res['diagnostics'])
-    return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'])})
+    return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'], machine)})
 
 
-def _with_repair_prompt(res, source):
+def _with_repair_prompt(res, source, machine=None):
     """Attach the follow-up fix prompt for a compile that found errors, built from this result (no second compile)."""
     from board_engine.canvas_prompt import build_repair_prompt
     if res.get('summary', {}).get('errors') or any(d['severity'] == 'error' for d in res['diagnostics']):
         blocking = (res.get('layout') or {}).get('blocking_issues', [])
-        res['repair_prompt'] = build_repair_prompt(source, res['diagnostics'], blocking)
+        res['repair_prompt'] = build_repair_prompt(source, res['diagnostics'], blocking, machine)
         res['repair_problems'] = res['repair_prompt'].count('\n- [')
     return res
 
@@ -696,7 +699,7 @@ def canvas_compile():
     res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget(),
                          machine=_machine(data))
     if data.get('repair_prompt'):
-        _with_repair_prompt(res, data.get('source'))
+        _with_repair_prompt(res, data.get('source'), _machine(data))
     if not data.get('include_design'):
         res.pop('design', None)
     # envelope 'ok' = the request worked; 'compiled' = the design compiled without errors
@@ -744,7 +747,7 @@ def canvas_compile_stream():
             with reporting(reporter):
                 res = compile_source(source, run_production=production, time_budget=seconds, machine=machine)
             if want_prompt:
-                _with_repair_prompt(res, source)
+                _with_repair_prompt(res, source, machine)
             if not include_design:
                 res.pop('design', None)
             events.put({'type': 'result', 'result': dict(res, ok=True, compiled=res['ok']), 't': round(time.monotonic() - t0, 3)})
@@ -787,6 +790,7 @@ def canvas_export():
     from board_engine.cutpaths import LEGEND
     from board_engine.jobreport import job_lines, job_report
     from board_engine.lightburn import sheet_lbrn2
+    from board_engine.painting import painting_guide, painting_lines
     data = body()
     machine = _machine(data)
     res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
@@ -831,6 +835,7 @@ def canvas_export():
             'power once for your laser), *-sheetN.svg for any laser software (colour-mapped hairlines, raster images), '
             '*-sheetN.dxf (R12) for CNC / CAD, *-booklet.pdf for assembly',
             *job_lines(job_report(n, cut, machine)),
+            *(painting_lines(painting_guide(design)) if design.get('coloring') else []),
             *(['', 'Blocking issues:'] + [f"- {i['message']}" for i in blocking[:30]] if draft else []),
             '']))
     resp = Response(buf.getvalue(), mimetype='application/zip')
@@ -885,12 +890,13 @@ def canvas_ai_fix():
     from board_engine.canvas_prompt import build_repair_prompt
     data = body()
     src = data.get('source')
-    res = compile_source(src, run_production=True, time_budget=budget(), machine=_machine(data))
+    machine = _machine(data)
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
     errors = [d for d in res['diagnostics'] if d['severity'] == 'error']
     blocking = (res.get('layout') or {}).get('blocking_issues', [])
     if not errors and not blocking:
         return jsonify({'ok': True, 'source': src, 'problems': 0, 'changed': False})
-    prompt = build_repair_prompt(src, res['diagnostics'], blocking)
+    prompt = build_repair_prompt(src, res['diagnostics'], blocking, machine)
     try:
         reply = complete(prompt)
     except AIError as e:

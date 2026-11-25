@@ -16,10 +16,11 @@ const PENDING = 1e6;
 const JOINS = 'joints';
 
 const SOLID_VS = `
-attribute vec3 aDir; attribute vec3 aState;
+attribute vec3 aDir; attribute vec3 aState; attribute vec3 aColor;
 uniform float uTime; uniform float uDur;
-varying vec3 vNormal; varying float vShow; varying float vHi; varying float vErr;
+varying vec3 vNormal; varying float vShow; varying float vHi; varying float vErr; varying vec3 vColor;
 void main() {
+  vColor = aColor;
   float t = clamp((uTime - aState.x) / uDur, 0.0, 1.0);
   float e = 1.0 - pow(1.0 - t, 3.0);
   vShow = step(aState.x, uTime);
@@ -29,12 +30,12 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position + aDir * (1.0 - e), 1.0);
 }`;
 const SOLID_FS = `
-uniform vec3 uWood; uniform vec3 uHi; uniform vec3 uErr;
-varying vec3 vNormal; varying float vShow; varying float vHi; varying float vErr;
+uniform vec3 uHi; uniform vec3 uErr;
+varying vec3 vNormal; varying float vShow; varying float vHi; varying float vErr; varying vec3 vColor;
 void main() {
   if (vShow < 0.5) discard;
   float light = 0.5 + 0.5 * max(dot(normalize(vNormal), normalize(vec3(0.35, 0.85, 0.55))), 0.0);
-  vec3 c = mix(uWood, uErr, vErr) * light;
+  vec3 c = mix(vColor, uErr, vErr) * light;            // the board's colour (plain board when colouring is off)
   gl_FragColor = vec4(mix(c, uHi, vHi * 0.6), 1.0);
 }`;
 const LINE_VS = `
@@ -87,13 +88,14 @@ export class AssemblyPreview {
     this.index = new Map(p.ids.map((id, i) => [id, i]));
     this.ranges = { solid: p.solid, lines: p.lines };
     this.dur = Math.max(0.25, Math.min(0.8, 0.85 - n * 0.002));     // quicker fly-ins for bigger assemblies
-    this.uniforms = { uTime: { value: 0 }, uDur: { value: this.dur }, uWood: { value: new THREE.Color(0xd9b98b) },
+    this.uniforms = { uTime: { value: 0 }, uDur: { value: this.dur },
       uHi: { value: new THREE.Color(0x6aa1ff) }, uErr: { value: new THREE.Color(0xf2555d) },
       uWire: { value: new THREE.Color(0x6aa1ff) }, uEdge: { value: new THREE.Color(0x3b2a18) } };
     const solid = new THREE.BufferGeometry();
     solid.setAttribute('position', new THREE.BufferAttribute(p.pos, 3));
     solid.setAttribute('normal', new THREE.BufferAttribute(p.nrm, 3));
     solid.setAttribute('aDir', new THREE.BufferAttribute(p.dir, 3));
+    solid.setAttribute('aColor', new THREE.BufferAttribute(p.col, 3));
     solid.setAttribute('aState', new THREE.BufferAttribute(new Float32Array(p.pos.length), 3).setUsage(THREE.DynamicDrawUsage));
     const lines = new THREE.BufferGeometry();
     lines.setAttribute('position', new THREE.BufferAttribute(p.lpos, 3));

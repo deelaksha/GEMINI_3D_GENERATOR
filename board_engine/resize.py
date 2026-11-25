@@ -46,7 +46,11 @@ def _axis_map(boards, a, target):
 
 def resize_design(data, target):
     """data: parsed board-design/v1 JSON; target: {'length'?, 'height'?, 'depth'?} mm -> new data (copy)."""
-    data = copy.deepcopy(data)
+    from .expand import ExpandError, expand
+    try:
+        data, _origin = expand(copy.deepcopy(data))   # repeat / mirror / assemblies become plain boards first
+    except ExpandError as e:
+        raise ResizeError(str(e)) from None
     raw = data.get('boards')
     t_default = (data.get('material') or {}).get('thickness')
     if not isinstance(raw, list) or not raw or not t_default:

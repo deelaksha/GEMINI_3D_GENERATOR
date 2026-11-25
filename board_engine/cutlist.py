@@ -166,6 +166,7 @@ def board_entry(design, plate, joint_results, drills):
                   else 'along width'),
         'orientation': _orientation(plate),
         'process': process,
+        **({'colors': plate.comp['colors']} if plate.comp.get('colors') else {}),
         'edges': edges,
         'operations': ops,
         'connections': _connections(design, cid, joint_results),
@@ -217,7 +218,8 @@ def cut_list(design, mfg=None):
     boards = [board_entry(design, plates[c['id']], joint_results, mfg['drilling']) for c in design['components']]
     groups = {}
     for b in boards:
-        key = (b['material'], b['material_type'], b['thickness'], b['grain'], b['_sig'])
+        key = (b['material'], b['material_type'], b['thickness'], b['grain'], b['_sig'],
+               tuple(sorted((b.get('colors') or {}).items())))        # differently coloured parts are separate lines
         groups.setdefault(key, []).append(b)
     lines = []
     for key, members in groups.items():
@@ -229,7 +231,8 @@ def cut_list(design, mfg=None):
                       'blank_length': f['blank']['length'], 'blank_width': f['blank']['width'],
                       'grain': f['grain'], 'shape': f['shape'], 'process': f['process'],
                       'banded_edges': sum(1 for e in f['edges'] if 'banding' in e),
-                      'drilling': len(f['operations']['drilling'])})
+                      'drilling': len(f['operations']['drilling']),
+                      **({'colors': f['colors']} if f.get('colors') else {})})
     lines.sort(key=lambda r: (r['material'], -r['thickness'], -r['blank_length'] * r['blank_width'], r['part']))
     for b in boards:
         b.pop('_sig')

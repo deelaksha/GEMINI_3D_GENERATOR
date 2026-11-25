@@ -32,7 +32,7 @@ async function buildPreview(boards) {
       const edges = new THREE.EdgesGeometry(geo, 25);
       geo.computeBoundingBox();
       parts.push({ id: b.id, pos: geo.attributes.position.array, nrm: geo.attributes.normal.array,
-        line: edges.attributes.position.array, box: geo.boundingBox });
+        line: edges.attributes.position.array, box: geo.boundingBox, color: new THREE.Color(b.color || '#d9b98b') });
     } catch (e) { /* invalid outline: the board is left out of the preview; the compiler reports the problem */ }
   }
   if (!parts.length) return null;
@@ -41,7 +41,7 @@ async function buildPreview(boards) {
   const center = box.getCenter(new THREE.Vector3());
   const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
   const nS = parts.reduce((n, p) => n + p.pos.length / 3, 0), nL = parts.reduce((n, p) => n + p.line.length / 3, 0);
-  const out = { pos: new Float32Array(nS * 3), nrm: new Float32Array(nS * 3), dir: new Float32Array(nS * 3),
+  const out = { pos: new Float32Array(nS * 3), nrm: new Float32Array(nS * 3), dir: new Float32Array(nS * 3), col: new Float32Array(nS * 3),
     lpos: new Float32Array(nL * 3), ldir: new Float32Array(nL * 3), ids: [], solid: [], lines: [] };
   let s = 0, l = 0;
   const d = new THREE.Vector3();
@@ -53,7 +53,10 @@ async function buildPreview(boards) {
     const ns = p.pos.length / 3, nl = p.line.length / 3;
     out.pos.set(p.pos, s * 3); out.nrm.set(p.nrm, s * 3);
     out.lpos.set(p.line, l * 3);
-    for (let i = s * 3; i < (s + ns) * 3; i += 3) { out.dir[i] = d.x; out.dir[i + 1] = d.y; out.dir[i + 2] = d.z; }
+    for (let i = s * 3; i < (s + ns) * 3; i += 3) {
+      out.dir[i] = d.x; out.dir[i + 1] = d.y; out.dir[i + 2] = d.z;
+      out.col[i] = p.color.r; out.col[i + 1] = p.color.g; out.col[i + 2] = p.color.b;
+    }
     for (let i = l * 3; i < (l + nl) * 3; i += 3) { out.ldir[i] = d.x; out.ldir[i + 1] = d.y; out.ldir[i + 2] = d.z; }
     out.ids.push(p.id); out.solid.push([s, ns]); out.lines.push([l, nl]);
     s += ns; l += nl;
@@ -99,7 +102,7 @@ self.onmessage = async ({ data: { source, production, timeout, machine } }) => {
             // built in the background: the stream (and so the compile result) never waits for the animation
             building++;
             buildPreview(ev.preview).then((p) => p && self.postMessage({ type: 'preview', ...p },
-              [p.pos.buffer, p.nrm.buffer, p.dir.buffer, p.lpos.buffer, p.ldir.buffer])).catch(() => {})
+              [p.pos.buffer, p.nrm.buffer, p.dir.buffer, p.col.buffer, p.lpos.buffer, p.ldir.buffer])).catch(() => {})
               .finally(() => { if (!--building) self.postMessage({ type: 'preview-done' }); });
             delete ev.preview;
           }

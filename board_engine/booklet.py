@@ -179,7 +179,13 @@ def mat_label(mat):
 def sheet_stock_label(nesting, index, mat):
     """Stock board of one cutting sheet (sheets are never shared between materials/thicknesses)."""
     st = next((s['stock'] for s in nesting.get('sheets', []) if s['index'] == index), None)
-    return mat_label({'name': st['material'], 'thickness': st['thickness']}) if st else mat_label(mat)
+    if not st:
+        return mat_label(mat)
+    label = mat_label({'name': st['material'], 'thickness': st['thickness']})
+    if st.get('color'):
+        from .colors import color_name
+        label += f" - {color_name(st['color'])} ({st['color']})"
+    return label
 
 
 def _wrap(text, width_mm, size, font='F1'):

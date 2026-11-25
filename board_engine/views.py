@@ -37,7 +37,8 @@ def component_view(design, comp):
     lo, hi = pl.world_aabb()
     return {
         'id': comp['id'], 'name': comp.get('name'), 'group': comp.get('group'),
-        'thickness': pl.t, 'color': comp.get('color'), 'grain_locked': bool(comp.get('grain_locked')),
+        'thickness': pl.t, 'color': comp.get('color'), 'colors': comp.get('colors'),
+        'grain_locked': bool(comp.get('grain_locked')),
         'outline': comp['outline'], 'cut_outline': _r([list(p) for p in pl.cut]),
         'features': [f if f['shape'] == 'circle' else dict(f, polygon=_r(feature_polygon(f)))
                      for f in comp.get('features', [])],

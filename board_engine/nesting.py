@@ -122,6 +122,8 @@ def part_area(plate):
 def stock_key(design, comp):
     """Parts may share a sheet only when they are cut from the same stock board."""
     m = material_of(design, comp)
+    if design.get('color_sheets') and comp.get('colors'):    # pre-coloured stock: each colour has its own sheets
+        return (m['name'], m['type'], m['thickness'], comp['colors']['front'])
     return (m['name'], m['type'], m['thickness'])
 
 
@@ -165,8 +167,8 @@ def nest(design, opts=None):
 
     sheets, placements = [], []
     # Thickest stock first, then by name: deterministic sheet numbering
-    for key in sorted(groups, key=lambda k: (-k[2], k[0], k[1])):
-        stock = {'material': key[0], 'type': key[1], 'thickness': key[2]}
+    for key in sorted(groups, key=lambda k: (-k[2], k[0], k[1], k[3:])):
+        stock = {'material': key[0], 'type': key[1], 'thickness': key[2], **({'color': key[3]} if len(key) > 3 else {})}
         first = len(sheets)
         best = None
         for order in _ORDERS:
@@ -187,6 +189,7 @@ def nest(design, opts=None):
                                'tx': fx - bx0, 'ty': fy - by0,  # unrounded: rounding can push a part past the usable edge
                                'bbox': [round(fx, 3), round(fy, 3), round(fx + w, 3), round(fy + h, 3)],
                                'thickness': pl.t, 'area': round(part_area(pl), 2),
+                               **({'color': pl.comp['color']} if pl.comp.get('colors') else {}),
                                **({'grain_aligned': True} if grain else {})})
         unplaced.extend({'id': pl.id, 'code': 'NESTING_FAILED', 'message': f"Could not place '{pl.id}'."} for pl in failed)
         sheets.extend({'index': first + i, 'stock': stock} for i in range(nbins))
@@ -433,7 +436,7 @@ def verify_nesting(design, report):
     for p in report['placements']:
         st = stock_of.get(p['sheet'])
         key = stock_key(design, find_component(design, p['id']))
-        if st is not None and (st['material'], st['type'], st['thickness']) != key:
+        if st is not None and (st['material'], st['type'], st['thickness']) + ((st['color'],) if 'color' in st else ()) != key:
             issues.append({'code': 'MIXED_STOCK_ON_SHEET', 'severity': 'error', 'components': [p['id']],
                            'message': f"'{p['id']}' ({key[0]}, {key[2]:g} mm) is placed on sheet {p['sheet'] + 1} "
                                       f"of {st['material']} {st['thickness']:g} mm."})

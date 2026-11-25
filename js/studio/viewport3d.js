@@ -170,6 +170,26 @@ export class Viewport3D {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Painted finish (colouring on): one material per face - front (+z), back (-z), edges. */
+  _paint(geo, colors) {
+    const pos = geo.attributes.position, nrm = geo.attributes.normal;
+    geo.clearGroups();
+    let start = 0, cur = -1;
+    for (let i = 0; i < pos.count; i += 3) {          // non-indexed: one triangle per 3 vertices
+      const z = (nrm.getZ(i) + nrm.getZ(i + 1) + nrm.getZ(i + 2)) / 3;
+      const m = z > 0.5 ? 0 : z < -0.5 ? 1 : 2;
+      if (m !== cur) {
+        if (cur >= 0) geo.addGroup(start, i - start, cur);
+        start = i;
+        cur = m;
+      }
+    }
+    if (cur >= 0) geo.addGroup(start, pos.count - start, cur);
+    // the renderer shades in linear light and outputs sRGB: convert so a paint colour shows as its own hex value
+    return ['front', 'back', 'edges'].map((k) => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(colors[k]).convertSRGBToLinear(), roughness: 0.62, metalness: 0 }));
+  }
+
   _materials(comp) {
     const t = comp.thickness;
     const light = comp.color && parseInt(comp.color.slice(1), 16) > 0xd8d8d8;
@@ -203,7 +223,7 @@ export class Viewport3D {
     for (const comp of model.components) {
       const geo = new THREE.ExtrudeGeometry(shapeFromComponent(comp), { depth: comp.thickness, bevelEnabled: false, curveSegments: 32 });
       geo.translate(0, 0, -comp.thickness / 2);
-      const mesh = new THREE.Mesh(geo, this._materials(comp));
+      const mesh = new THREE.Mesh(geo, comp.colors ? this._paint(geo, comp.colors) : this._materials(comp));
       mesh.castShadow = mesh.receiveShadow = true;
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
         new THREE.LineBasicMaterial({ color: STATE_EDGE[comp.state] || STATE_EDGE.joined, transparent: true, opacity: 0.7 }));

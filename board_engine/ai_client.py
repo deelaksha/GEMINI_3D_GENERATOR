@@ -73,7 +73,7 @@ def _claude(prompt, model):
             max_tokens=64000,
             betas=['server-side-fallback-2026-07-01'],
             fallbacks='default',
-            output_config={'effort': 'high'},
+            output_config={'effort': 'xhigh'},      # complex structures: deeper thinking
             messages=[{'role': 'user', 'content': prompt}],
         ) as stream:
             message = stream.get_final_message()

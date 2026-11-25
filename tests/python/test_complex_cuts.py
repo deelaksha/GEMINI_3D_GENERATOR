@@ -248,7 +248,8 @@ COMPILER_FIELDS = """format product name description overall length height depth
 joinery sheet width boards connections id group position size grain normal openings edge_banding edge profile
 engravings rotate axis angle pivot kind shape center diameter corner_radius note points closed sides rotation start
 segments line arc to radius large clockwise into into_edge tabs tab_width tab_depth fasteners count gap bevel fingers auto_connect
-mounting living_hinge from lines_along spacing cut bridge text height align src""".split()
+mounting living_hinge from lines_along spacing cut bridge text height align src repeat count step mirror at assemblies instances
+assembly offset plan""".split()
 
 
 def test_ai_prompt_documents_every_field_the_compiler_accepts():
