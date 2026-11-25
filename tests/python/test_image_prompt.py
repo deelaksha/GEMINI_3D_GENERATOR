@@ -79,3 +79,18 @@ def test_detailed_models_snippet_in_the_spec_compiles():
                          {'id': 'c', 'type': 'tab_slot', 'board': 'TILE-F1', 'into': 'R-F', 'tabs': 1, 'tab_width': 8}]}
     r = compile_source(json.dumps(d), run_production=False)
     assert r['ok'] and r['summary']['joined'] == 3 and not [x for x in r['diagnostics'] if x['severity'] in ('error', 'warning')]
+
+
+def test_production_blockers_reach_the_fix_prompt_with_their_full_count(client):
+    """A design that compiles clean but cannot be cut (parts below the router minimum) must still get a fix prompt,
+    and when more than 50 parts are affected the prompt says how many more there are."""
+    h = {'Authorization': 'Bearer vw'}
+    ribs = [{'id': f'RIB{i}', 'position': [10 + 12 * i, 6, 20], 'size': [6, 8, 40]} for i in range(60)]
+    d = {'format': 'board-design/v1', 'product': {'name': 'ribs'}, 'material': {'type': 'plywood', 'thickness': 6},
+         'boards': [{'id': 'BASE', 'position': [0, 0, 0], 'size': [740, 6, 80]}] + ribs,
+         'connections': [{'id': f'r{i}', 'type': 'tab_slot', 'board': f'RIB{i}', 'into': 'BASE', 'tabs': 1, 'tab_width': 6}
+                         for i in range(60)]}
+    r = client.post('/api/v1/canvas/compile', headers=h, json={'source': json.dumps(d), 'repair_prompt': True}).json
+    lay = r['layout']
+    assert not lay['ready_for_production'] and lay['blocking_total'] >= 60 and len(lay['blocking_issues']) == 50
+    assert 'PART_BELOW_MIN_SIZE' in r['repair_prompt'] and 'more production problem(s)' in r['repair_prompt']

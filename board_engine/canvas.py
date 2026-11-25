@@ -1912,7 +1912,7 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         try:
             pkg = production_package(design, {'compensate_kerf': True})
             result['layout'] = {'nesting': pkg['nesting'], 'cut': pkg['cut'], 'ready_for_production': pkg['ready_for_production'],
-                                'blocking_issues': pkg['blocking_issues'][:50]}
+                                'blocking_issues': pkg['blocking_issues'][:50], 'blocking_total': len(pkg['blocking_issues'])}
             result['cut_list'] = pkg.get('cut_list')
             mfg = pkg.get('manufacturing') or {}
             result['manufacturing'] = {k: mfg[k] for k in ('summary', 'assembly') if k in mfg}
@@ -1929,7 +1929,9 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     if errors and result.get('layout'):
         # the production checks only see the part of the design that compiled: any compile error blocks production
         result['layout']['ready_for_production'] = False
-        result['layout']['blocking_issues'] = ([d for d in diags if d['severity'] == 'error'] + result['layout']['blocking_issues'])[:50]
+        blocking = [d for d in diags if d['severity'] == 'error'] + result['layout']['blocking_issues']
+        result['layout']['blocking_total'] = errors + result['layout'].get('blocking_total', 0)
+        result['layout']['blocking_issues'] = blocking[:50]
     result['summary'] = {'boards': len(design['components']), 'joints': len(design['joints']),
                          'joined': sum(1 for j in design['joints'] if j.get('status') == 'joined'),
                          'errors': errors, 'warnings': sum(1 for d in diags if d['severity'] == 'warning')}

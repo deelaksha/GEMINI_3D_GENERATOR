@@ -179,7 +179,7 @@ def inspect(plates, joints=(), bodies=None):
                      f"they are held only through other boards. Add a connection if they should be fixed together."),
                     [f"{lo}.{AX[k]}max = {_f(box[lo][1][k])} mm", f"{hi}.{AX[k]}min = {_f(box[hi][0][k])} mm",
                      f"|{_f(box[hi][0][k])} - {_f(box[lo][1][k])}| = {abs(box[hi][0][k] - box[lo][1][k]):.2f} mm <= {TOUCH} "
-                     f"mm: touching", f"contact = {c1:.1f} × {c2:.1f} mm", f"connections between them: none",
+                     f"mm: touching", f"contact = {c1:.1f} × {c2:.1f} mm", "connections between them: none",
                      f"contact direction: {AX[k]} ({'vertical: load bearing' if k == 1 else 'horizontal'})",
                      *([f"{e}: edge along {AX[along[0]]} = {size[e][along[0]]:.1f} mm <= its length along {AX[k]} = "
                         f"{size[e][k]:.1f} mm: it is the board's end"] if end and k != 1 else [])],

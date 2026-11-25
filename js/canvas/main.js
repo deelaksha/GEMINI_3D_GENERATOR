@@ -629,15 +629,24 @@ function render(keepCamera = false) {
 function renderDiagnostics() {
   const r = S.result;
   const list = $('#diag-list');
-  const ds = (r?.diagnostics || []).slice().sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
+  // production blockers (parts too small, too big for the sheet, ...) are problems too: list the ones that are not
+  // already a diagnostic, so a design is never shown as clean while it cannot be cut
+  const shown = new Set((r?.diagnostics || []).map((d) => d.message));
+  const blockers = (r?.layout?.blocking_issues || []).filter((b) => !shown.has(b.message))
+    .map((b) => ({ ...b, severity: 'error', board: b.board || (b.components || [])[0], production: true }));
+  const more = (r?.layout?.blocking_total || 0) - (r?.layout?.blocking_issues || []).length;
+  if (more > 0) blockers.push({ code: 'MORE_PRODUCTION_PROBLEMS', severity: 'error', production: true,
+    message: `${more} more production problem(s) like the ones above (only the first 50 are listed).` });
+  const ds = [...(r?.diagnostics || []), ...blockers].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
   $('#diag-count').textContent = ds.length;
   $('#diag-count').className = `badge ${ds.some((d) => d.severity === 'error') ? 'err' : ds.length ? 'warn' : ''}`;
   const safe = ds.flatMap((d) => (d.fixes || []).filter((f) => f.safe));
   $('#btn-autofix').disabled = !safe.length;
   $('#btn-autofix').innerHTML = `<svg><use href="#i-wand"/></svg>Auto-fix safe issues${safe.length ? ` (${safe.length})` : ''}`;
 
-  const errCount = ds.filter((d) => d.severity === 'error').length;
-  const problems = ds.filter((d) => d.severity === 'error' || d.severity === 'warning').length;   // info notes are FYI
+  const hidden = more > 0 ? more - 1 : 0;        // the "N more" row stands for N problems
+  const errCount = ds.filter((d) => d.severity === 'error').length + hidden;
+  const problems = ds.filter((d) => d.severity === 'error' || d.severity === 'warning').length + hidden;   // info notes are FYI
   const btnRepair = $('#btn-repair-prompt');
   if (btnRepair) {
     btnRepair.disabled = !problems;
@@ -663,7 +672,7 @@ function renderDiagnostics() {
 
   list.innerHTML = banner + ds.map((d, i) => `<div class="dg" data-i="${i}">
     <span class="dot ${d.severity === 'error' ? 'err' : d.severity === 'warning' ? 'warn' : ''}"></span>
-    <div><div class="meta">${esc(d.code)}${d.board ? ' · ' + esc(d.board) : ''}${d.line ? ' · line ' + d.line : ''}</div>
+    <div><div class="meta">${d.production ? 'PRODUCTION · ' : ''}${esc(d.code)}${d.board ? ' · ' + esc(d.board) : ''}${d.line ? ' · line ' + d.line : ''}</div>
       <div class="msg">${esc(d.message)}</div>
       ${d.calc?.length ? `<details class="calc"><summary>Calculation</summary><pre>${d.calc.map(esc).join('\n')}</pre></details>` : ''}
       ${d.fixes?.length ? `<div class="fixes">${d.fixes.map((f, k) => `<button class="btn ${f.safe ? 'safe' : ''}" data-fix="${i}:${k}" title="${f.safe ? 'Unambiguous correction' : 'Changes the design — you will be asked to confirm'}">${f.safe ? '✓ ' : ''}${esc(f.title)}</button>`).join('')}</div>` : ''}

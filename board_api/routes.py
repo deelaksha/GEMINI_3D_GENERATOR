@@ -653,8 +653,7 @@ def canvas_repair_prompt():
     src = data.get('source')
     machine = _machine(data)
     res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
-    blocking = (res.get('layout') or {}).get('blocking_issues', [])
-    prompt = build_repair_prompt(src, res['diagnostics'], blocking, machine)
+    prompt = build_repair_prompt(src, res['diagnostics'], _with_total(res.get('layout') or {}), machine)
     return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
                     'problems': prompt.count('\n- [')})
 
@@ -703,12 +702,24 @@ def canvas_update_prompt():
                                                                images)})
 
 
+def _with_total(layout):
+    """The production blockers sent with a result (at most 50), plus one line saying how many more there are."""
+    blocking = list(layout.get('blocking_issues') or [])
+    more = (layout.get('blocking_total') or len(blocking)) - len(blocking)
+    if more > 0:
+        blocking.append({'code': 'MORE_PRODUCTION_PROBLEMS', 'severity': 'error',
+                         'message': f'{more} more production problem(s) of the kinds listed above were not listed; fix '
+                                    f'every part they apply to the same way.'})
+    return blocking
+
+
 def _with_repair_prompt(res, source, machine=None):
     """Attach the follow-up fix prompt for a compile that found errors or warnings, built from this result (no
     second compile), so "Copy fix prompt" copies it at once."""
     from board_engine.canvas_prompt import build_repair_prompt
-    if any(d['severity'] in ('error', 'warning') for d in res['diagnostics']):
-        blocking = (res.get('layout') or {}).get('blocking_issues', [])
+    layout = res.get('layout') or {}
+    blocking = _with_total(layout)
+    if any(d['severity'] in ('error', 'warning') for d in res['diagnostics']) or blocking:
         res['repair_prompt'] = build_repair_prompt(source, res['diagnostics'], blocking, machine)
         res['repair_problems'] = res['repair_prompt'].count('\n- [')
     return res
@@ -924,7 +935,7 @@ def canvas_ai_fix():
     machine = _machine(data)
     res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
     errors = [d for d in res['diagnostics'] if d['severity'] == 'error']
-    blocking = (res.get('layout') or {}).get('blocking_issues', [])
+    blocking = _with_total(res.get('layout') or {})
     if not errors and not blocking:
         return jsonify({'ok': True, 'source': src, 'problems': 0, 'changed': False})
     prompt = build_repair_prompt(src, res['diagnostics'], blocking, machine)
