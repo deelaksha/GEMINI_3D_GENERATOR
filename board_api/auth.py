@@ -34,6 +34,24 @@ SESSION_COOKIE = 'board_session'
 SESSION_TTL = 12 * 3600
 
 
+def _create_once(path, data):
+    """Write `data` to a new file (mode 600) unless another process got there first; -> the file's content either way.
+    Several workers start at once, and they must all end up with the same secret / key."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        for _ in range(50):                  # the winner may still be writing
+            with open(path, 'rb') as f:
+                got = f.read()
+            if got:
+                return got
+            time.sleep(0.02)
+        raise OSError(f'{path} stays empty')
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    return data
+
+
 def _session_secret(instance_dir):
     """HMAC secret for stateless session tokens, identical on every server instance.
 
@@ -49,17 +67,10 @@ def _session_secret(instance_dir):
         return hashlib.sha256(('board-session:' + '|'.join(stable)).encode()).digest()
     path = os.path.join(instance_dir, 'session_secret')
     try:
-        with open(path, 'rb') as f:
-            return f.read()
+        os.makedirs(instance_dir, exist_ok=True)
+        return _create_once(path, secrets.token_bytes(32))
     except OSError:
-        secret = secrets.token_bytes(32)
-        try:
-            with open(path, 'wb') as f:
-                f.write(secret)
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
-        return secret
+        return secrets.token_bytes(32)   # not writable: sessions last as long as this process
 
 
 class KeyRing:
@@ -68,6 +79,7 @@ class KeyRing:
         self._secret = _session_secret(instance_dir)
         self._lock = threading.Lock()
         self._hits = {}
+        self._calls = 0
         env = os.environ.get('BOARD_API_KEYS', '').strip()
         path = os.path.join(instance_dir, 'api_keys.json')
         if env:
@@ -82,15 +94,16 @@ class KeyRing:
                         self.keys[k['key']] = {'role': k['role'], 'name': k.get('name', 'key')}
         else:
             key = 'bsk_' + secrets.token_urlsafe(24)
-            self.keys[key] = {'role': 'editor', 'name': 'default-agent'}
+            mine = json.dumps({'keys': [{'key': key, 'role': 'editor', 'name': 'default-agent'}]}, indent=1).encode()
             try:
                 os.makedirs(instance_dir, exist_ok=True)
-                with open(path, 'w') as f:
-                    json.dump({'keys': [{'key': key, 'role': 'editor', 'name': 'default-agent'}]}, f, indent=1)
-                os.chmod(path, 0o600)
-                log.warning('Generated API key for AI agents (editor): %s  (stored in %s)', key, path)
-            except OSError:
+                stored = _create_once(path, mine)
+                if stored == mine:
+                    log.warning('Generated an API key for AI agents (editor role); it is stored in %s (mode 600)', path)
+                key = json.loads(stored)['keys'][0]['key']       # another worker's key, if it was first
+            except (OSError, ValueError, KeyError, IndexError):
                 log.warning('Generated a temporary API key (instance dir not writable); set BOARD_API_KEYS for agents')
+            self.keys[key] = {'role': 'editor', 'name': 'default-agent'}
         self.generated_path = path
 
     # Stateless signed sessions: "<expiry>.<nonce>.<hmac>" — valid on any instance sharing the secret
@@ -117,6 +130,10 @@ class KeyRing:
             if len(q) >= limit:
                 return False
             q.append(now)
+            self._calls += 1
+            if self._calls % 1000 == 0:     # forget principals idle for a whole window (every new session adds one)
+                for p in [p for p, d in self._hits.items() if not d or d[-1] < now - window]:
+                    del self._hits[p]
             return True
 
 

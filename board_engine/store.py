@@ -7,6 +7,7 @@ Every mutation goes through DesignStore.mutate(), which:
   * runs the mutation on a deep copy (callers validate inside it),
   * bumps the revision, writes atomically and records an audit entry.
 """
+import contextlib
 import copy
 import json
 import os
@@ -14,6 +15,11 @@ import shutil
 import threading
 import time
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:          # Windows: one process only (the development server)
+    fcntl = None
 
 from .model import check_id, normalize_design
 
@@ -38,11 +44,30 @@ class DesignStore:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self._locks = {}
+        self._depth = {}
         self._guard = threading.Lock()
 
+    @contextlib.contextmanager
     def _lock(self, did):
+        """One writer per design: a thread lock inside this process plus a file lock across processes (several
+        gunicorn workers share the folder), so two saves can never both build on the same revision."""
         with self._guard:
-            return self._locks.setdefault(did, threading.RLock())
+            lock = self._locks.setdefault(did, threading.RLock())
+        with lock:
+            depth = self._depth.get(did, 0)
+            self._depth[did] = depth + 1
+            held = None
+            try:
+                if depth == 0 and fcntl:                 # outermost only: flock is not re-entrant across opens
+                    check_id(did, 'design id')
+                    (self.root / '.locks').mkdir(exist_ok=True)
+                    held = open(self.root / '.locks' / f'{did}.lock', 'a')
+                    fcntl.flock(held, fcntl.LOCK_EX)
+                yield
+            finally:
+                self._depth[did] = depth
+                if held:
+                    held.close()                         # releases the file lock
 
     def _path(self, did):
         check_id(did, 'design id')
@@ -71,7 +96,7 @@ class DesignStore:
 
     def _write(self, design):
         p = self._path(design['id'])
-        tmp = p.with_suffix('.json.tmp')
+        tmp = p.with_suffix(f'.{os.getpid()}.{threading.get_ident()}.tmp')
         tmp.write_text(json.dumps(design, indent=1))
         os.replace(tmp, p)
 

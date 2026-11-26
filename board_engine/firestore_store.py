@@ -14,6 +14,7 @@ instances editing the same design cannot overwrite each other (the loser gets Co
 """
 import base64
 import copy
+import gzip
 import json
 import logging
 import os
@@ -21,12 +22,14 @@ import threading
 import time
 from urllib.parse import quote
 
-from .model import check_id, normalize_design
+from .model import SchemaError, check_id, normalize_design
 from .store import KEEP_VERSIONS, Conflict, NotFound
 
 log = logging.getLogger('board_engine.firestore')
 SCOPES = ['https://www.googleapis.com/auth/datastore']
 COLLECTION = 'board_designs'
+DOC_LIMIT = 1_000_000       # bytes of design data per document (Firestore allows 1 MiB including the other fields)
+COMPRESS_OVER = 900_000     # bytes: larger designs are stored gzip-compressed
 
 
 def load_service_account(raw):
@@ -98,14 +101,33 @@ class FirestoreStore:
     # ------------------------------------------------------------------ encoding
     @staticmethod
     def _fields(design):
-        return {
+        """Document fields. A large design is stored gzip-compressed ("data_gz"), so it still fits Firestore's
+        1 MiB document limit (board designs compress about 14 x); one that does not even then is refused clearly."""
+        raw = json.dumps(design, separators=(',', ':')).encode()
+        fields = {
             'name': {'stringValue': design.get('name') or design['id']},
             'revision': {'integerValue': str(design.get('revision', 0))},
             'updated': {'stringValue': design.get('updated') or ''},
             'components': {'integerValue': str(len(design['components']))},
             'joints': {'integerValue': str(len(design['joints']))},
-            'data': {'stringValue': json.dumps(design, separators=(',', ':'))},
         }
+        if len(raw) <= COMPRESS_OVER:
+            fields['data'] = {'stringValue': raw.decode()}
+            return fields
+        packed = base64.b64encode(gzip.compress(raw, 6)).decode()
+        if len(packed) > DOC_LIMIT:
+            raise SchemaError(f"design '{design['id']}' is too large for cloud storage ({len(raw) / 1e6:.1f} MB, "
+                              f"{len(packed) / 1e6:.1f} MB compressed; at most {DOC_LIMIT / 1e6:.1f} MB): split it into "
+                              f"several designs", 'design')
+        fields['data_gz'] = {'bytesValue': packed}
+        return fields
+
+    @staticmethod
+    def _design(fields):
+        """The design stored in a document's fields (plain or compressed)."""
+        if 'data_gz' in fields:
+            return json.loads(gzip.decompress(base64.b64decode(fields['data_gz']['bytesValue'])))
+        return json.loads(fields['data']['stringValue'])
 
     def _doc_path(self, did):
         check_id(did, 'design id')
@@ -113,7 +135,7 @@ class FirestoreStore:
 
     def _read(self, did):
         _s, doc = self._call('GET', self._doc_path(did))
-        return normalize_design(json.loads(doc['fields']['data']['stringValue'])), doc['updateTime']
+        return normalize_design(self._design(doc['fields'])), doc['updateTime']
 
     # ------------------------------------------------------------------ interface
     def exists(self, did):
@@ -213,7 +235,7 @@ class FirestoreStore:
 
     def get_version(self, did, revision):
         _s, doc = self._call('GET', self._doc_path(did) + f'/versions/{int(revision)}')
-        return normalize_design(json.loads(doc['fields']['data']['stringValue']))
+        return normalize_design(self._design(doc['fields']))
 
     def _audit(self, did, entry):
         fields = {'seq': {'integerValue': str(time.time_ns())},  # orders entries within the same second

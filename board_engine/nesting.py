@@ -171,12 +171,20 @@ def nest(design, opts=None):
         stock = {'material': key[0], 'type': key[1], 'thickness': key[2], **({'color': key[3]} if len(key) > 3 else {})}
         first = len(sheets)
         best = None
+        # no packing can use fewer sheets than the parts' total (spaced) box area allows: once one reaches that with
+        # nothing left over, the remaining orders can only tie, and ties keep the first - stop there
+        bound = math.ceil(sum(min((w + sp) * (h + sp) for _r, w, h, _x, _y in it[1]) for it in groups[key])
+                          / ((ux1 - ux0 + sp) * (uy1 - uy0 + sp)) - 1e-9)
         for order in _ORDERS:
             items = sorted(groups[key], key=order)
             for rule in ('bssf', 'baf'):
                 packed = _pack(items, (ux0, uy0, ux1, uy1), sp, rule)
-                if best is None or (len(packed[1]), packed[0]) < (len(best[1]), best[0]):
+                if best is None or (len(packed[2]), packed[0]) < (len(best[2]), best[0]):
                     best = packed            # fewer parts left over, then fewer sheets; ties keep the first
+                if not best[2] and best[0] <= bound:
+                    break
+            if not best[2] and best[0] <= bound:
+                break
         shaped = [it for it in groups[key] if part_area(it[0]) < 0.97 * _bbox_area(it[0])]
         if shaped and len(groups[key]) <= TRUE_SHAPE_MAX_PARTS and (best[0] > 1 or best[2]):
             ts = _true_shape_pack(sorted(groups[key], key=_ORDERS[0]), (ux0, uy0, ux1, uy1), sp, sheet)

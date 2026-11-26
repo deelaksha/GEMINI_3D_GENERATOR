@@ -8,9 +8,12 @@ humans and agents). Responses use one envelope:
   failure: {"ok": false, "error": {"status", "message", "issues": [...] , ...}}
 """
 import functools
+import threading
 import json
 import logging
+import time
 
+from werkzeug.exceptions import HTTPException
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from board_engine.autofix import plan_fixes
@@ -47,6 +50,96 @@ def budget():
     return current_app.config.get('BOARD_TIME_BUDGET', 90)
 
 
+_SLOTS, _SLOTS_LOCK = {}, threading.Lock()
+
+
+def _take_slot():
+    """Reserve one of this user's concurrent compile slots (BOARD_COMPILE_SLOTS, default 2); None when all are in use.
+    A compile may legitimately run for minutes, so one session must not start many of them at once."""
+    who = g.principal['id']
+    with _SLOTS_LOCK:
+        if _SLOTS.get(who, 0) >= current_app.config.get('BOARD_COMPILE_SLOTS', 2):
+            return None
+        if sum(_SLOTS.values()) >= current_app.config.get('BOARD_COMPILE_TOTAL', 8):
+            return False                 # the whole process is full (a new session per request must not get around it)
+        _SLOTS[who] = _SLOTS.get(who, 0) + 1
+    return who
+
+
+def _give_slot(who):
+    with _SLOTS_LOCK:
+        _SLOTS[who] = _SLOTS.get(who, 1) - 1
+        if _SLOTS[who] <= 0:
+            del _SLOTS[who]
+
+
+def _busy(server_full=False):
+    if server_full:
+        resp, status = fail(503, 'server_busy', 'the server is compiling as many designs as it can right now; try again '
+                            'in a minute')
+        resp.headers['Retry-After'] = '30'
+        return resp, status
+    return fail(429, 'busy', f"{current_app.config.get('BOARD_COMPILE_SLOTS', 2)} compiles of yours are already running; "
+                'wait for one to finish (or cancel it) and try again')
+
+
+def heavy(fn):
+    """Routes that compile a design: at most BOARD_COMPILE_SLOTS at a time per user."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        who = _take_slot()
+        if not who:
+            return _busy(server_full=who is False)
+        try:
+            return fn(*a, **kw)
+        finally:
+            _give_slot(who)
+    return wrapper
+
+
+_AI_CALLS, _AI_LOCK = {}, threading.Lock()     # principal -> times of paid AI calls; '*' = everyone (one day)
+
+
+def ai_quota(fn):
+    """Paid AI calls: at most BOARD_AI_PER_HOUR per user and BOARD_AI_PER_DAY for the whole process. Every browser
+    session may call the AI, and a new session costs nothing, so the daily total is what really caps the bill."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        now, who = time.time(), g.principal['id']
+        per_hour = current_app.config.get('BOARD_AI_PER_HOUR', 20)
+        per_day = current_app.config.get('BOARD_AI_PER_DAY', 300)
+        with _AI_LOCK:
+            for k in list(_AI_CALLS):
+                keep = 86400 if k == '*' else 3600
+                _AI_CALLS[k] = [t for t in _AI_CALLS[k] if t > now - keep]
+                if not _AI_CALLS[k]:
+                    del _AI_CALLS[k]
+            if len(_AI_CALLS.get('*', ())) >= per_day:
+                return fail(429, 'ai_daily_limit', f'the server has made its {per_day} AI calls for today; copy the '
+                            f'prompt into your own AI instead, or try again tomorrow')
+            if len(_AI_CALLS.get(who, ())) >= per_hour:
+                return fail(429, 'ai_hourly_limit', f'at most {per_hour} AI calls per hour; copy the prompt into your '
+                            f'own AI instead, or try again later')
+            _AI_CALLS.setdefault(who, []).append(now)
+            _AI_CALLS.setdefault('*', []).append(now)
+        return fn(*a, **kw)
+    return wrapper
+
+
+def budgeted_by_size(fn):
+    """Like `budgeted`, for routes that compile AND then produce (export, AI fix): the budget grows with the design's
+    size the way the compiler's own does (about one '"position"' per board), so large designs are not cut off midway."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        from board_engine.canvas import BUDGET_BOARDS, MAX_BUDGET
+        src = (request.get_json(silent=True) or {}).get('source')
+        n = src.count('"position"') if isinstance(src, str) else 0
+        seconds = max(budget(), min(MAX_BUDGET, budget() * n / BUDGET_BOARDS))
+        with time_budget(seconds):
+            return fn(*a, **kw)
+    return wrapper
+
+
 def budgeted(fn):
     """Read-only heavy endpoints: stop with 503 instead of running on (nothing is written by these routes)."""
     @functools.wraps(fn)
@@ -78,6 +171,25 @@ def summarize(report, full=True, design=None):
                              for i in report['issues']]
             out['fixes'], out['unfixable'] = plan['fixes'], plan['unfixable']
     return out
+
+
+@bp.errorhandler(Exception)
+def _unexpected(e):
+    """Any other failure in the API answers JSON (never an HTML error page); HTTP errors keep their status."""
+    if isinstance(e, HTTPException):
+        return fail(e.code or 500, (e.name or 'error').lower().replace(' ', '_'), e.description or e.name)
+    log.exception('unexpected error in %s', request.path)
+    return fail(500, 'internal_error', f'internal error ({type(e).__name__}); the request was not completed')
+
+
+@bp.get('/healthz')
+def healthz():
+    """Liveness / readiness for a load balancer: the process answers and the design store is reachable."""
+    try:
+        current_app.config['BOARD_STORE'].exists('healthz-probe')
+        return jsonify({'ok': True})
+    except Exception as e:  # noqa: BLE001 - report, never raise
+        return jsonify({'ok': False, 'error': f'design store unavailable ({type(e).__name__})'}), 503
 
 
 @bp.errorhandler(TimeBudgetExceeded)
@@ -645,6 +757,7 @@ def canvas_prompt():
 
 @bp.post('/canvas/repair-prompt')
 @require('viewer')
+@heavy
 def canvas_repair_prompt():
     """Follow-up prompt that hands this source's diagnostics back to the external AI for a minimal correction."""
     from board_engine.canvas import compile_source
@@ -685,6 +798,7 @@ def canvas_integer_fix_prompt():
 
 @bp.post('/canvas/update-prompt')
 @require('viewer')
+@heavy
 def canvas_update_prompt():
     """Follow-up prompt asking the external AI to change only what a change request affects."""
     from board_engine.canvas import compile_source
@@ -733,6 +847,7 @@ def _requirements(data):
 
 @bp.post('/canvas/compile')
 @require('viewer')
+@heavy
 def canvas_compile():
     from board_engine.canvas import compile_source
     data = body()
@@ -767,6 +882,9 @@ def canvas_compile_stream():
     include_design, want_prompt, machine = bool(data.get('include_design')), bool(data.get('repair_prompt')), _machine(data)
     requirements = _requirements(data)
     events, cancelled = queue.Queue(), threading.Event()
+    slot = _take_slot()
+    if not slot:
+        return _busy(server_full=slot is False)
     state = {'stage': -1, 'sent': 0.0}
     t0 = time.monotonic()
 
@@ -799,10 +917,14 @@ def canvas_compile_stream():
             log.exception('canvas compile stream failed')
             events.put({'type': 'error', 'message': f'Internal compiler error: {type(e).__name__}'})
         finally:
+            _give_slot(slot)            # the compile (or its cancellation) is over
             events.put(None)
 
+    # started here, not when the response is first read: if the client is gone before that, the compile still ends
+    # (within its budget) and its finally gives the compile slot back
+    threading.Thread(target=work, daemon=True, name='canvas-compile').start()
+
     def stream():
-        threading.Thread(target=work, daemon=True, name='canvas-compile').start()
         try:
             while True:
                 try:
@@ -821,7 +943,8 @@ def canvas_compile_stream():
 
 @bp.post('/canvas/export')
 @require('viewer')
-@budgeted
+@heavy
+@budgeted_by_size
 def canvas_export():
     """Everything a cutting machine needs, in one zip: per sheet an SVG (laser) and a DXF (CNC / CAD), the PDF booklet
     and a README with material, kerf, sheet size, colour / layer map and cut order. Kerf-compensated, 1:1 in mm.
@@ -902,6 +1025,8 @@ def canvas_ai_status():
 
 @bp.post('/canvas/ai-generate')
 @require('editor')
+@ai_quota
+@heavy
 def canvas_ai_generate():
     """Generate a design with the configured AI from the canvas's description (the same prompt as step 2)."""
     from board_engine.ai_client import AIError, complete, provider
@@ -924,7 +1049,9 @@ def canvas_ai_generate():
 
 @bp.post('/canvas/ai-fix')
 @require('editor')
-@budgeted
+@ai_quota
+@heavy
+@budgeted_by_size
 def canvas_ai_fix():
     """Compile the code; if it has errors, send the strict fix prompt to the AI and return its corrected design."""
     from board_engine.ai_client import AIError, complete, provider

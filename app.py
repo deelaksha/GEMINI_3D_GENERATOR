@@ -46,11 +46,26 @@ def _writable_instance_dir():
 
 
 INSTANCE_DIR = _writable_instance_dir()
+
+# compile snapshots shared by all worker processes (the editor's production pass reuses its fast pass)
+import board_engine.canvas as _canvas  # noqa: E402
+_canvas.SNAPSHOT_DIR = str(INSTANCE_DIR / 'compile-cache')
+os.makedirs(_canvas.SNAPSHOT_DIR, mode=0o700, exist_ok=True)
 _file_store = DesignStore(INSTANCE_DIR / 'designs')
 _file_store.persistent = INSTANCE_DIR == BASE_DIR / 'instance' or bool(os.environ.get('BOARD_INSTANCE_DIR'))
 app.config['BOARD_STORE'] = store_from_env(_file_store)  # Firestore when FIREBASE_SERVICE_ACCOUNT is set
 app.config['BOARD_KEYRING'] = KeyRing(str(INSTANCE_DIR))
 app.config['BOARD_RATE_LIMIT'] = int(os.environ.get('BOARD_RATE_LIMIT', 600))
+app.config['BOARD_COMPILE_SLOTS'] = int(os.environ.get('BOARD_COMPILE_SLOTS', 2))   # concurrent compiles per user
+app.config['BOARD_AI_PER_HOUR'] = int(os.environ.get('BOARD_AI_PER_HOUR', 20))    # paid AI calls per user
+app.config['BOARD_AI_PER_DAY'] = int(os.environ.get('BOARD_AI_PER_DAY', 300))     # paid AI calls per process per day
+app.config['BOARD_COMPILE_TOTAL'] = int(os.environ.get('BOARD_COMPILE_TOTAL', max(4, 2 * (os.cpu_count() or 2))))  # per process
+if os.environ.get('TRUST_PROXY'):
+    # behind a TLS-terminating proxy: trust its X-Forwarded-* headers (set TRUST_PROXY to the number of proxies), so
+    # request.is_secure is right and the session cookie keeps its Secure flag. Never set it without a proxy.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    _n = int(os.environ['TRUST_PROXY'])
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_n, x_proto=_n, x_host=_n)
 app.register_blueprint(board_api_bp)
 
 
@@ -89,6 +104,11 @@ def add_header(response):
     if not request.path.startswith('/api/v1'):
         # Legacy read-only routes stay open; the board API grants no cross-origin access.
         response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return response
 
 

@@ -126,3 +126,19 @@ def test_service_account_parsing_and_fallback(monkeypatch, tmp_path):
     assert st is fallback and 'missing' in st.config_error            # bad secret never crashes the site
     monkeypatch.setenv('FIREBASE_SERVICE_ACCOUNT', json.dumps(sa))
     assert isinstance(store_from_env(fallback), FirestoreStore)
+
+
+def test_large_designs_are_stored_compressed_and_read_back(monkeypatch):
+    import board_engine.firestore_store as fs
+    from board_engine.model import SchemaError
+    fake = FakeFirestore()
+    st = FirestoreStore(project_id='demo', http=fake)
+    d = {'id': 'big', 'name': 'Big', 'components': [base_plate()], 'joints': []}
+    monkeypatch.setattr(fs, 'COMPRESS_OVER', 100)                 # treat this small design as "large"
+    st.create(d)
+    doc = next(v for k, v in fake.docs.items() if k.endswith('/big'))
+    assert 'data_gz' in doc['fields'] and 'data' not in doc['fields']
+    assert st.get('big')['components'][0]['id'] == d['components'][0]['id']
+    monkeypatch.setattr(fs, 'DOC_LIMIT', 10)                       # and one that is too large even compressed
+    with pytest.raises(SchemaError, match='too large for cloud storage'):
+        st.create(dict(d, id='bigger'))

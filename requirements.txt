@@ -1,5 +1,5 @@
 flask>=3.0.0
 google-auth>=2.20
 requests>=2.31
-pytest>=7.0
 anthropic>=1.0
+gunicorn>=21.2; sys_platform != 'win32'    # production server (see docs/deployment.md)

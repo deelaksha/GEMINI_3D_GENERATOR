@@ -735,6 +735,9 @@ def plan_assembly(design, plates, contacts, bodies):
         while len(group) > 1:
             best = None
             local = [c for c in cons if c[0] in group and c[1] in group]
+            connected = {}                      # rest -> does it stay in one piece (the same rest recurs per direction)
+            whole = _connected(group, local)
+            cut_points = _articulation_points(group, local) if whole else None   # boards whose removal splits the group
             for m in dirs:
                 edges = {}
                 for x, y, kind, axis, _j in local:
@@ -752,10 +755,17 @@ def plan_assembly(design, plates, contacts, bodies):
                     # Prefer parts that are attached to the rest (so, reversed, every step connects to what
                     # is already built) and leave the rest in one piece; then the smallest part; then the
                     # direction that pulls most squarely off its contacts.
-                    rest = group - c
                     links = [(x, y, axis) for x, y, _k, axis, _j in local if (x in c) != (y in c)]
+                    if best is not None and (not links) > best[2][0]:
+                        continue                # loses on the first criterion: no need for the costly ones
+                    rest = frozenset(group - c)
+                    if rest not in connected:
+                        if cut_points is not None and len(c) == 1:      # one board: the rest stays whole unless it is a
+                            connected[rest] = next(iter(c)) not in cut_points   # cut point of the (connected) group
+                        else:
+                            connected[rest] = _connected(rest, local)
                     pull = sum(G.v_dot(m, axis) if x in c else -G.v_dot(m, axis) for x, y, axis in links)
-                    key = (not links, not _connected(rest, local), not c <= doors, len(c), -pull)
+                    key = (not links, not connected[rest], not c <= doors, len(c), -pull)
                     if best is None or key < best[2]:
                         best = (c, m, key)
             if best is None:
@@ -798,6 +808,45 @@ def plan_assembly(design, plates, contacts, bodies):
         plan.append({'boards': sorted(grp), 'steps': _assembly_steps(steps, grp)})
     issues += _access_order_issues(design, plan, bodies)
     return plan, issues
+
+
+def _articulation_points(nodes, cons):
+    """Nodes whose removal disconnects the (connected) graph on `nodes` - Tarjan's low-link, iterative."""
+    adj = {v: set() for v in nodes}
+    for x, y, *_ in cons:
+        if x in adj and y in adj and x != y:
+            adj[x].add(y)
+            adj[y].add(x)
+    disc, low, cut, t = {}, {}, set(), 0
+    for root in adj:
+        if root in disc:
+            continue
+        disc[root] = low[root] = t
+        t += 1
+        children, stack = 0, [(root, None, iter(adj[root]))]
+        while stack:
+            v, parent, it = stack[-1]
+            w = next(it, None)
+            if w is None:
+                stack.pop()
+                if parent is not None:
+                    low[parent] = min(low[parent], low[v])
+                    if stack[-1][1] is not None and low[v] >= disc[parent]:
+                        cut.add(parent)
+                continue
+            if w == parent:
+                continue
+            if w in disc:
+                low[v] = min(low[v], disc[w])
+            else:
+                disc[w] = low[w] = t
+                t += 1
+                if v == root:
+                    children += 1
+                stack.append((w, v, iter(adj[w])))
+        if children > 1:
+            cut.add(root)
+    return cut
 
 
 def _connected(nodes, cons):

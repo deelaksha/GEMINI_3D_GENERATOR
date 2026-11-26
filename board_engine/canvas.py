@@ -23,13 +23,16 @@ furniture.panel() places boards, furniture.edge_facing() finds edges, joining.jo
 through the validation / safe-repair pipeline (slots are generated there), validate_design() and the
 production package do the rest. Diagnostics carry the source line and, where possible, code-level fixes.
 """
+import collections
 import contextvars
 import copy
 import difflib
 import hashlib
 import json
 import math
+import os
 import re
+import threading
 
 from . import geometry as G
 from .deadline import TimeBudgetExceeded, time_budget as _budget
@@ -63,6 +66,7 @@ BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_b
 INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
 AXES = 'xyz'
 MAX_SOURCE = 100_000_000                # characters: a guard against runaway input, far above any real design
+REPAIR_MAX = 5_000_000                  # characters: larger invalid JSON is reported, not auto-repaired
 BUDGET_BOARDS = 900                     # the time budget covers this many boards; bigger designs get more, in proportion
 MAX_BUDGET = 900                        # s: never more than 15 minutes of compiling, however large the design
 SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambiguous (auto-fixable)
@@ -183,7 +187,7 @@ def _design_parts(text):
         for b in blocks:
             try:
                 objs.append(json.loads(_strip_comments(b)))
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 return None
     elif not blocks:
         dec, i, src = json.JSONDecoder(), 0, _strip_comments(text)
@@ -193,13 +197,13 @@ def _design_parts(text):
                 break
             try:
                 obj, i = dec.raw_decode(src, j)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 return None
             objs.append(obj)
     else:
         try:
             objs = [json.loads(_strip_comments(blocks[0]))]
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             return None
     objs = [o for o in objs if isinstance(o, dict)]
     if not objs or not all(isinstance(o.get('part'), dict) for o in objs):
@@ -253,17 +257,26 @@ def parse_source(text):
     if len(text) > MAX_SOURCE:
         return None, '', 0, [diag('error', 'SOURCE_TOO_LARGE', f'Source is larger than {MAX_SOURCE:,} characters.')]
     text = text.lstrip('\ufeff')
-    parts = _design_parts(text)
+    parts = _design_parts(text) if '"part"' in text else None     # (skip a second parse of ordinary designs)
     if parts:                           # a design the AI sent in several replies: merge, then compile the whole
         return None, text, 0, [_merge_parts(parts)]
     body, off = _extract(text)
     try:
-        data = json.loads(_strip_comments(body))
+        try:
+            data = json.loads(body)             # strict JSON (the usual case) needs no comment stripping
+        except json.JSONDecodeError:
+            data = json.loads(_strip_comments(body))   # comments / trailing commas: positions are kept for messages
+    except RecursionError:
+        return None, body, off, [diag('error', 'JSON_TOO_DEEP', 'The JSON is nested far too deeply to be a design '
+                                      '(brackets inside brackets thousands of times) - ask the AI for the design again.')]
     except json.JSONDecodeError as e:
         hint, fixes = '', None
         if re.search(r'\b(function|const|let|var|=>|import|export)\b', text[:4000]):
             hint = (' This looks like JavaScript. The canvas only accepts the declarative JSON format '
                     '(nothing is executed) — ask the AI to return JSON only.')
+        elif len(body) > REPAIR_MAX:            # repairing is slow on huge text and runs before any time budget
+            hint = (f' The code is too large ({len(body) / 1e6:.0f} MB) to repair automatically: fix the line shown, or '
+                    f'ask the AI for the design again (as a file or in parts).')
         else:
             fix = _syntax_fix(text, body, off)
             if fix:
@@ -277,6 +290,74 @@ def parse_source(text):
 
 _ORIGIN = contextvars.ContextVar('expanded_ids', default={})   # generated id -> id written in the source
 _REQUIREMENTS = contextvars.ContextVar('requirements', default=None)   # the requirement text of this compile
+_SNAPSHOT_KEY = contextvars.ContextVar('snapshot_key', default=None)   # identifies this compile's input
+
+# The editor compiles twice: a fast pass (3D and checks) and then the same code with production. The fast pass keeps
+# its state here, so the production pass only adds the production work instead of compiling everything again.
+_SNAPSHOTS = collections.OrderedDict()
+_SNAPSHOTS_LOCK = threading.Lock()
+SNAPSHOT_SLOTS = 3                       # in memory, per process
+SNAPSHOT_DIR = None                      # set by the app: shared by all worker processes (JSON files, never pickle)
+SNAPSHOT_FILES = 20
+SNAPSHOT_BYTES = 300_000_000             # and at most this much on disk
+
+
+def _engine_version():
+    """Fingerprint of the engine's source: snapshots made by older code are never reused after an upgrade."""
+    h = hashlib.sha256()
+    folder = os.path.dirname(os.path.abspath(__file__))
+    for name in sorted(os.listdir(folder)):
+        if name.endswith('.py'):
+            with open(os.path.join(folder, name), 'rb') as f:
+                h.update(name.encode() + f.read())
+    return h.hexdigest()[:16]
+
+
+ENGINE_VERSION = _engine_version()
+
+
+def _snapshot_path(key):
+    return os.path.join(SNAPSHOT_DIR, hashlib.sha256(json.dumps(key).encode()).hexdigest() + '.json')
+
+
+def _remember(key, result, design):
+    snap = copy.deepcopy((result, design))
+    with _SNAPSHOTS_LOCK:
+        _SNAPSHOTS[key] = snap
+        _SNAPSHOTS.move_to_end(key)
+        while len(_SNAPSHOTS) > SNAPSHOT_SLOTS:
+            _SNAPSHOTS.popitem(last=False)
+    if SNAPSHOT_DIR:                     # the production request may reach another worker process
+        try:
+            path = _snapshot_path(key)
+            tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+            with open(tmp, 'w') as f:
+                json.dump([result, design], f, separators=(',', ':'))
+            os.replace(tmp, path)
+            files = sorted((os.path.join(SNAPSHOT_DIR, n) for n in os.listdir(SNAPSHOT_DIR) if n.endswith('.json')),
+                           key=os.path.getmtime, reverse=True)          # newest first
+            total = 0
+            for k, f in enumerate(files):
+                total += os.path.getsize(f)
+                if k >= SNAPSHOT_FILES or (k and total > SNAPSHOT_BYTES):
+                    os.remove(f)
+        except OSError:
+            pass                         # a cache: failing to write it only costs a full compile later
+
+
+def _recall(key):
+    with _SNAPSHOTS_LOCK:
+        snap = _SNAPSHOTS.get(key)
+    if snap:
+        return copy.deepcopy(snap)
+    if SNAPSHOT_DIR:
+        try:
+            with open(_snapshot_path(key)) as f:
+                result, design = json.load(f)
+            return result, design
+        except (OSError, ValueError):
+            return None
+    return None
 
 
 def _id_line(src, ident, off):
@@ -1492,9 +1573,29 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
     the real machine and board.
     requirements: the free-text requirements the design was made from; sizes stated there are checked against it."""
     token = _REQUIREMENTS.set(requirements)
+    key = (ENGINE_VERSION, hashlib.sha256(text.encode('utf-8', 'surrogatepass')).hexdigest(), design_id,
+           json.dumps(machine, sort_keys=True, default=str), requirements) if isinstance(text, str) else None
+    key_token = _SNAPSHOT_KEY.set(key)
     try:
+        snap = _recall(key) if run_production and key else None
+        if snap:                                # same code as the fast pass just compiled: only add production
+            result, design = snap
+            try:
+                with _budget(time_budget and max(time_budget, min(MAX_BUDGET, time_budget * len(design['components']) /
+                                                                   BUDGET_BOARDS))):
+                    return _tail(result, design, result['diagnostics'], True, machine)
+            except TimeBudgetExceeded as e:
+                result['ok'] = False
+                result['diagnostics'].append(diag('error', 'COMPILE_TIMEOUT', f'{str(e).capitalize()}. The cut sheets of '
+                                                  f'this design could not be prepared in time.'))
+                return result
+            except Exception as e:  # same last line of defence as a full compile
+                result['ok'] = False
+                result['diagnostics'].append(diag('error', 'COMPILER_ERROR', f'Internal compiler error: {type(e).__name__}: {e}'))
+                return result
         return _compile_source(text, design_id, run_production, time_budget, machine)
     finally:
+        _SNAPSHOT_KEY.reset(key_token)
         _REQUIREMENTS.reset(token)
         _ORIGIN.set({})
 
@@ -1914,7 +2015,7 @@ def _remove_fix(raw_conns, i, cid):
 
 def _finish(design, result, boards, run_production, raw_conns=None, held=(), conn_pairs=None, machine=None):
     from .support import support_report
-    from .views import model3d, production_package
+    from .views import model3d
     diags = result['diagnostics']
     # connections that failed (resolving, placing or joining) are reported; the boards they would have held are not
     # reported again as loose, and the pair is not reported again as colliding / almost touching
@@ -1991,6 +2092,14 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         for i in check_requirements(_REQUIREMENTS.get(), [b['max'][k] - b['min'][k] for k in range(3)]):
             diags.append(diag(i['severity'], i['code'], i['message'], required=i['required'], actual=i['actual'],
                               dimension=i['dimension'], calc=i['calc']))
+    if not run_production and _SNAPSHOT_KEY.get():
+        _remember(_SNAPSHOT_KEY.get(), result, design)       # the production request that follows starts from here
+    return _tail(result, design, diags, run_production, machine)
+
+
+def _tail(result, design, diags, run_production, machine):
+    """Production (cut sheets, cut list, job), painting guide and the summary: the last part of a compile."""
+    from .views import production_package
     if run_production and design['components']:
         try:
             pkg = production_package(design, {'compensate_kerf': True})
