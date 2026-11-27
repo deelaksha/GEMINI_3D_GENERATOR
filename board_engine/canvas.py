@@ -2182,8 +2182,8 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     motions = design.get('motions') or []
     moving = {b for m in motions for b in m['boards']}
     if motions:
-        from .motion import check_motions
-        insp['issues'] += check_motions(design, plates, motions)
+        from .motion import check_gears, check_motions
+        insp['issues'] += check_gears(motions) + check_motions(design, plates, motions)
     covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
     for d in _unattached(conn, diags, conn_pairs or {}, boards):
         diags.append(d)
@@ -2197,7 +2197,7 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         if _follow_on(i, held, failed_pairs):
             continue                    # a consequence of an error already reported for that board / connection
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
-        fixes = None
+        fixes = i.get('fixes')          # a check may give its own exact fix (e.g. a gear's rotation)
         sug = i.get('suggestion')
         if sug and sug.get('action') == 'translate' and sug.get('component') in boards:
             bd = boards[sug['component']]

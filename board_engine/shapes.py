@@ -16,6 +16,7 @@ Shape specs (all coordinates in the board's 2D frame, mm):
     {"shape": "ellipse", "center", "width", "height"}
     {"shape": "arch", "center", "width", "height"}              rectangle with a semicircular top
     {"shape": "regular_polygon", "center", "sides", "diameter", "rotation"?}
+    {"shape": "gear", "center", "teeth", "module", "rotation"?, "pressure_angle"?, "backlash"?}   involute spur gear
     {"shape": "polygon", "points": [[x, y], ...], "corner_radius"?}
     {"shape": "path", "start": [x, y], "segments": [{"line": [x, y]} |
          {"arc": {"to": [x, y], "radius": r, "large": bool, "clockwise": bool}} |
@@ -236,7 +237,53 @@ def shape_polygon(spec, name='shape'):
                 raise ShapeError(f'{name}: corner_radius cannot be combined with arcs in a path')
             return fillet(pts, cr)
         return pts, arcs
-    raise ShapeError(f'{name}.shape must be one of rect, circle, ellipse, arch, regular_polygon, polygon, path')
+    if kind == 'gear':
+        c = _pt(spec.get('center'), f'{name}.center')
+        z = spec.get('teeth')
+        if isinstance(z, bool) or not isinstance(z, int) or not 6 <= z <= 100:
+            raise ShapeError(f'{name}.teeth must be an integer 6..100')
+        m = _num(spec.get('module'), f'{name}.module', 0)
+        pa = _num(spec.get('pressure_angle', 20), f'{name}.pressure_angle', 0)
+        bl = spec.get('backlash')
+        bl = 0.05 * m if bl is None else _num(bl, f'{name}.backlash', -1e-12)
+        if m > 50 or not 14 <= pa <= 30 or bl >= m:
+            raise ShapeError(f'{name}: module must be at most 50 mm, pressure_angle 14..30 degrees, backlash < module')
+        return gear_points(c, z, m, pa, bl, _num(spec.get('rotation', 0), f'{name}.rotation')), []
+    raise ShapeError(f'{name}.shape must be one of rect, circle, ellipse, arch, regular_polygon, gear, polygon, path')
+
+
+def gear_geometry(z, m, pa=20.0):
+    """Radii of a standard spur gear: pitch, tip (addendum = module), root (dedendum = 1.25 module), base."""
+    r = m * z / 2.0
+    return {'pitch': r, 'tip': r + m, 'root': max(r - 1.25 * m, 0.25 * r), 'base': r * math.cos(math.radians(pa))}
+
+
+def gear_points(c, z, m, pa=20.0, backlash=None, rotation=0.0):
+    """Outline (counter-clockwise) of an involute spur gear: z teeth of module m, tooth 0 pointing at `rotation`
+    degrees. The backlash (default 0.05 module) is taken off each tooth's thickness at the pitch circle, so two meshing
+    gears touch without overlapping."""
+    g = gear_geometry(z, m, pa)
+    r, ra, rf, rb = g['pitch'], g['tip'], g['root'], g['base']
+    a0 = math.radians(pa)
+    inv = lambda a: math.tan(a) - a
+    bl = 0.05 * m if backlash is None else backlash
+    half = (math.pi * m / 2.0 - bl) / 2.0 / r          # half the tooth's angular thickness at the pitch circle
+
+    def w(rho):                                         # half angular width of the tooth at radius rho
+        return max(0.002, half + inv(a0) - inv(math.acos(min(1.0, rb / max(rho, rb)))))
+    lo = max(rf, rb)
+    flank = ([rf] if rf < rb else []) + [lo + (ra - lo) * k / 6.0 for k in range(7)]
+    pt = lambda rho, ang: [c[0] + rho * math.cos(ang), c[1] + rho * math.sin(ang)]
+    pts, rot = [], math.radians(rotation)
+    for i in range(z):
+        th = rot + 2 * math.pi * i / z
+        pts += [pt(rho, th - w(rho)) for rho in flank]                          # leading flank, root to tip
+        pts += [pt(ra, th - w(ra) + 2 * w(ra) * k / 3.0) for k in (1, 2)]        # tip
+        pts += [pt(rho, th + w(rho)) for rho in reversed(flank)]                # trailing flank, tip to root
+        nxt = th + 2 * math.pi / z
+        a, b = th + w(flank[0]), nxt - w(flank[0])
+        pts += [pt(rf, a + (b - a) * k / 4.0) for k in (1, 2, 3)]               # root arc to the next tooth
+    return pts
 
 
 def _rotate(pts, arcs, c, deg):

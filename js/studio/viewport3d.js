@@ -437,8 +437,14 @@ export class Viewport3D {
   }
 
   _pose(valueOf) {
+    // a driven motion (a gear train, a belt) follows its driver at its ratio, so the whole train turns together
+    const byId = new Map((this.motions || []).map((m) => [m.id, m])), memo = new Map();
+    const value = (m) => {
+      if (!memo.has(m.id)) memo.set(m.id, m.driven_by && byId.has(m.driven_by) ? value(byId.get(m.driven_by)) * m.ratio : valueOf(m));
+      return memo.get(m.id);
+    };
     for (const m of this.motions || []) {
-      const v = valueOf(m);
+      const v = value(m);
       let turn = null, shift;
       if (m.type === 'rotate') {
         turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...m.axis), THREE.MathUtils.degToRad(v));

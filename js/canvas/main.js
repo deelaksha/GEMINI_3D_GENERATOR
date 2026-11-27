@@ -8,7 +8,7 @@
  */
 /* global CodeMirror */
 import { Api, ApiError } from '../studio/api.js?v=2.36';
-import { Viewport3D } from '../studio/viewport3d.js?v=2.28';
+import { Viewport3D } from '../studio/viewport3d.js?v=2.29';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
 import { CompileLoader } from './compile-loader.js?v=2.20';

@@ -13,6 +13,7 @@ the same count pair up copy by copy); a mirrored board's connections are mirrore
 maps every generated id back to the id written in the source, so diagnostics still point at the right line.
 """
 import copy
+import math
 
 from .model import LIMITS
 from .shapes import ShapeError, shape_polygon
@@ -196,6 +197,13 @@ def transform_board(b, M, t_default):
         """A shape spec mapped to the new face coordinates (relative: around [0, 0], e.g. an opening's shape)."""
         if spec.get('shape') == 'circle':
             return dict(spec, center=face(spec.get('center') or [0, 0], relative))
+        if spec.get('shape') == 'gear' and isinstance(spec.get('rotation', 0), (int, float)):
+            # a gear stays a gear (its mesh is checked): its centre moves and tooth 0 keeps pointing the same way
+            # in the world; the teeth are symmetric, so a mirrored gear is the same gear turned
+            r = math.radians(spec.get('rotation', 0))
+            du, dv = face([math.cos(r), math.sin(r)], True)
+            return dict(spec, center=face(spec.get('center') or [0, 0], relative),
+                        rotation=round(math.degrees(math.atan2(dv, du)), 6))
         src = dict(spec, center=[0.0, 0.0]) if relative else spec
         sz = spec.get('size')
         if relative and isinstance(sz, list) and len(sz) == 2:
@@ -328,6 +336,8 @@ def _instance_motion(mo, iid, M, off, origin):
         mo['boards'] = [f"{iid}-{b}" for b in mo['boards']]
     if isinstance(mo.get('on'), str):
         mo['on'] = f"{iid}-{mo['on']}"
+    if isinstance(mo.get('driven_by'), str):
+        mo['driven_by'] = f"{iid}-{mo['driven_by']}"
     if isinstance(mo.get('axle'), dict) and isinstance(mo['axle'].get('boards'), list):
         mo['axle']['boards'] = [f"{iid}-{b}" for b in mo['axle']['boards']]
     if _vec3(mo.get('pivot')):

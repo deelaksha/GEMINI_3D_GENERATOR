@@ -154,3 +154,36 @@ def test_a_lid_lifts_straight_off_but_not_into_what_is_above_it():
     d['boards'].append({'id': 'SHELF-ABOVE', 'position': [0, 420, 0], 'size': [600, T, 400]})   # 84 mm above the lid
     hit = [x for x in compiled(d)['diagnostics'] if x['code'] == 'MOTION_COLLISION']
     assert hit and "'SHELF-ABOVE'" in hit[0]['message']
+
+
+def _drawer(gap):
+    """A drawer bottom sliding out along z between two side walls, `gap` mm from each."""
+    return {'format': 'board-design/v1', 'product': {'name': 'drawer'}, 'material': {'type': 'plywood', 'thickness': 6},
+            'boards': [{'id': 'RUNNER', 'position': [0, 0, 0], 'size': [300, 6, 300]},
+                       {'id': 'SIDE-L', 'position': [20, 6, 0], 'size': [6, 100, 300]},
+                       {'id': 'SIDE-R', 'position': [274, 6, 0], 'size': [6, 100, 300]},
+                       {'id': 'DRAWER', 'position': [26 + gap, 6, 10], 'size': [248 - 2 * gap, 6, 280]}],
+            'connections': [{'type': 'tab_slot', 'board': 'SIDE-L', 'into': 'RUNNER'},
+                            {'type': 'tab_slot', 'board': 'SIDE-R', 'into': 'RUNNER'}],
+            'motions': [{'id': 'pull', 'type': 'slide', 'boards': ['DRAWER'], 'on': 'RUNNER', 'direction': 'z',
+                         'range': [0, 200]}]}
+
+
+def test_a_drawer_needs_a_running_gap_to_its_sides():
+    tight = [x for x in compiled(_drawer(0))['diagnostics'] if x['code'] == 'MOTION_CLEARANCE']
+    assert {x['components'][1] for x in tight} == {'SIDE-L', 'SIDE-R'} and 'would rub and bind' in tight[0]['message']
+    assert not [c for c in codes(compiled(_drawer(2)), 'error') if c.startswith('MOTION_')]
+
+
+def test_a_wheel_needs_a_running_gap_to_the_wall_beside_it():
+    def wheel(gap):
+        return {'format': 'board-design/v1', 'product': {'name': 'wheel'}, 'material': {'type': 'plywood', 'thickness': 6},
+                'boards': [{'id': 'BASE', 'position': [0, 0, 0], 'size': [300, 6, 300]},
+                           {'id': 'DISK', 'position': [50, 6, 50], 'size': [200, 6, 200],
+                            'profile': {'shape': 'circle', 'center': [100, 100], 'diameter': 200}},
+                           {'id': 'WALL', 'position': [250 + gap, 6, 0], 'size': [6, 60, 300]}],
+                'connections': [{'type': 'tab_slot', 'board': 'WALL', 'into': 'BASE'}],
+                'motions': [{'id': 'spin', 'type': 'rotate', 'boards': ['DISK'], 'on': 'BASE', 'axis': 'y',
+                             'pivot': [150, 6, 150], 'range': [0, 360], 'axle': {'diameter': 8}}]}
+    assert 'MOTION_CLEARANCE' in codes(compiled(wheel(0.5)), 'error')
+    assert not [c for c in codes(compiled(wheel(3)), 'error') if c.startswith('MOTION_')]

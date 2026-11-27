@@ -743,6 +743,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
 {{"shape": "circle", "center", "diameter"}}            {{"shape": "ellipse", "center", "width", "height"}}
 {{"shape": "arch", "center", "width", "height"}}       (straight sides, semicircular top; height ≥ width / 2)
 {{"shape": "regular_polygon", "center", "sides": 3..64, "diameter", "rotation"?: deg}}
+{{"shape": "gear", "center", "teeth": 6..100, "module": mm, "rotation"?: deg}}   (involute spur gear, see "Gears")
 {{"shape": "polygon", "points": [[u, v], ...], "corner_radius"?}}
 {{"shape": "path", "start": [u, v], "segments": [{{"line": [u, v]}}
     | {{"arc": {{"to": [u, v], "radius": mm, "large"?: bool, "clockwise"?: bool}}}}
@@ -903,7 +904,10 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
   a real, glue-free pivot for turntables, wheels, swing arms, flaps and rotating signs.
 - The compiler turns / slides the group every 5° (or about 1/48 of a slide) through the whole range and reports every
   board it would run into (MOTION_COLLISION) with the last clear position: put a lid's pivot on the OUTER edge it opens
-  about, leave running clearance (1-2 mm) around turning parts, and keep the range within what really clears.
+  about and keep the range within what really clears.
+- Running gap: every moving part needs at least 1 mm (2 mm is safer) to everything it passes except the board it rests
+  or runs on - a drawer between its sides, a wheel beside a wall, a flap past a frame. Less is an error
+  (MOTION_CLEARANCE: it would rub and bind), even when nothing overlaps. Draw moving parts that much smaller.
 - A repeated / mirrored / instanced board may be named by its source id: every copy moves (all blades of a fan).
 - A motion written inside an assembly is copied into every instance (its own ids, pivot and direction, turned and
   flipped with it): one animated door module, placed a hundred times, gives a hundred working doors.
@@ -917,6 +921,28 @@ drawer or tray sliding on runners, a sliding panel between two rails.
  "direction": "z", "range": [0, 250]}}
 ```
 
+## Gears (gear trains, clocks, music boxes, kinetic sculptures)
+A gear is a board whose `"profile"` is `{{"shape": "gear", "center": [u, v], "teeth": z, "module": m, "rotation"?: deg}}`:
+pitch diameter = m x z, outside diameter = m x (z + 2); make the board's box exactly the outside diameter square with the
+centre in its middle. Each gear turns on its own axle: a `rotate` motion whose `pivot` is the gear centre, `axis`
+across the gear, with an `"axle"`. A gear that is turned by another one has `"driven_by": "<driver motion id>"` and no
+`"range"`: it follows its driver at -z_driver / z_driven (the opposite way), and its travel is checked from that. Chains
+(A drives B drives C) work; a belt or pulley pair without teeth gives `"ratio"` instead.
+Two gears mesh only when (the compiler checks every one, with the calculation):
+- the same `"module"`, both thin along the same axis and on the same level (one plane);
+- centre distance = m x (z1 + z2) / 2 exactly (module 3, 20 and 30 teeth: 75 mm);
+- the driven gear's `"rotation"` puts its gaps where the driver's teeth are. Write 0 if unsure: the compiler reports the
+  exact value as a fix (GEAR_PHASE), and it never changes the ratio.
+Gears stay gears when an instance is turned or flipped, so a reused gearbox module meshes in every copy.
+```jsonc
+{{"id": "G1", "position": [47, 6, 67], "size": [66, 6, 66], "profile": {{"shape": "gear", "center": [33, 33], "teeth": 20, "module": 3}}}},
+{{"id": "G2", "position": [107, 6, 52], "size": [96, 6, 96], "profile": {{"shape": "gear", "center": [48, 48], "teeth": 30, "module": 3, "rotation": 6}}}},
+"motions": [
+  {{"id": "drive", "type": "rotate", "boards": ["G1"], "on": "BASE", "axis": "y", "pivot": [80, 6, 100], "range": [0, 360], "axle": {{"diameter": 6}}}},
+  {{"id": "follow", "type": "rotate", "boards": ["G2"], "on": "BASE", "axis": "y", "pivot": [155, 6, 100], "driven_by": "drive", "axle": {{"diameter": 6}}}}
+]
+```
+
 ## What this generator cannot build (do not attempt; use the alternative)
 - Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
   no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
@@ -924,9 +950,9 @@ drawer or tray sliding on runners, a sliding panel between two rails.
   (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
 - Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
   compiler gives its length); curved or kerf-bent panels stay flat. Round flat parts (wheels, disks) are fine.
-- Mechanisms where several moving parts drive each other: meshing gears, cams, a crank pushing a rod, springs. Each
-  motion moves one rigid group on its own; build each moving part as its own motion and draw linked parts in one
-  pose.
+- Mechanisms other than gear trains and belts where moving parts drive each other: cams, a crank pushing a rod,
+  linkages, springs, racks. Gears and belts link with `"driven_by"` (see "Gears"); for the others build each moving
+  part as its own motion and draw the linked parts in one pose.
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
@@ -1118,7 +1144,7 @@ DESIGN_QUALITY = """DESIGN QUALITY (compiling is the minimum - the design must b
   or scalloped edges, rounded corners ("corner_radius"). Depth: 2-3 layers on visible faces (a frame or lining board
   with its own openings), recessed doors and windows, plinths, cornices and trims.
 - Movement: bring the product to life with moving parts where they suit it - a lid that opens, a turning top or
-  sign, a wheel, a swinging flap or arm, a sliding drawer or panel - declared in "motions" (see "Moving parts"): each is
+  sign, a wheel, a swinging flap or arm, a sliding drawer or panel, a gear train turning a dial - declared in "motions" (see "Moving parts"): each is
   checked through its whole travel and animated in the 3D view. A static product is the dull default.
 - Rhythm: fins, slats, ribs, columns, balusters and rafters as "repeat" arrays or assembly instances; "mirror" for
   symmetric halves; tilted planes ("rotate") and "living_hinge" for curves and angles; engraved lines, panels,

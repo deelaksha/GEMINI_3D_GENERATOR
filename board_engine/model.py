@@ -493,6 +493,9 @@ def normalize_motions(raw, comp_ids):
         nm = {'id': check_id(m.get('id'), p + '.id'), 'type': m['type'], 'boards': boards, 'on': m['on'],
               'range': [_num(rng[0], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord']),
                         _num(rng[1], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord'])]}
+        if isinstance(m.get('driven_by'), str):           # a gear train / belt: it follows that motion at "ratio"
+            nm['driven_by'] = check_id(m['driven_by'], p + '.driven_by')
+            nm['ratio'] = _num(m.get('ratio'), p + '.ratio', -1e6, 1e6)
         if m['type'] == 'rotate':
             if m.get('axis') not in MOTION_AXES or not (isinstance(m.get('pivot'), list) and len(m['pivot']) == 3):
                 raise SchemaError(f'{p} needs "axis" and "pivot"', p)

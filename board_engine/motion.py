@@ -19,6 +19,7 @@ from .expand import _thin_axis
 
 AXES = ('x', 'y', 'z')
 TOUCH = 0.5                 # mm: the group must be this close to its mount
+CLEARANCE = 1.0             # mm: running gap a moving part needs to everything it passes (else it binds)
 ROTATE_STEP = 5.0           # degrees between the positions checked along a rotation
 MAX_SAMPLES = 72
 
@@ -83,16 +84,27 @@ def parse_motions(data, origin, diags, diag, line=None):
         if twice:
             bad(m, f"board(s) {', '.join(twice)} already move with motion '{taken[twice[0]]}'.")
             continue
-        rng = m.get('range')
-        if not (isinstance(rng, list) and len(rng) == 2 and all(_num(v) for v in rng) and rng[0] < rng[1]):
+        rng, driver = m.get('range'), m.get('driven_by')
+        if driver is not None and not isinstance(driver, str):
+            bad(m, '"driven_by" must be the id of the motion that drives it.')
+            continue
+        if m.get('ratio') is not None and not (_num(m['ratio']) and m['ratio'] != 0):
+            bad(m, '"ratio" must be a non-zero number (its turn / slide per degree or mm of the driver).')
+            continue
+        if driver is None and not (isinstance(rng, list) and len(rng) == 2 and all(_num(v) for v in rng) and rng[0] < rng[1]):
             bad(m, '"range" must be [from, to] with from < to (0 is the position as modelled).')
             continue
-        mo = {'id': m['id'], 'type': kind, 'boards': boards, 'on': on, 'range': [float(rng[0]), float(rng[1])]}
+        mo = {'id': m['id'], 'type': kind, 'boards': boards, 'on': on,
+              'range': [float(rng[0]), float(rng[1])] if driver is None else None}
+        if driver is not None:
+            mo['driven_by'] = driver
+            if m.get('ratio') is not None:
+                mo['ratio'] = float(m['ratio'])
         if kind == 'rotate':
             if m.get('axis') not in AXES or not _vec3(m.get('pivot')):
                 bad(m, 'a rotation needs "axis": "x"|"y"|"z" and "pivot": [x, y, z] (a point on the turning axis).')
                 continue
-            if not (-360 <= rng[0] and rng[1] <= 360):
+            if driver is None and not (-360 <= rng[0] and rng[1] <= 360):
                 bad(m, 'a rotation range must lie within -360 .. 360 degrees.')
                 continue
             axle = m.get('axle')
@@ -109,6 +121,74 @@ def parse_motions(data, origin, diags, diag, line=None):
         for b in boards:
             taken[b] = m['id']
         out.append(mo)
+    return _link(out, find_gears(data), diags, diag, line)
+
+
+def find_gears(data):
+    """Boards whose profile is a "gear" shape (and are not tilted): id -> teeth, module, rotation, world centre, axis."""
+    t_default = (data.get('material') or {}).get('thickness')
+    out = {}
+    for b in data.get('boards') or []:
+        prof = b.get('profile') if isinstance(b, dict) else None
+        if not (isinstance(prof, dict) and prof.get('shape') == 'gear' and not b.get('rotate')
+                and _vec3(b.get('position')) and _vec3(b.get('size')) and isinstance(prof.get('center'), list)
+                and isinstance(prof.get('teeth'), int) and _num(prof.get('module'))):
+            continue
+        thin = _thin_axis(b, t_default)
+        if thin is None:
+            continue
+        i, j = [k for k in range(3) if k != thin]
+        centre = list(b['position'])
+        centre[i] += prof['center'][0]
+        centre[j] += prof['center'][1]
+        centre[thin] += b['size'][thin] / 2.0
+        out[b['id']] = {'teeth': prof['teeth'], 'module': float(prof['module']), 'rotation': float(prof.get('rotation', 0)),
+                        'centre': centre, 'thin': thin, 'span': (b['position'][thin], b['position'][thin] + b['size'][thin]),
+                        'profile': prof}
+    return out
+
+
+def _link(motions, gears, diags, diag, line):
+    """Resolve "driven_by": chains in order, the ratio from the meshing gears (or "ratio"), the range from the driver."""
+    by_id = {m['id']: m for m in motions}
+    done, out = set(), []
+
+    def bad(m, msg):
+        diags.append(diag('error', 'MOTION_INVALID', f"Motion '{m['id']}': {msg}", line=line))
+
+    def resolve(m, path):
+        if m['id'] in done:
+            return True
+        drv_id = m.get('driven_by')
+        if drv_id is None:
+            done.add(m['id'])
+            return True
+        if drv_id in path:
+            bad(m, f"its drivers go round in a loop ({' -> '.join(path + [drv_id])}).")
+            return False
+        drv = by_id.get(drv_id)
+        if drv is None or not resolve(drv, path + [m['id']]) or drv['range'] is None:
+            if drv is None:
+                bad(m, f"\"driven_by\" names no motion '{drv_id}'.")
+            return False
+        if 'ratio' not in m:
+            pairs = [(a, b) for a in drv['boards'] if a in gears for b in m['boards'] if b in gears]
+            if not pairs:
+                bad(m, f"give a \"ratio\", or put meshing gears (a \"gear\" profile) in both it and '{drv_id}'.")
+                return False
+            dist = lambda ab: abs(math.dist(gears[ab[0]]['centre'], gears[ab[1]]['centre'])
+                                  - gears[ab[0]]['module'] * (gears[ab[0]]['teeth'] + gears[ab[1]]['teeth']) / 2)
+            a, b = min(pairs, key=dist)
+            m['ratio'] = -gears[a]['teeth'] / gears[b]['teeth']       # meshing gears turn the other way
+            m['gears'] = [a, b]
+            m['mesh'] = {'driver': dict(gears[a], id=a), 'driven': dict(gears[b], id=b)}
+        lo, hi = sorted(v * m['ratio'] + 0.0 for v in drv['range'])          # (+ 0.0: no -0.0)
+        m['range'] = [lo, hi]
+        done.add(m['id'])
+        return True
+    for m in motions:
+        if resolve(m, []):
+            out.append(m)
     return out
 
 
@@ -175,6 +255,23 @@ def _moved(design, comp, m, value):
     return Plate(design, dict(comp, placement={'position': pos, 'rotation': rot}))
 
 
+def _grown(design, comp, c):
+    """The component grown by c on every side (outline and both faces), cut-outs left out: if this touches a board the
+    real part does not, the running gap to that board is under c."""
+    from .cutpaths import offset_polygon
+    from .model import thickness_of
+    outline = comp['outline'] if G.signed_area(comp['outline']) > 0 else list(reversed(comp['outline']))
+    big = {k: v for k, v in comp.items() if k not in ('arcs', 'features', 'tabs')}
+    big.update(outline=offset_polygon(outline, c), thickness=thickness_of(design, comp) + 2 * c, features=[])
+    return big
+
+
+def _axis_distance(m, q):
+    """Distance of point q from a rotate motion's turning axis."""
+    k = AXES.index(m['axis'])
+    return math.hypot(*[q[i] - m['pivot'][i] for i in range(3) if i != k])
+
+
 def _samples(m):
     """-> (step, positions to check): whole steps outwards from the modelled position (5 degrees, or about 1/48 of a slide), plus
     both ends of the range; nearest first, so the first collision found on each side is the nearest one."""
@@ -199,6 +296,16 @@ def check_motions(design, plates, motions):
     from .validation import issue, plate_interference
     out = []
     comps = {c['id']: c for c in design['components']}
+    trains = {m['id']: m['id'] for m in motions}
+
+    def root(x):
+        while trains[x] != x:
+            x = trains[x]
+        return x
+    for m in motions:
+        if m.get('driven_by') in trains:
+            trains[root(m['id'])] = root(m['driven_by'])
+    trains = {k: root(k) for k in trains}
     for m in motions:
         group = [b for b in m['boards'] if b in plates]
         if not group or m['on'] not in plates:
@@ -253,6 +360,8 @@ def check_motions(design, plates, motions):
                                            f"'{m['on']}'; range [{m['range'][0]:g}, {m['range'][1]:g}] mm"]))
                     continue
         hinged = {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined' and j['type'] == 'hinge'}
+        train = {b for t in motions if trains.get(t['id']) == trains.get(m['id']) for b in t['boards']}
+        moving = moving | train         # gears of one train move together: their mesh is checked separately
         step, samples = _samples(m)
         posed = {}
         for v in samples:
@@ -265,18 +374,31 @@ def check_motions(design, plates, motions):
                 env = (lo, hi) if env is None else ([min(env[0][i], lo[i]) for i in range(3)],
                                                      [max(env[1][i], hi[i]) for i in range(3)])
         others = [s for s in plates if s not in moving and env and _box_gap(plates[s].world_aabb(), env) <= 0]
-        first = {}                                   # (static board, side of 0) -> (value, moving board, hit)
+        first, tight = {}, {}                        # (static board, side of 0) -> (value, moving board, hit)
+        grown = {b: _grown(design, comps[b], CLEARANCE) for b in group}
+        # contact right at a hinge line is unavoidable: an edge closer to the axis than one step moves is not judged
+        near_axis = CLEARANCE / max(math.sin(math.radians(step)), 1e-3) if m['type'] == 'rotate' else 0.0
         for v in samples:                            # outwards from 0, so the first hit is the nearest one
             for b, p in posed[v].items():
+                big = None
                 for s in others:
                     if (s, v > 0) in first or frozenset((b, s)) in hinged:
                         continue
-                    if _box_gap(p.world_aabb(), plates[s].world_aabb()) > 0:
+                    if _box_gap(p.world_aabb(), plates[s].world_aabb()) > CLEARANCE:
                         continue
                     check_budget()
-                    hits = plate_interference(p, plates[s])
+                    hits = plate_interference(p, plates[s]) if _box_gap(p.world_aabb(), plates[s].world_aabb()) <= 0 else []
                     if hits:
                         first[(s, v > 0)] = (v, b, hits[0])
+                        continue
+                    if s == m['on'] or (s, v > 0) in tight:
+                        continue                     # it rests / runs on its mount by design
+                    big = big or _moved(design, grown[b], m, v)
+                    close = [h for h in plate_interference(big, plates[s])
+                             if not (near_axis and h['kind'] != 'parallel_overlap' and h.get('location')
+                                     and _axis_distance(m, h['location']) < near_axis)]
+                    if close:
+                        tight[(s, v > 0)] = (v, b, close[0])
         for (s, _side), (v, b, hit) in sorted(first.items(), key=lambda kv: abs(kv[1][0])):
             side = [x for x in samples if (x > 0) == (v > 0) and abs(x) < abs(v)]
             clear = side[-1] if side else 0.0
@@ -291,6 +413,105 @@ def check_motions(design, plates, motions):
                                    f"[{m['range'][0]:g}, {m['range'][1]:g}]",
                                    f"first contact with '{s}' at {v:g}{unit}: {hit['kind']} {size}",
                                    f"last clear position on that side: {clear:g}{unit}"]))
+        for (s, side), (v, b, hit) in sorted(tight.items(), key=lambda kv: abs(kv[1][0])):
+            if (s, side) in first:
+                continue                             # it collides there anyway
+            out.append(issue('MOTION_CLEARANCE', 'error', 'assembly',
+                             f"Motion '{m['id']}': {how}, '{b}' passes '{s}' with less than {CLEARANCE:g} mm to spare at "
+                             f"{v:g}{unit}, so it would rub and bind. Leave a running gap of at least {CLEARANCE:g} mm "
+                             f"(about 2 mm is safer): move or shrink '{b}' or '{s}' there.", [b, s],
+                             location=hit.get('location'),
+                             calc=[f"'{b}' grown by {CLEARANCE:g} mm on every side touches '{s}' at {v:g}{unit} "
+                                   f"({hit['kind']}); the real parts do not touch, so the gap is under {CLEARANCE:g} mm",
+                                   f"positions checked every {step:g}{unit} over [{m['range'][0]:g}, {m['range'][1]:g}]"
+                                   + (f"; edges within {near_axis:.0f} mm of the turning axis (the hinge line) are not "
+                                      f"judged" if near_axis else '')]))
+    return out
+
+
+GEAR_DISTANCE_TOL = 0.1     # mm: centre distance against module x (z1 + z2) / 2
+GEAR_PHASE_TOL = 0.03       # of one tooth pitch: teeth that far off interleaving would clash
+
+
+def check_gears(motions):
+    """-> issues for every pair of meshing gears in a train: same module, parallel axles in one plane, each gear on
+    its motion's axle, the centre distance module x (z1 + z2) / 2, and teeth that interleave (with the exact fix)."""
+    from .validation import issue
+    out, by_id = [], {m['id']: m for m in motions}
+    for m in motions:
+        mesh = m.get('mesh')
+        if not mesh:
+            continue
+        a, b, drv = mesh['driver'], mesh['driven'], by_id.get(m['driven_by'])
+        pair = [a['id'], b['id']]
+        if abs(a['module'] - b['module']) > 1e-6:
+            out.append(issue('GEAR_MESH', 'error', 'assembly',
+                             f"Gears '{a['id']}' and '{b['id']}' cannot mesh: their modules differ ({a['module']:g} and "
+                             f"{b['module']:g} mm). Meshing gears need the same module (tooth size).", pair,
+                             calc=[f"module '{a['id']}' = {a['module']:g} mm, '{b['id']}' = {b['module']:g} mm"]))
+            continue
+        k = a['thin']
+        if b['thin'] != k or min(a['span'][1], b['span'][1]) - max(a['span'][0], b['span'][0]) <= 0:
+            out.append(issue('GEAR_MESH', 'error', 'assembly',
+                             f"Gears '{a['id']}' and '{b['id']}' are not in one plane on parallel axles, so their teeth "
+                             f"cannot meet. Put both on the same {AXES[k]} level, thin along {AXES[k]}.", pair,
+                             calc=[f"'{a['id']}' thin along {AXES[a['thin']]}, {AXES[k]} {a['span'][0]:g}..{a['span'][1]:g} mm",
+                                   f"'{b['id']}' thin along {AXES[b['thin']]}, {AXES[b['thin']]} "
+                                   f"{b['span'][0]:g}..{b['span'][1]:g} mm"]))
+            continue
+        off_axis = []
+        for g, mo in ((a, drv), (b, m)):
+            if mo is None or mo['type'] != 'rotate':
+                continue
+            if mo.get('axis') != AXES[k]:
+                off_axis.append(f"'{g['id']}' lies across {AXES[k]} but motion '{mo['id']}' turns about {mo.get('axis')}")
+            else:
+                d = math.hypot(*[g['centre'][i] - mo['pivot'][i] for i in range(3) if i != k])
+                if d > GEAR_DISTANCE_TOL:
+                    off_axis.append(f"'{g['id']}' centre [{', '.join(f'{v:g}' for v in g['centre'])}] is {d:.2f} mm from "
+                                    f"motion '{mo['id']}' pivot [{', '.join(f'{v:g}' for v in mo['pivot'])}]")
+        if off_axis:
+            out.append(issue('GEAR_OFF_AXIS', 'error', 'assembly',
+                             f"A gear must turn about its own centre: {'; '.join(off_axis)}. Put the motion's pivot (and "
+                             f"axle) at the gear centre, its axis across the gear.", pair, calc=off_axis))
+            continue
+        i, j = [x for x in range(3) if x != k]
+        za, zb, mod = a['teeth'], b['teeth'], a['module']
+        need = mod * (za + zb) / 2.0
+        du, dv = b['centre'][i] - a['centre'][i], b['centre'][j] - a['centre'][j]
+        dist = math.hypot(du, dv)
+        if abs(dist - need) > GEAR_DISTANCE_TOL:
+            if dist > 1e-9:
+                delta = [0.0, 0.0, 0.0]
+                delta[i], delta[j] = du / dist * (need - dist), dv / dist * (need - dist)
+            else:
+                delta = [0.0, 0.0, 0.0]
+                delta[i] = need
+            out.append(issue('GEAR_MESH', 'error', 'assembly',
+                             f"Gears '{a['id']}' ({za} teeth) and '{b['id']}' ({zb} teeth), module {mod:g}, must be "
+                             f"{need:g} mm apart centre to centre; they are {dist:.2f} mm apart. Move '{b['id']}' (and "
+                             f"its motion pivot) by [{', '.join(f'{v:.2f}' for v in delta)}] mm.", pair,
+                             calc=[f"required = module x (z1 + z2) / 2 = {mod:g} x ({za} + {zb}) / 2 = {need:g} mm",
+                                   f"actual = |centre '{b['id']}' - centre '{a['id']}'| = {dist:.2f} mm"],
+                             suggestion={'action': 'translate', 'component': b['id'], 'delta': [round(v, 3) for v in delta]}))
+            continue
+        beta = math.atan2(dv, du)                       # in the shared face plane: u along axis i, v along j
+        fa = math.radians(a['rotation'])
+        need_b = beta + math.pi - (math.pi - za * (beta - fa)) / zb
+        pitch = 2 * math.pi / zb
+        diff = (math.radians(b['rotation']) - need_b + pitch / 2) % pitch - pitch / 2
+        if abs(diff) > GEAR_PHASE_TOL * pitch:
+            want = round(math.degrees(need_b) % math.degrees(pitch), 3)
+            prof = dict(b['profile'], rotation=want)
+            out.append(issue('GEAR_PHASE', 'error', 'assembly',
+                             f"The teeth of '{b['id']}' land on the teeth of '{a['id']}' instead of between them: set its "
+                             f"gear \"rotation\" to {want:g} degrees (any multiple of {math.degrees(pitch):g} more is the same).",
+                             pair, calc=[f"line of centres at {math.degrees(beta):.3f} deg, '{a['id']}' rotation "
+                                         f"{a['rotation']:g} deg, {za} : {zb} teeth",
+                                         f"'{b['id']}' needs rotation = beta + 180 - (180 - z1 (beta - rot1)) / z2 = "
+                                         f"{want:g} deg (mod {math.degrees(pitch):g}); it has {b['rotation']:g}"],
+                             fixes=[{'id': f"gear-phase-{b['id']}", 'title': f"Turn gear '{b['id']}' to {want:g} degrees",
+                                     'safe': True, 'edits': [{'board': b['id'], 'field': 'profile', 'value': prof}]}]))
     return out
 
 
@@ -298,7 +519,8 @@ def model_motions(motions):
     """Motions for the 3D view (world vectors; the view animates each over its range)."""
     out = []
     for m in motions:
-        e = {'id': m['id'], 'type': m['type'], 'boards': m['boards'], 'on': m['on'], 'range': m['range']}
+        e = {'id': m['id'], 'type': m['type'], 'boards': m['boards'], 'on': m['on'], 'range': m['range'],
+             **({'driven_by': m['driven_by'], 'ratio': m['ratio']} if m.get('driven_by') else {})}
         if m['type'] == 'rotate':
             e.update(axis=[1.0 if a == m['axis'] else 0.0 for a in AXES], pivot=m['pivot'])
         else:
