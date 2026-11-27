@@ -883,6 +883,31 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 (rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
 `finger`, or a `butt` with fasteners, and say so in the description.
 
+## Fewer, smarter boards (consolidation) - visual detail is not piece count
+Judge a design by realism, strength, function and ease of assembly - NOT by how many boards it has. Detail that lies
+in one plane belongs in ONE board: its outline, its cut-out openings and its engravings carry the detail.
+- A fence or railing = one panel per straight run: a top and bottom rail with the posts between them, the gaps as
+  openings (a pointed or shaped picket top = the panel's polygon "profile"). Never 30 separate posts.
+- A lattice / shoji window or a grille = one panel with a grid of openings; a decorative wall panel, border or
+  frieze = one board with openings and engravings; repeated roof-edge ornaments = one strip per roof edge; a tree
+  or bush = a few interlocking silhouette boards (cross_lap them for volume), not dozens of twigs.
+- Write repeated cut-outs once: an opening with `"repeat": {{"count": n, "step": [dx, dy, dz]}}` (and
+  `"rows": {{"count": m, "step": [dx, dy, dz]}}` for a grid) is cut n (x m) times, ids "<id>-1".. ("<id>-<row>-<n>").
+- Keep separate only what must be: parts in another plane (real 3D depth - roof layers, overlapping tiers, bracket
+  stacks), moving parts, different colours / materials / thickness, and a run too big for the stock board (split it
+  into a few modules, joined to the structure - not into hundreds of pieces).
+- The compiler consolidates for you as a safety net (`"consolidate"`, on by default; `false` only reports): flat
+  boards (plain or shaped with a "profile" - pickets, arches, discs, silhouettes; not tilted, not gears) of one
+  thickness, material and colour that lie in one plane and share an edge are cut as one board - their united
+  outline, enclosed gaps as openings - and the connections between them are dropped (CONSOLIDATED, with the counts).
+  A repeated board joins only as a whole; pieces meeting only at a point stay apart. Better: draw the panel yourself.
+```jsonc
+{{"id": "FENCE-N", "position": [0, 6, 0], "size": [400, 110, 6],
+ "profile": {{"shape": "polygon", "points": [[0, 0], [400, 0], [400, 100], [390, 110], [380, 100], [10, 100], [0, 110]]}},
+ "openings": [{{"id": "gap", "kind": "opening", "shape": "rect", "center": [30, 55, 3], "size": [24, 70],
+               "repeat": {{"count": 12, "step": [31, 0, 0]}}}}]}}
+```
+
 ## Moving parts (motions) - checked through their whole travel and animated in 3D
 ```
 "motions": [
@@ -986,6 +1011,18 @@ position (the follower's travel comes from that, give it no "range") and animate
 - Springs, ratchets and cams with a shaped (non-round) lobe: not solved. Gears and belts link with `"driven_by"`
   (see "Gears"), cranks with rods with `"link"` (see "Linkages"); a rack can follow a gear with
   `"ratio": pi x module x teeth / 360` (mm per degree).
+
+## Strength and retention (checked, from the geometry alone)
+- Webs: no part may narrow below its own thickness (at least 3 mm, never more than 8 mm asked) anywhere a real piece
+  could break off - a waist, a slender arm, the bridge between a cut-out and the edge or between two cut-outs
+  (WEAK_SECTION). Pointed tips (teeth, horns, leaves, claws) are fine.
+- What holds each part, with its neighbours in place: a tab only pulls straight out of its slot, a face stops a part
+  moving into what it rests on. Best: LOCKED (blocked every way - tabs into boards on two different sides, a
+  cross-lap). Fine: lifts straight off (its weight holds it). Info: held only by friction sideways
+  (PART_HELD_BY_FRICTION - e.g. sides whose only joints are tabs coming INTO them can spread apart; add a back or
+  rails with tabs into the sides, or tab the sides into the top). Warning: free downwards - its joints hold it only
+  from above and it would drop out (PART_CAN_FALL_OUT); tab hanging parts in from above or sideways, or rest them on
+  something.
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
@@ -1121,8 +1158,9 @@ OUTPUT_CONTRACT = """OUTPUT CONTRACT (strict — your reply is pasted straight i
 - No text before or after the code block: no greeting, explanation, summary, list of changes, notes or questions.
 - Output every board and every connection in full. Never abbreviate: no "...", no "// unchanged", no "rest stays the
   same", no placeholders, no references to an earlier answer.
-- NO SIZE LIMIT: there is no maximum number of boards or lines. Never simplify, merge or leave out parts to keep the
-  answer short — a faithful model of a complex object often needs hundreds or thousands of boards. Keep it compact
+- NO SIZE LIMIT: there is no maximum number of boards or lines. Never simplify or leave out visible detail to keep the
+  answer short — a faithful model of a complex object often needs hundreds or thousands of boards. But detail that
+  lies in one plane goes into ONE board's outline, openings and engravings (see "Fewer, smarter boards"). Keep it compact
   instead: write each board and each connection on ONE line, and use "repeat", "mirror" and "assemblies" /
   "instances" for repeated parts (one line can make a whole row of tiles, rafters or slats).
 - MULTI-PART REPLIES: if the complete design will not fit in one reply, split it - never shorten it. Decide the number
@@ -1259,7 +1297,8 @@ exactly as flat boards allow — its shape, proportions, parts and details — n
    from what the product is and record it as an assumption. Take every proportion from the image: measure ratios
    (height / length, part width / overall width, positions as fractions of the whole) and apply them to the chosen
    size. Write the main ratios you measured in "plan.reference".
-3. MATCH EVERY VISIBLE PART: the same number of parts, at the same places, with the same proportions. Outlines and
+3. MATCH EVERY VISIBLE PART: every visible feature, at the same places, with the same proportions (a run of posts in
+   one plane is one panel with its gaps as openings, still showing every post). Outlines and
    curves → "profile" (polygon points or arcs traced from the image); holes, windows and gaps → "openings"; surface
    lines, panels, text and logos → "engravings"; repeated parts → "repeat"; left / right twins → "mirror".
 4. WHAT FLAT BOARDS CANNOT MAKE (curved surfaces, round solids, bends): build the closest flat-board version — stacked
@@ -1383,7 +1422,8 @@ INSTRUCTIONS (follow every one):
    unique id (at most 24 characters) and put the boards of each sub-assembly in the same "group". For repeated or
    symmetric parts use "repeat", "mirror" and "assemblies"/"instances" instead of listing every copy.
    For a building, vehicle or scale model, build a DETAILED model (see "Detailed models"): structure first, then
-   surface detail (tile courses, rafters, frames, planks) as many small joined parts, every visible feature present.
+   surface detail (tile courses, rafters, frames, planks), every visible feature present: as separate joined parts
+   where it has real depth, as one board's profile / openings / engravings where it lies in one plane.
 3. Compute every position and size explicitly in millimetres — no formulas, variables or expressions in the JSON.
    CRITICAL INTEGER RULE: {INTEGER_RULE}
 4. Account for board thickness everywhere so boards touch exactly and never overlap

@@ -199,6 +199,31 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 (rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
 `finger`, or a `butt` with fasteners, and say so in the description.
 
+## Fewer, smarter boards (consolidation) - visual detail is not piece count
+Judge a design by realism, strength, function and ease of assembly - NOT by how many boards it has. Detail that lies
+in one plane belongs in ONE board: its outline, its cut-out openings and its engravings carry the detail.
+- A fence or railing = one panel per straight run: a top and bottom rail with the posts between them, the gaps as
+  openings (a pointed or shaped picket top = the panel's polygon "profile"). Never 30 separate posts.
+- A lattice / shoji window or a grille = one panel with a grid of openings; a decorative wall panel, border or
+  frieze = one board with openings and engravings; repeated roof-edge ornaments = one strip per roof edge; a tree
+  or bush = a few interlocking silhouette boards (cross_lap them for volume), not dozens of twigs.
+- Write repeated cut-outs once: an opening with `"repeat": {"count": n, "step": [dx, dy, dz]}` (and
+  `"rows": {"count": m, "step": [dx, dy, dz]}` for a grid) is cut n (x m) times, ids "<id>-1".. ("<id>-<row>-<n>").
+- Keep separate only what must be: parts in another plane (real 3D depth - roof layers, overlapping tiers, bracket
+  stacks), moving parts, different colours / materials / thickness, and a run too big for the stock board (split it
+  into a few modules, joined to the structure - not into hundreds of pieces).
+- The compiler consolidates for you as a safety net (`"consolidate"`, on by default; `false` only reports): flat
+  boards (plain or shaped with a "profile" - pickets, arches, discs, silhouettes; not tilted, not gears) of one
+  thickness, material and colour that lie in one plane and share an edge are cut as one board - their united
+  outline, enclosed gaps as openings - and the connections between them are dropped (CONSOLIDATED, with the counts).
+  A repeated board joins only as a whole; pieces meeting only at a point stay apart. Better: draw the panel yourself.
+```jsonc
+{"id": "FENCE-N", "position": [0, 6, 0], "size": [400, 110, 6],
+ "profile": {"shape": "polygon", "points": [[0, 0], [400, 0], [400, 100], [390, 110], [380, 100], [10, 100], [0, 110]]},
+ "openings": [{"id": "gap", "kind": "opening", "shape": "rect", "center": [30, 55, 3], "size": [24, 70],
+               "repeat": {"count": 12, "step": [31, 0, 0]}}]}
+```
+
 ## Moving parts (motions) - checked through their whole travel and animated in 3D
 ```
 "motions": [
@@ -302,6 +327,18 @@ position (the follower's travel comes from that, give it no "range") and animate
 - Springs, ratchets and cams with a shaped (non-round) lobe: not solved. Gears and belts link with `"driven_by"`
   (see "Gears"), cranks with rods with `"link"` (see "Linkages"); a rack can follow a gear with
   `"ratio": pi x module x teeth / 360` (mm per degree).
+
+## Strength and retention (checked, from the geometry alone)
+- Webs: no part may narrow below its own thickness (at least 3 mm, never more than 8 mm asked) anywhere a real piece
+  could break off - a waist, a slender arm, the bridge between a cut-out and the edge or between two cut-outs
+  (WEAK_SECTION). Pointed tips (teeth, horns, leaves, claws) are fine.
+- What holds each part, with its neighbours in place: a tab only pulls straight out of its slot, a face stops a part
+  moving into what it rests on. Best: LOCKED (blocked every way - tabs into boards on two different sides, a
+  cross-lap). Fine: lifts straight off (its weight holds it). Info: held only by friction sideways
+  (PART_HELD_BY_FRICTION - e.g. sides whose only joints are tabs coming INTO them can spread apart; add a back or
+  rails with tabs into the sides, or tab the sides into the top). Warning: free downwards - its joints hold it only
+  from above and it would drop out (PART_CAN_FALL_OUT); tab hanging parts in from above or sideways, or rest them on
+  something.
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the

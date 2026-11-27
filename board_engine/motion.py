@@ -240,6 +240,9 @@ def _link(motions, gears, diags, diag, line):
                                   f"rod meets the arm closer to square.", line=line,
                                   calc=calc + [f"worst transmission angle over the cycle = {worst:.1f}° "
                                                f"(below {TRANSMISSION_MIN:g}° the drive binds)"]))
+            drive = _drive_profile(drv, m, table)
+            if drive:
+                diags.append(diag('info', 'LINKAGE_DRIVE', drive[0], line=line, calc=calc + drive[1]))
             done.add(m['id'])
             return True
         if 'ratio' not in m:
@@ -375,6 +378,30 @@ def _link_table(drv, m):
             if a - 1e-9 <= v <= b + 1e-9:
                 worst = min(worst, _transmission(drv, m, v, got))
     return sorted([round(v, 4) + 0.0, round(x, 4) + 0.0] for v, x in rows.items() if a - 1e-9 <= v <= b + 1e-9), jams, worst
+
+
+def _drive_profile(drv, m, table):
+    """-> (message, calc) on how hard the crank works through the cycle: the follower's speed per degree of crank
+    (its inverse is the mechanical advantage), where it peaks and where the follower turns back."""
+    if len(table) < 3:
+        return None
+    rate = [((table[i + 1][1] - table[i][1]) / (table[i + 1][0] - table[i][0]), (table[i][0] + table[i + 1][0]) / 2)
+            for i in range(len(table) - 1) if table[i + 1][0] > table[i][0]]
+    if not rate:
+        return None
+    peak, at = max(rate, key=lambda r: abs(r[0]))
+    back = [round(rate[i][1]) for i in range(1, len(rate)) if rate[i - 1][0] * rate[i][0] < 0]
+    turns = f" It turns back at {', '.join(f'{v:g}°' for v in back)} of the crank (the ends of its stroke)." if back else ''
+    if m['type'] == 'rotate':
+        msg = (f"Motion '{m['id']}': the crank '{drv['id']}' needs up to {abs(peak):.2f} x the torque it delivers to "
+               f"'{m['id']}' (near {at:.0f}° of the crank, where the arm moves {abs(peak):.2f}° per crank degree).{turns}")
+        calc = [f"torque at the crank = torque on the arm x d(arm angle) / d(crank angle); peak {abs(peak):.3f} at {at:.0f}°"]
+    else:
+        arm = abs(peak) * 180 / math.pi
+        msg = (f"Motion '{m['id']}': the crank '{drv['id']}' needs up to the slider's force x {arm:.1f} mm of torque "
+               f"(near {at:.0f}° of the crank, where the slider moves {abs(peak):.2f} mm per crank degree).{turns}")
+        calc = [f"torque at the crank = slider force x d(slide) / d(crank angle in radians); peak {arm:.2f} mm at {at:.0f}°"]
+    return msg, calc
 
 
 def _link_calc(drv, m):

@@ -1841,6 +1841,30 @@ def _compile_native(data, design_id, result, run_production, machine=None):
     return _finish(design, result, {}, run_production, machine=machine)
 
 
+def _consolidation_notes(merge, diags, line):
+    """Diagnostics for board consolidation: what was merged, or what could be (with the fix that turns it on)."""
+    if not merge['groups']:
+        return
+    n = sum(len(g['from']) for g in merge['groups'])
+    eg = merge['groups'][0]
+    what = (f"{n} flat pieces in {len(merge['groups'])} group(s) - e.g. {len(eg['from'])} pieces "
+            f"({', '.join(eg['from'][:4])}{', ...' if len(eg['from']) > 4 else ''}) as '{eg['board']}'")
+    calc = [f"boards {merge['boards_before']} -> {merge['boards_after']}"] + [
+        f"'{g['board']}' <- {len(g['from'])} pieces, {g['openings']} gap(s) kept as openings" for g in merge['groups'][:12]]
+    calc += [f"left separate: {', '.join(s['boards'][:4])}{', ...' if len(s['boards']) > 4 else ''} - {s['reason']}"
+             for s in merge['skipped'][:6]]
+    if merge['applied']:
+        diags.append(diag('info', 'CONSOLIDATED', f"Consolidated {what}: {merge['boards_before']} boards became "
+                          f"{merge['boards_after']} and {merge['connections_removed']} connection(s) between them were "
+                          f"dropped. The look is unchanged; the gaps are cut out of each panel.", line=line, calc=calc))
+    else:
+        diags.append(diag('info', 'CONSOLIDATE', f"{what} lie in one plane and touch: they can be cut as "
+                          f"{len(merge['groups'])} board(s) instead of {n}, with the same look, fewer joints and less "
+                          f"assembly. Add \"consolidate\": true.", line=line, calc=calc,
+                          fixes=[{'id': 'consolidate', 'title': f"Cut {n} pieces as {len(merge['groups'])} panel(s)",
+                                  'safe': True, 'edits': [{'field': 'consolidate', 'value': True}]}]))
+
+
 def _compile_v1(data, src, off, design_id, result, run_production, machine=None):
     diags = result['diagnostics']
     result['format'] = FORMAT
@@ -1864,6 +1888,16 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         diags.append(diag('error', 'MOUNTING', f'"product.mounting" must be one of {list(MOUNTINGS)}.',
                           line=_key_line(src, 'mounting', off)))
         mounting = None
+    from .consolidate import consolidate, repeat_openings
+    for bid, msg in repeat_openings(data):
+        diags.append(diag('error', 'OPENING_INVALID', f"Board '{bid}': {msg}", board=bid))
+    want = data.get('consolidate', True)
+    if not isinstance(want, bool):
+        diags.append(diag('error', 'CONSOLIDATE', '"consolidate" must be true or false.', line=_key_line(src, 'consolidate', off)))
+        want = False
+    merge = consolidate(data, mat['thickness'], _ORIGIN.get(), do=want)
+    result['consolidation'] = merge
+    _consolidation_notes(merge, diags, _key_line(src, 'consolidate', off))
     from .motion import add_axle_holes, parse_motions
     motions = parse_motions(data, _ORIGIN.get(), diags, diag, line=_key_line(src, 'motions', off))
     add_axle_holes(data, motions, mat['thickness'], diags, diag)
@@ -2187,6 +2221,9 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         found = check_gears(motions) + check_motions(design, plates, motions)
         done = [i['components'] for i in found if i['code'] == 'MOTION_COLLISION']
         insp['issues'] += found + check_cycles(design, plates, motions, done)
+    from .structure import check_retention, check_weak_sections
+    held_by, structure = check_retention(design, plates, skip=moving)
+    insp['issues'] += check_weak_sections(design, plates) + held_by
     covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
     for d in _unattached(conn, diags, conn_pairs or {}, boards):
         diags.append(d)
@@ -2229,6 +2266,7 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         comp = next((c for c in i['components'] if c in boards), None)
         diags.append(diag(i['severity'], i['code'], i['message'], board=comp, line=boards[comp].line if comp else None,
                           components=i['components'] or None, location=i.get('location')))
+    result['structure'] = structure
     result['support'] = {k: support[k] for k in ('mounting', 'stable', 'stability_margin', 'centre_of_mass', 'footprint',
                                                  'status_counts', 'components', 'disclaimer')}
     result['design'] = design
