@@ -437,27 +437,56 @@ export class Viewport3D {
   }
 
   _pose(valueOf) {
-    // a driven motion (a gear train, a belt) follows its driver at its ratio, so the whole train turns together
-    const byId = new Map((this.motions || []).map((m) => [m.id, m])), memo = new Map();
+    // a driven motion follows its driver: at its ratio (a gear train, a belt) or through its connecting rod (the
+    // engine solved the linkage into a table); a motion mounted on a moving board rides on it (a jaw on a head)
+    const ms = this.motions || [], byId = new Map(ms.map((m) => [m.id, m])), memo = new Map(), frames = new Map();
+    const interp = (table, x) => {
+      if (x <= table[0][0]) return table[0][1];
+      for (let i = 1; i < table.length; i += 1) {
+        const [x0, y0] = table[i - 1], [x1, y1] = table[i];
+        if (x <= x1) return y0 + (y1 - y0) * ((x - x0) / (x1 - x0 || 1));
+      }
+      return table[table.length - 1][1];
+    };
     const value = (m) => {
-      if (!memo.has(m.id)) memo.set(m.id, m.driven_by && byId.has(m.driven_by) ? value(byId.get(m.driven_by)) * m.ratio : valueOf(m));
+      if (!memo.has(m.id)) {
+        const d = m.driven_by && byId.get(m.driven_by);
+        memo.set(m.id, !d ? valueOf(m) : m.link ? interp(m.link.table, value(d)) : value(d) * m.ratio);
+      }
       return memo.get(m.id);
     };
-    for (const m of this.motions || []) {
-      const v = value(m);
-      let turn = null, shift;
-      if (m.type === 'rotate') {
-        turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...m.axis), THREE.MathUtils.degToRad(v));
-        const p = new THREE.Vector3(...m.pivot);
-        shift = p.clone().sub(p.clone().applyQuaternion(turn));      // turn about the pivot, not the origin
-      } else shift = new THREE.Vector3(...m.direction).multiplyScalar(v);
-      for (const id of m.boards) {
-        const it = this.items.get(id);
-        if (!it) continue;
-        it.motionTurn = turn;
-        it.motionShift = shift;
-        this._place(it);
-      }
+    const local = (m, v) => {      // x -> q x + t
+      if (m.type !== 'rotate') return { q: new THREE.Quaternion(), t: new THREE.Vector3(...m.direction).multiplyScalar(v) };
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...m.axis), THREE.MathUtils.degToRad(v));
+      const p = new THREE.Vector3(...m.pivot);
+      return { q, t: p.clone().sub(p.clone().applyQuaternion(q)) };    // turn about the pivot, not the origin
+    };
+    const at = (f, x) => new THREE.Vector3(...x).applyQuaternion(f.q).add(f.t);
+    const then = (a, b) => ({ q: a.q.clone().multiply(b.q), t: b.t.clone().applyQuaternion(a.q).add(a.t) });
+    const frame = (id) => {
+      const m = id && byId.get(id);
+      if (!m) return { q: new THREE.Quaternion(), t: new THREE.Vector3() };
+      if (!frames.has(id)) frames.set(id, then(frame(m.parent), local(m, value(m))));
+      return frames.get(id);
+    };
+    const rod = (m) => {           // the rod turns in its crank's plane to span its two pins
+      const d = byId.get(m.driven_by), a = new THREE.Vector3(...d.axis);
+      const P = at(local(d, value(d)), m.link.from), Q = at(local(m, value(m)), m.link.to);
+      const flat = (v) => v.clone().sub(a.clone().multiplyScalar(v.dot(a)));
+      const u0 = flat(new THREE.Vector3(...m.link.to).sub(new THREE.Vector3(...m.link.from))), u1 = flat(Q.clone().sub(P));
+      const q = new THREE.Quaternion().setFromAxisAngle(a, Math.atan2(u0.clone().cross(u1).dot(a), u0.dot(u1)));
+      return then(frame(m.parent), { q, t: P.sub(new THREE.Vector3(...m.link.from).applyQuaternion(q)) });
+    };
+    const put = (id, f) => {
+      const it = this.items.get(id);
+      if (!it) return;
+      it.motionTurn = f.q;
+      it.motionShift = f.t;
+      this._place(it);
+    };
+    for (const m of ms) {
+      for (const id of m.boards) put(id, frame(m.id));
+      if (m.link && byId.has(m.driven_by)) put(m.link.rod, rod(m));
     }
   }
 

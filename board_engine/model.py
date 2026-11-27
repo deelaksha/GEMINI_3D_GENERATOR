@@ -493,9 +493,26 @@ def normalize_motions(raw, comp_ids):
         nm = {'id': check_id(m.get('id'), p + '.id'), 'type': m['type'], 'boards': boards, 'on': m['on'],
               'range': [_num(rng[0], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord']),
                         _num(rng[1], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord'])]}
+        lk = m.get('link')
         if isinstance(m.get('driven_by'), str):           # a gear train / belt: it follows that motion at "ratio"
             nm['driven_by'] = check_id(m['driven_by'], p + '.driven_by')
-            nm['ratio'] = _num(m.get('ratio'), p + '.ratio', -1e6, 1e6)
+            if not isinstance(lk, dict):
+                nm['ratio'] = _num(m.get('ratio'), p + '.ratio', -1e6, 1e6)
+        if isinstance(m.get('parent'), str):              # it rides on the board another motion moves
+            nm['parent'] = check_id(m['parent'], p + '.parent')
+        if isinstance(lk, dict) and 'driven_by' in nm:    # pushed by its crank through a connecting rod
+            if lk.get('rod') not in comp_ids:
+                continue
+            pt = lambda v, q: [_num(x, q, -LIMITS['max_coord'], LIMITS['max_coord']) for x in v] \
+                if isinstance(v, list) and len(v) == 3 else _num(None, q)
+            table = lk.get('table')
+            if not (isinstance(table, list) and 0 < len(table) <= 2000 and all(isinstance(r, list) and len(r) == 2 for r in table)):
+                raise SchemaError(f'{p}.link.table must list [crank value, value] pairs', p + '.link.table')
+            nm['link'] = {'rod': lk['rod'], 'from': pt(lk.get('from'), p + '.link.from'), 'to': pt(lk.get('to'), p + '.link.to'),
+                          'pin': _num(lk.get('pin', 4), p + '.link.pin', 1, 20),
+                          'length': _num(lk.get('length', 1), p + '.link.length', 0, LIMITS['max_coord'] * 4),
+                          'table': [[_num(a, p + '.link.table', -1e6, 1e6), _num(b, p + '.link.table', -1e6, 1e6)]
+                                    for a, b in table]}
         if m['type'] == 'rotate':
             if m.get('axis') not in MOTION_AXES or not (isinstance(m.get('pivot'), list) and len(m['pivot']) == 3):
                 raise SchemaError(f'{p} needs "axis" and "pivot"', p)

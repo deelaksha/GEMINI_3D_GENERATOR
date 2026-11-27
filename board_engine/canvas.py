@@ -2094,7 +2094,8 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         design['coloring'] = True
         design['color_sheets'] = bool(machine.get('color_sheets'))     # each colour cut from its own (pre-coloured) sheets
     design['source'] = {'format': FORMAT, 'code': None}
-    design['motions'] = [m for m in motions if all(b in comps for b in m['boards']) and m['on'] in comps]
+    design['motions'] = [m for m in motions if all(b in comps for b in m['boards']) and m['on'] in comps
+                         and (not m.get('link') or m['link']['rod'] in comps)]
 
     with joining_loop(design):
         for n, (j, c, cid, cline) in enumerate(joints):
@@ -2180,10 +2181,12 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
               for cid, bd in boards.items() if _laid_out(bd.raw)}
     insp = inspect(plates, design['joints'], bodies)
     motions = design.get('motions') or []
-    moving = {b for m in motions for b in m['boards']}
+    moving = {b for m in motions for b in m['boards'] + ([m['link']['rod']] if m.get('link') else [])}
     if motions:
-        from .motion import check_gears, check_motions
-        insp['issues'] += check_gears(motions) + check_motions(design, plates, motions)
+        from .motion import check_cycles, check_gears, check_motions
+        found = check_gears(motions) + check_motions(design, plates, motions)
+        done = [i['components'] for i in found if i['code'] == 'MOTION_COLLISION']
+        insp['issues'] += found + check_cycles(design, plates, motions, done)
     covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
     for d in _unattached(conn, diags, conn_pairs or {}, boards):
         diags.append(d)

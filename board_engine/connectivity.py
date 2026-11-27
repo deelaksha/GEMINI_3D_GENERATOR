@@ -68,6 +68,9 @@ def analyze(design, plates, support=None):
         for b in m['boards']:
             if b in parent and m['on'] in parent:
                 parent[find(b)] = find(m['on'])
+        rod = (m.get('link') or {}).get('rod')
+        if rod in parent and m['boards'][0] in parent:       # a connecting rod is held by its pins
+            parent[find(rod)] = find(m['boards'][0])
     groups = {}
     for i in ids:
         groups.setdefault(find(i), []).append(i)

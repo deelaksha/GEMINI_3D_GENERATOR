@@ -202,9 +202,9 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 ## Moving parts (motions) - checked through their whole travel and animated in 3D
 ```
 "motions": [
-  {"id": str, "type": "rotate", "boards": [ids that turn together], "on": static board id, "axis": "x"|"y"|"z",
+  {"id": str, "type": "rotate", "boards": [ids that turn together], "on": board id, "axis": "x"|"y"|"z",
    "pivot": [x, y, z], "range": [from, to] (degrees), "axle"?: {"diameter": mm}},
-  {"id": str, "type": "slide", "boards": [ids], "on": static board id, "direction": "x"|"y"|"z", "range": [from, to] (mm)}
+  {"id": str, "type": "slide", "boards": [ids], "on": board id, "direction": "x"|"y"|"z", "range": [from, to] (mm)}
 ]
 ```
 - The design is drawn at position 0 of every motion (closed lid, drawer in); `range` must include where it goes. Angles
@@ -227,6 +227,9 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 - A repeated / mirrored / instanced board may be named by its source id: every copy moves (all blades of a fan).
 - A motion written inside an assembly is copied into every instance (its own ids, pivot and direction, turned and
   flipped with it): one animated door module, placed a hundred times, gives a hundred working doors.
+- Nested motions: `"on"` may be a board that another motion moves - a jaw on a head, a head on a neck, a wing tip on a
+  wing, each tail segment on the one before. The child rides on its parent and moves relative to it (pivot and axis
+  written as drawn, at rest); every child is checked through its own travel, and carried along when its parent moves.
 Mechanisms that work well in flat boards: a turntable (a round disk on a base, axis y, axle), a wheel on a wall
 (round board thin along x, axis x, axle), a swinging flap or arm on a pin, a rotating sign or vane, a hinged lid, a
 drawer or tray sliding on runners, a sliding panel between two rails.
@@ -259,6 +262,36 @@ Gears stay gears when an instance is turned or flipped, so a reused gearbox modu
 ]
 ```
 
+## Linkages: one crank drives everything (connecting rods, rockers, sliders)
+A real mechanism has ONE input - a hand crank or a motor shaft - and every other movement is pushed by actual parts.
+A motion driven through a connecting rod has `"driven_by": "<crank motion id>"` and, instead of a ratio, a `"link"`:
+`{"rod": "<rod board id>", "from": [x, y, z] (pin on the crank), "to": [x, y, z] (pin on this motion's boards),
+"pin"?: {"diameter": mm, default 4}}`. The rod is an ordinary board (a bar with a "polygon" or rounded profile) that
+no motion lists; the compiler pins it at both ends (cuts the pin holes), solves the linkage exactly at every crank
+position (the follower's travel comes from that, give it no "range") and animates crank, rod and follower together.
+- Four-bar / crank-rocker (a wing flapping, a jaw, a leg swinging, a head nodding): the follower turns about the SAME
+  axis as the crank. It works all the way round only when the crank is the shortest link and shortest + longest <=
+  the other two (Grashof); otherwise the compiler reports where it locks (LINKAGE_JAM).
+- Slider-crank (a piston, a pecking head, a pump): the follower slides across the crank's axis; its stroke is twice
+  the crank radius when the rod points at the crank's axle.
+- Build it in layers: frame, then crank and follower (both thin along the axis, on their axles), then the rod in the
+  next layer so it passes over them. Every part of the mechanism is posed together through the whole cycle and any
+  two that meet are reported (MOTION_COLLISION "Mechanism driven by ..."). A rod pushing almost along the arm it
+  drives (transmission angle under 30°) is warned about: it would stall.
+- Chain stages from one input: a gear driven by the crank, a rocker driven through a rod from that gear, a jaw riding
+  on that rocker... (a cam: a disk crank with the rod's pin off centre is an eccentric).
+```jsonc
+{"id": "BASE", "position": [0, 0, 0], "size": [420, 320, 6]},
+{"id": "CRANK", "position": [70, 120, 6], "size": [60, 60, 6], "profile": {"shape": "circle", "center": [30, 30], "diameter": 60}},
+{"id": "ARM", "position": [290, 140, 6], "size": [20, 90, 6]},
+{"id": "ROD", "position": [106, 137, 12], "size": [208, 96, 6], "profile": {"shape": "polygon", "points": [[7.6, 1.9], [206.2, 79.2], [200.4, 94.1], [1.8, 16.8]]}},
+"motions": [
+  {"id": "crank", "type": "rotate", "boards": ["CRANK"], "on": "BASE", "axis": "z", "pivot": [100, 150, 6], "range": [0, 360], "axle": {"diameter": 6}},
+  {"id": "flap", "type": "rotate", "boards": ["ARM"], "on": "BASE", "axis": "z", "pivot": [300, 150, 6], "axle": {"diameter": 6},
+   "driven_by": "crank", "link": {"rod": "ROD", "from": [120, 150, 12], "to": [300, 220, 12]}}
+]
+```
+
 ## What this generator cannot build (do not attempt; use the alternative)
 - Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
   no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
@@ -266,9 +299,9 @@ Gears stay gears when an instance is turned or flipped, so a reused gearbox modu
   (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
 - Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
   compiler gives its length); curved or kerf-bent panels stay flat. Round flat parts (wheels, disks) are fine.
-- Mechanisms other than gear trains and belts where moving parts drive each other: cams, a crank pushing a rod,
-  linkages, springs, racks. Gears and belts link with `"driven_by"` (see "Gears"); for the others build each moving
-  part as its own motion and draw the linked parts in one pose.
+- Springs, ratchets and cams with a shaped (non-round) lobe: not solved. Gears and belts link with `"driven_by"`
+  (see "Gears"), cranks with rods with `"link"` (see "Linkages"); a rack can follow a gear with
+  `"ratio": pi x module x teeth / 360` (mm per degree).
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the

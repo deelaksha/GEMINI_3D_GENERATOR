@@ -342,6 +342,13 @@ def _instance_motion(mo, iid, M, off, origin):
         mo['axle']['boards'] = [f"{iid}-{b}" for b in mo['axle']['boards']]
     if _vec3(mo.get('pivot')):
         mo['pivot'] = [v + off[i] for i, v in enumerate(_apply(M, mo['pivot']))]
+    lk = mo.get('link')
+    if isinstance(lk, dict):
+        if isinstance(lk.get('rod'), str):
+            lk['rod'] = f"{iid}-{lk['rod']}"
+        for k in ('from', 'to'):
+            if _vec3(lk.get(k)):
+                lk[k] = [v + off[i] for i, v in enumerate(_apply(M, lk[k]))]
     key = 'axis' if mo.get('type') == 'rotate' else 'direction'
     if mo.get(key) in AX:
         sgn, j = _axis_image(M, AX.index(mo[key]))
