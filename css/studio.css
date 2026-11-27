@@ -153,7 +153,7 @@ body[data-view="split"] .view-2d { border-right: 1px solid var(--border); }
 .view-3d { background: radial-gradient(ellipse at 50% 30%, #2b323e 0%, #151920 72%); }
 .view-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 3; align-items: center; }
 .tool { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--border-strong);
-  background: rgba(18, 22, 29, .88); backdrop-filter: blur(8px); color: var(--muted); font-size: 12.5px; font-weight: 550; }
+  background: rgba(18, 22, 29, .88); backdrop-filter: blur(8px); color: var(--muted); font-size: 12.5px; font-weight: 550; white-space: nowrap; }
 .tool svg { width: 16px; height: 16px; }
 .tool:hover { color: var(--text); }
 .tool.on { color: #a9c8ff; border-color: rgba(76, 141, 255, .55); }

@@ -91,25 +91,34 @@ class _MaxRects:
         return best
 
     def place(self, x, y, w, h):
-        new = []
+        new, split = [], []                 # split: indexes in `new` of rectangles created by this placement
         for fx, fy, fw, fh in self.free:
             if x >= fx + fw or x + w <= fx or y >= fy + fh or y + h <= fy:
                 new.append((fx, fy, fw, fh))
                 continue
             if x > fx:
+                split.append(len(new))
                 new.append((fx, fy, x - fx, fh))
             if x + w < fx + fw:
+                split.append(len(new))
                 new.append((x + w, fy, fx + fw - x - w, fh))
             if y > fy:
+                split.append(len(new))
                 new.append((fx, fy, fw, y - fy))
             if y + h < fy + fh:
+                split.append(len(new))
                 new.append((fx, y + h, fw, fy + fh - y - h))
-        # prune contained rectangles
+
+        def inside(i, j):
+            r, o = new[i], new[j]
+            return (j != i and r[0] >= o[0] - 1e-9 and r[1] >= o[1] - 1e-9 and r[0] + r[2] <= o[0] + o[2] + 1e-9
+                    and r[1] + r[3] <= o[1] + o[3] + 1e-9 and (r != o or j < i))
+        # prune contained rectangles. The untouched ones were pruned against each other last time (none contains
+        # another), so only pairs involving a new split rectangle can be contained: thousands of free rectangles stay
+        # fast, with exactly the same result as comparing every pair.
+        is_split = set(split)
         self.free = [r for i, r in enumerate(new)
-                     if not any(j != i and r[0] >= o[0] - 1e-9 and r[1] >= o[1] - 1e-9 and
-                                r[0] + r[2] <= o[0] + o[2] + 1e-9 and r[1] + r[3] <= o[1] + o[3] + 1e-9 and
-                                (r != o or j < i)
-                                for j, o in enumerate(new))]
+                     if not any(inside(i, j) for j in (range(len(new)) if i in is_split else split))]
 
 
 def part_area(plate):
@@ -458,16 +467,16 @@ def verify_nesting(design, report):
     for p in report['placements']:
         by_sheet.setdefault(p['sheet'], []).append(p['id'])
     for si, ids in by_sheet.items():
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                a, b = geo[ids[i]], geo[ids[j]]
-                ba, bb = G.bbox(a), G.bbox(b)
-                if ba[0] - sp > bb[2] or bb[0] - sp > ba[2] or ba[1] - sp > bb[3] or bb[1] - sp > ba[3]:
-                    continue
-                if G.polygons_overlap(a, b):
-                    issues.append({'code': 'NESTING_OVERLAP', 'severity': 'error', 'components': [ids[i], ids[j]],
-                                   'message': f"'{ids[i]}' and '{ids[j]}' overlap on sheet {si + 1}."})
-                elif G.polygon_distance(a, b) < sp - 1e-3:
-                    issues.append({'code': 'NESTING_SPACING', 'severity': 'error', 'components': [ids[i], ids[j]],
-                                   'message': f"'{ids[i]}' and '{ids[j]}' are closer than {sp} mm on sheet {si + 1}."})
+        boxes = [G.bbox(geo[i]) for i in ids]
+        for i, j in G.near_pairs([((x0, y0), (x1, y1)) for x0, y0, x1, y1 in boxes], sp):
+            a, b = geo[ids[i]], geo[ids[j]]
+            ba, bb = G.bbox(a), G.bbox(b)
+            if ba[0] - sp > bb[2] or bb[0] - sp > ba[2] or ba[1] - sp > bb[3] or bb[1] - sp > ba[3]:
+                continue
+            if G.polygons_overlap(a, b):
+                issues.append({'code': 'NESTING_OVERLAP', 'severity': 'error', 'components': [ids[i], ids[j]],
+                               'message': f"'{ids[i]}' and '{ids[j]}' overlap on sheet {si + 1}."})
+            elif G.polygon_distance(a, b) < sp - 1e-3:
+                issues.append({'code': 'NESTING_SPACING', 'severity': 'error', 'components': [ids[i], ids[j]],
+                               'message': f"'{ids[i]}' and '{ids[j]}' are closer than {sp} mm on sheet {si + 1}."})
     return issues

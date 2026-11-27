@@ -114,95 +114,94 @@ def inspect(plates, joints=(), bodies=None):
         return False
 
     touching = {i: [] for i in ids}
-    # 1. pair by pair: slits, unjoined contact, almost-flush edges
-    for x in range(len(ids)):
-        for y in range(x + 1, len(ids)):
-            a, b = ids[x], ids[y]
-            A, B = box[a], box[b]
-            g = _gaps(A, B)
-            open_axes = [k for k in range(3) if g[k] > 0]
-            same = rigid(a, b)
-            if len(open_axes) == 1 and TOUCH < g[open_axes[0]] <= SLIT and frozenset((a, b)) not in connected:
-                k = open_axes[0]
-                face = [_overlap(A, B, j) for j in range(3) if j != k]
-                key = (min(find(a), find(b)), max(find(a), find(b)), k, round(g[k], 1))
-                if min(face) >= MIN_FACE and (same or key not in seen_clear) and not _spacer(a, b, k):
-                    seen_clear.add(key)                 # between units: one note per unit pair, side and clearance
-                    lo, hi = (a, b) if A[1][k] <= B[0][k] else (b, a)
-                    gap = box[hi][0][k] - box[lo][1][k]
-                    add('VISIBLE_GAP', 'warning' if same else 'info', [hi, lo],
-                        f"A {gap:.1f} mm gap is visible between '{lo}' and '{hi}' along {AX[k]}: they face each other over "
-                        f"{face[0]:.0f} × {face[1]:.0f} mm but do not touch."
-                        + (f" Both belong to one rigid structure, so this is a misplacement: move '{hi}' by {-gap:g} mm "
-                           f"along {AX[k]} so it sits on '{lo}', or connect them." if same else
-                           " They are separate units (a drawer, a door, a lid, a module): fine as a running clearance."),
-                        [f"{lo}.{AX[k]}max = {_f(box[lo][1][k])} mm", f"{hi}.{AX[k]}min = {_f(box[hi][0][k])} mm",
-                         f"gap = {_f(box[hi][0][k])} - {_f(box[lo][1][k])} = {gap:.2f} mm (contact is <= {TOUCH} mm)",
-                         f"facing area = {face[0]:.1f} × {face[1]:.1f} mm",
-                         f"same rigid structure: {'yes' if same else 'no'}"],
-                        mid(a, b), move(hi, k, -gap) if same else None)
-            if max(g) > TOUCH:
-                continue
-            ov = [_overlap(A, B, k) for k in range(3)]
-            # touching over a real area: at least MIN_FACE one way and a board's edge (its thickness) the other way
-            edge = min(MIN_FACE, 0.9 * min(t[a], t[b]))
-            contact = [k for k in range(3) if abs(ov[k]) <= TOUCH and min(ov[j] for j in range(3) if j != k) >= edge
-                       and max(ov[j] for j in range(3) if j != k) >= MIN_FACE]
-            if contact:
-                touching[a].append(b)
-                touching[b].append(a)
-            if not same:
-                continue                # edges only need to line up within one rigid unit
-            if contact and frozenset((a, b)) not in connected:
-                k = contact[0]
-                lo, hi = (a, b) if A[1][k] <= B[0][k] + TOUCH else (b, a)
-                c1, c2 = [ov[j] for j in range(3) if j != k]
-                # the board that meets the other with an edge: is it its END (a shelf end, a rail end) or a long side?
-                eb = [i for i in (a, b) if thin[i] != k]
-                e = min(eb, key=lambda i: size[i][k]) if eb else None
-                along = [j for j in range(3) if j != k and e is not None and j != thin[e]]
-                end = bool(along) and size[e][along[0]] <= size[e][k] + 0.01
-                other = (a if e == b else b) if e is not None else None
-                # a thinner panel (a back, a divider) meeting thicker carcass boards is held in its own joints elsewhere
-                captured = e is not None and t[e] < t[other] - 0.01
-                bearing = (k == 1 or end) and not captured
-                add('UNJOINED_CONTACT', 'warning' if bearing else 'info', [hi, lo],
-                    (f"'{e}' ({t[e]:g} mm) meets the thicker '{other}' ({t[other]:g} mm) over {c1:.0f} × {c2:.0f} mm "
-                     f"without a connection; as a captured panel it is held by its other joints." if captured else
-                     f"'{hi}' rests on '{lo}' over {c1:.0f} × {c2:.0f} mm with no connection between them: nothing holds "
-                     f"it down there (glue-free), so it can lift or slide. Add a connection (e.g. tab_slot '{lo}' into "
-                     f"'{hi}' or the reverse)." if k == 1 else
-                     f"The end of '{e}' butts against '{a if e == b else b}' over {c1:.0f} × {c2:.0f} mm with no connection: "
-                     f"that end is unsupported and will sag or come loose. Add a connection (tab_slot '{e}' into "
-                     f"'{a if e == b else b}')." if end else
-                     f"'{a}' and '{b}' touch side by side over {c1:.0f} × {c2:.0f} mm with no connection between them; "
-                     f"they are held only through other boards. Add a connection if they should be fixed together."),
+    # 1. pair by pair: slits, unjoined contact, almost-flush edges (all need the boxes within SLIT)
+    for x, y in G.near_pairs([box[i] for i in ids], SLIT):
+        a, b = ids[x], ids[y]
+        A, B = box[a], box[b]
+        g = _gaps(A, B)
+        open_axes = [k for k in range(3) if g[k] > 0]
+        same = rigid(a, b)
+        if len(open_axes) == 1 and TOUCH < g[open_axes[0]] <= SLIT and frozenset((a, b)) not in connected:
+            k = open_axes[0]
+            face = [_overlap(A, B, j) for j in range(3) if j != k]
+            key = (min(find(a), find(b)), max(find(a), find(b)), k, round(g[k], 1))
+            if min(face) >= MIN_FACE and (same or key not in seen_clear) and not _spacer(a, b, k):
+                seen_clear.add(key)                 # between units: one note per unit pair, side and clearance
+                lo, hi = (a, b) if A[1][k] <= B[0][k] else (b, a)
+                gap = box[hi][0][k] - box[lo][1][k]
+                add('VISIBLE_GAP', 'warning' if same else 'info', [hi, lo],
+                    f"A {gap:.1f} mm gap is visible between '{lo}' and '{hi}' along {AX[k]}: they face each other over "
+                    f"{face[0]:.0f} × {face[1]:.0f} mm but do not touch."
+                    + (f" Both belong to one rigid structure, so this is a misplacement: move '{hi}' by {-gap:g} mm "
+                       f"along {AX[k]} so it sits on '{lo}', or connect them." if same else
+                       " They are separate units (a drawer, a door, a lid, a module): fine as a running clearance."),
                     [f"{lo}.{AX[k]}max = {_f(box[lo][1][k])} mm", f"{hi}.{AX[k]}min = {_f(box[hi][0][k])} mm",
-                     f"|{_f(box[hi][0][k])} - {_f(box[lo][1][k])}| = {abs(box[hi][0][k] - box[lo][1][k]):.2f} mm <= {TOUCH} "
-                     f"mm: touching", f"contact = {c1:.1f} × {c2:.1f} mm", "connections between them: none",
-                     f"contact direction: {AX[k]} ({'vertical: load bearing' if k == 1 else 'horizontal'})",
-                     *([f"{e}: edge along {AX[along[0]]} = {size[e][along[0]]:.1f} mm <= its length along {AX[k]} = "
-                        f"{size[e][k]:.1f} mm: it is the board's end"] if end and k != 1 else [])],
-                    mid(a, b))
-            for k in range(3):
-                if min(size[a][k], size[b][k]) <= max(t[a], t[b]) + 0.01:
-                    continue            # across a board's thickness edges are never "flush" by intent
-                for side, name in ((0, 'min'), (1, 'max')):      # one report per pair and axis
-                    d = abs(B[side][k] - A[side][k])
-                    if not TOUCH < d <= STEP or deliberate(d, a, b):
-                        continue
-                    small = a if size[a][k] < size[b][k] else b
-                    other = b if small == a else a
-                    delta = box[other][side][k] - box[small][side][k]
-                    add('MISALIGNED', 'warning', [small, other],
-                        f"The {name} {AX[k]} edges of '{small}' and '{other}' are {d:.1f} mm apart: almost flush, so it shows "
-                        f"as a step or overhang. Move '{small}' by {round(delta, 3):g} mm along {AX[k]} to line them up (or "
-                        f"make the offset deliberate: >= {STEP:g} mm or one board thickness).",
-                        [f"{a}.{AX[k]}{name} = {_f(A[side][k])} mm", f"{b}.{AX[k]}{name} = {_f(B[side][k])} mm",
-                         f"offset = |{_f(B[side][k])} - {_f(A[side][k])}| = {d:.2f} mm (flush <= {TOUCH} mm, "
-                         f"deliberate >= {STEP:g} mm or {t[a]:g} mm thickness)"],
-                        mid(a, b), move(small, k, delta))
-                    break
+                     f"gap = {_f(box[hi][0][k])} - {_f(box[lo][1][k])} = {gap:.2f} mm (contact is <= {TOUCH} mm)",
+                     f"facing area = {face[0]:.1f} × {face[1]:.1f} mm",
+                     f"same rigid structure: {'yes' if same else 'no'}"],
+                    mid(a, b), move(hi, k, -gap) if same else None)
+        if max(g) > TOUCH:
+            continue
+        ov = [_overlap(A, B, k) for k in range(3)]
+        # touching over a real area: at least MIN_FACE one way and a board's edge (its thickness) the other way
+        edge = min(MIN_FACE, 0.9 * min(t[a], t[b]))
+        contact = [k for k in range(3) if abs(ov[k]) <= TOUCH and min(ov[j] for j in range(3) if j != k) >= edge
+                   and max(ov[j] for j in range(3) if j != k) >= MIN_FACE]
+        if contact:
+            touching[a].append(b)
+            touching[b].append(a)
+        if not same:
+            continue                # edges only need to line up within one rigid unit
+        if contact and frozenset((a, b)) not in connected:
+            k = contact[0]
+            lo, hi = (a, b) if A[1][k] <= B[0][k] + TOUCH else (b, a)
+            c1, c2 = [ov[j] for j in range(3) if j != k]
+            # the board that meets the other with an edge: is it its END (a shelf end, a rail end) or a long side?
+            eb = [i for i in (a, b) if thin[i] != k]
+            e = min(eb, key=lambda i: size[i][k]) if eb else None
+            along = [j for j in range(3) if j != k and e is not None and j != thin[e]]
+            end = bool(along) and size[e][along[0]] <= size[e][k] + 0.01
+            other = (a if e == b else b) if e is not None else None
+            # a thinner panel (a back, a divider) meeting thicker carcass boards is held in its own joints elsewhere
+            captured = e is not None and t[e] < t[other] - 0.01
+            bearing = (k == 1 or end) and not captured
+            add('UNJOINED_CONTACT', 'warning' if bearing else 'info', [hi, lo],
+                (f"'{e}' ({t[e]:g} mm) meets the thicker '{other}' ({t[other]:g} mm) over {c1:.0f} × {c2:.0f} mm "
+                 f"without a connection; as a captured panel it is held by its other joints." if captured else
+                 f"'{hi}' rests on '{lo}' over {c1:.0f} × {c2:.0f} mm with no connection between them: nothing holds "
+                 f"it down there (glue-free), so it can lift or slide. Add a connection (e.g. tab_slot '{lo}' into "
+                 f"'{hi}' or the reverse)." if k == 1 else
+                 f"The end of '{e}' butts against '{a if e == b else b}' over {c1:.0f} × {c2:.0f} mm with no connection: "
+                 f"that end is unsupported and will sag or come loose. Add a connection (tab_slot '{e}' into "
+                 f"'{a if e == b else b}')." if end else
+                 f"'{a}' and '{b}' touch side by side over {c1:.0f} × {c2:.0f} mm with no connection between them; "
+                 f"they are held only through other boards. Add a connection if they should be fixed together."),
+                [f"{lo}.{AX[k]}max = {_f(box[lo][1][k])} mm", f"{hi}.{AX[k]}min = {_f(box[hi][0][k])} mm",
+                 f"|{_f(box[hi][0][k])} - {_f(box[lo][1][k])}| = {abs(box[hi][0][k] - box[lo][1][k]):.2f} mm <= {TOUCH} "
+                 f"mm: touching", f"contact = {c1:.1f} × {c2:.1f} mm", "connections between them: none",
+                 f"contact direction: {AX[k]} ({'vertical: load bearing' if k == 1 else 'horizontal'})",
+                 *([f"{e}: edge along {AX[along[0]]} = {size[e][along[0]]:.1f} mm <= its length along {AX[k]} = "
+                    f"{size[e][k]:.1f} mm: it is the board's end"] if end and k != 1 else [])],
+                mid(a, b))
+        for k in range(3):
+            if min(size[a][k], size[b][k]) <= max(t[a], t[b]) + 0.01:
+                continue            # across a board's thickness edges are never "flush" by intent
+            for side, name in ((0, 'min'), (1, 'max')):      # one report per pair and axis
+                d = abs(B[side][k] - A[side][k])
+                if not TOUCH < d <= STEP or deliberate(d, a, b):
+                    continue
+                small = a if size[a][k] < size[b][k] else b
+                other = b if small == a else a
+                delta = box[other][side][k] - box[small][side][k]
+                add('MISALIGNED', 'warning', [small, other],
+                    f"The {name} {AX[k]} edges of '{small}' and '{other}' are {d:.1f} mm apart: almost flush, so it shows "
+                    f"as a step or overhang. Move '{small}' by {round(delta, 3):g} mm along {AX[k]} to line them up (or "
+                    f"make the offset deliberate: >= {STEP:g} mm or one board thickness).",
+                    [f"{a}.{AX[k]}{name} = {_f(A[side][k])} mm", f"{b}.{AX[k]}{name} = {_f(B[side][k])} mm",
+                     f"offset = |{_f(B[side][k])} - {_f(A[side][k])}| = {d:.2f} mm (flush <= {TOUCH} mm, "
+                     f"deliberate >= {STEP:g} mm or {t[a]:g} mm thickness)"],
+                    mid(a, b), move(small, k, delta))
+                break
 
     # 1b. hinged doors: the hinge-side edge flush with the outer face of the board it hangs on, the same height
     for j in joints:
@@ -257,16 +256,22 @@ def inspect(plates, joints=(), bodies=None):
             tw[x] = tw[tw[x]]
             x = tw[x]
         return x
-    for x in range(len(ids)):
-        for y in range(x + 1, len(ids)):
-            a, b = ids[x], ids[y]
-            g = _gaps(box[a], box[b])
-            if thin[a] != thin[b] or max(g) <= TOUCH:
-                continue
-            s = max(range(3), key=lambda k: g[k])
-            diffs = [size[a][k] - size[b][k] for k in range(3)] + [box[a][0][k] - box[b][0][k] for k in range(3) if k != s]
-            if all(abs(v) <= STEP for v in diffs):
-                tw[tfind(a)] = tfind(b)
+    # twins match within STEP in all three sizes and in two of the three positions: points in that 5D space
+    candidates = set()
+    for j, l in ((1, 2), (0, 2), (0, 1)):
+        for axis in set(thin.values()):
+            group = [i for i in ids if thin[i] == axis]
+            pts = [[*size[i], box[i][0][j], box[i][0][l]] for i in group]
+            candidates.update((group[p], group[q]) for p, q in G.near_pairs([(v, v) for v in pts], STEP))
+    order = {i: n for n, i in enumerate(ids)}
+    for a, b in sorted(candidates, key=lambda e: (order[e[0]], order[e[1]])):
+        g = _gaps(box[a], box[b])
+        if thin[a] != thin[b] or max(g) <= TOUCH:
+            continue
+        s = max(range(3), key=lambda k: g[k])
+        diffs = [size[a][k] - size[b][k] for k in range(3)] + [box[a][0][k] - box[b][0][k] for k in range(3) if k != s]
+        if all(abs(v) <= STEP for v in diffs):
+            tw[tfind(a)] = tfind(b)
     clusters = {}
     for i in ids:
         clusters.setdefault(tfind(i), []).append(i)
@@ -353,27 +358,25 @@ def inspect(plates, joints=(), bodies=None):
     if ids:
         lo = [min(box[i][0][k] for i in ids) for k in range(3)]
         hi = [max(box[i][1][k] for i in ids) for k in range(3)]
-        for x in range(len(ids)):
-            for y in range(x + 1, len(ids)):
-                a, b = ids[x], ids[y]
-                if boards[a]['size'] != boards[b]['size']:
+        same_size = {}
+        for i in ids:
+            same_size.setdefault(tuple(boards[i]['size']), []).append(i)
+        for a, b in (g for g in same_size.values() if len(g) == 2):  # a size shared by exactly two boards
+            for k in range(3):
+                if any(abs(box[a][0][j] - box[b][0][j]) > TOUCH for j in range(3) if j != k):
                     continue
-                for k in range(3):
-                    if any(abs(box[a][0][j] - box[b][0][j]) > TOUCH for j in range(3) if j != k):
-                        continue
-                    left, right = (a, b) if box[a][0][k] < box[b][0][k] else (b, a)
-                    ml, mr = box[left][0][k] - lo[k], hi[k] - box[right][1][k]
-                    d = abs(ml - mr)
-                    if box[right][0][k] - box[left][1][k] > 0 and TOUCH < d <= STEP and len(
-                            [i for i in ids if boards[i]['size'] == boards[a]['size']]) == 2:
-                        add('ASYMMETRIC', 'warning', [right, left],
-                            f"'{left}' and '{right}' look like a mirror pair along {AX[k]}, but sit {d:.1f} mm off "
-                            f"centre: {ml:.1f} mm from one end of the product, {mr:.1f} mm from the other.",
-                            [f"product {AX[k]} = {_f(lo[k])} .. {_f(hi[k])} mm",
-                             f"{left}: {_f(box[left][0][k])} - {_f(lo[k])} = {ml:.2f} mm from the {AX[k]}min end",
-                             f"{right}: {_f(hi[k])} - {_f(box[right][1][k])} = {mr:.2f} mm from the {AX[k]}max end",
-                             f"difference = |{ml:.2f} - {mr:.2f}| = {d:.2f} mm"],
-                            [round(v, 1) for v in box[right][0]], move(right, k, mr - ml))
+                left, right = (a, b) if box[a][0][k] < box[b][0][k] else (b, a)
+                ml, mr = box[left][0][k] - lo[k], hi[k] - box[right][1][k]
+                d = abs(ml - mr)
+                if box[right][0][k] - box[left][1][k] > 0 and TOUCH < d <= STEP:
+                    add('ASYMMETRIC', 'warning', [right, left],
+                        f"'{left}' and '{right}' look like a mirror pair along {AX[k]}, but sit {d:.1f} mm off "
+                        f"centre: {ml:.1f} mm from one end of the product, {mr:.1f} mm from the other.",
+                        [f"product {AX[k]} = {_f(lo[k])} .. {_f(hi[k])} mm",
+                         f"{left}: {_f(box[left][0][k])} - {_f(lo[k])} = {ml:.2f} mm from the {AX[k]}min end",
+                         f"{right}: {_f(hi[k])} - {_f(box[right][1][k])} = {mr:.2f} mm from the {AX[k]}max end",
+                         f"difference = |{ml:.2f} - {mr:.2f}| = {d:.2f} mm"],
+                        [round(v, 1) for v in box[right][0]], move(right, k, mr - ml))
     # 6. gravity: a board must sit on something, lock sideways or interlock; hanging on upward tabs is not enough
     floor_y = min((box[i][0][1] for i in ids), default=0.0)
     partners = {}

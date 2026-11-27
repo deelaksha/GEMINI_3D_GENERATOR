@@ -23,7 +23,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
               only; "glue_allowed" also permits butt, hinge and mitre. Derived from the connections when omitted),
   "sheet"?:   {"width": mm, "height": mm}   (stock sheet; chosen automatically when omitted),
   "boards":   [board, ...],
-  "connections": [connection, ...]
+  "connections": [connection, ...],
+  "motions"?: [motion, ...]   (moving parts, see "Moving parts")
 }
 ```
 - `thickness` between 0.5 and 50 mm. `clearance` = extra width of every slot over the
@@ -85,18 +86,29 @@ Shapes (used by `profile`, `openings` and `engravings`):
   (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
   copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
 - `"mirror": {"axis": "x"|"y"|"z", "at": mm}` on a board also builds its mirror image `"<id>-M"` across the plane
-  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings and hinges are mirrored; text stays
-  readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
-- Top level `"assemblies": [{"id", "boards": [...], "connections": [...]}]` with `"instances": [{"assembly", "id",
-  "offset": [x, y, z], "repeat"?, "mirror"?}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
-  gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
-  connections; connect instance boards to the rest by those names under the top-level `"connections"`.
-- Top level `"plan": {"assemblies": [...], "steps": [...], "checks": [...], "reference"?: [...]}` is your design plan,
-  written before `"boards"` ("reference": what attached reference images show); the compiler ignores it.
+  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings, hinges and tilts are mirrored; text
+  stays readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
+- Top level `"assemblies": [{"id", "boards": [...], "connections": [...], "motions"?: [...]}]` with `"instances":
+  [{"assembly", "id", "offset": [x, y, z], "flip"?, "rotate"?, "repeat"?, "mirror"?}]` reuses a sub-assembly (seats,
+  drawers, window bays, modules, legs): every instance gets copies of the assembly's boards named
+  `"<instance id>-<board id>"`, with its internal connections and motions; connect instance boards to the rest by those
+  names under the top-level `"connections"`. Design the assembly around its own origin [0, 0, 0]; each instance is
+  flipped, then turned, then moved by `offset`:
+  - `"flip": "x"|"y"|"z"` (or a list): a mirror-image copy in place (a left-hand version of a right-hand module).
+  - `"rotate": {"axis", "angle"}` (or a list of steps): multiples of 90° are exact - every board stays square and
+    every joint type works (seats facing a stage from all four sides: angles 0, 90, 180, 270 about y). Any other angle
+    tilts the whole copy about its origin (a fan of seats around a circle); finger and cross_lap joints inside it cannot
+    follow a tilt, so use tab_slot there. An assembly with motions can only be turned by multiples of 90°.
+- Top level `"plan": {"concept"?: str, "economy"?: str, "assemblies": [...], "steps": [...], "checks": [...],
+  "reference"?: [...]}` is your design plan, written before `"boards"` ("reference": what attached reference images
+  show); the compiler ignores it.
 - `"rotate": {"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down
   the axis (about z: +x turns towards +y).
+- A compound tilt is a LIST of 1-3 such steps applied in order, each about its own pivot (default: the board's centre
+  at that moment): `"rotate": [{"axis": "x", "angle": 28, "pivot": [...]}, {"axis": "z", "angle": 8, "pivot": [...]}]`
+  - a roof corner that lifts (flared eaves), a hip piece, a canted panel. Everything else about tilted boards applies.
 - Tilted tab_slot / butt: a straight edge of board A must lie flat on a broad face of board B — e.g. a gable's sloped
   top edge under a roof panel tilted to exactly the same pitch (within 0.5°) — and touch it (|gap| ≤ 0.25 mm).
   Tabs insert square to B's face. Two roof panels meeting at a ridge should each end where their lower faces meet
@@ -186,15 +198,51 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 (rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
 `finger`, or a `butt` with fasteners, and say so in the description.
 
+## Moving parts (motions) - checked through their whole travel and animated in 3D
+```
+"motions": [
+  {"id": str, "type": "rotate", "boards": [ids that turn together], "on": static board id, "axis": "x"|"y"|"z",
+   "pivot": [x, y, z], "range": [from, to] (degrees), "axle"?: {"diameter": mm}},
+  {"id": str, "type": "slide", "boards": [ids], "on": static board id, "direction": "x"|"y"|"z", "range": [from, to] (mm)}
+]
+```
+- The design is drawn at position 0 of every motion (closed lid, drawer in); `range` must include where it goes. Angles
+  turn counter-clockwise looking down the axis (as `rotate`); the pivot is a point on the turning line.
+- The moving boards move rigidly together: join them to each other as usual, but NEVER fix them to a static board with
+  tab_slot / finger / cross_lap / butt / mitre (they could not move - MOTION_LOCKED). A `hinge` connection may hold a
+  moving board (needs "joinery": "glue_allowed"); otherwise the motion itself mounts the group on `"on"`.
+- The group must touch its `"on"` board (it rests on it or turns on its axle). A slide runs along the contact - a
+  drawer resting on a runner board (contact across y) slides along x or z - or straight off it: a lid or roof lifted
+  off (`"direction": "y"`, `"range": [0, 120]`), a plug pulled out. Never into it.
+- `"axle"`: the compiler cuts a dowel hole of that diameter through every board the pivot line passes square through
+  (each must be thin along the axis, with the pivot inside it and room for the hole), and reports the dowel length:
+  a real, glue-free pivot for turntables, wheels, swing arms, flaps and rotating signs.
+- The compiler turns / slides the group every 5° (or about 1/48 of a slide) through the whole range and reports every
+  board it would run into (MOTION_COLLISION) with the last clear position: put a lid's pivot on the OUTER edge it opens
+  about, leave running clearance (1-2 mm) around turning parts, and keep the range within what really clears.
+- A repeated / mirrored / instanced board may be named by its source id: every copy moves (all blades of a fan).
+- A motion written inside an assembly is copied into every instance (its own ids, pivot and direction, turned and
+  flipped with it): one animated door module, placed a hundred times, gives a hundred working doors.
+Mechanisms that work well in flat boards: a turntable (a round disk on a base, axis y, axle), a wheel on a wall
+(round board thin along x, axis x, axle), a swinging flap or arm on a pin, a rotating sign or vane, a hinged lid, a
+drawer or tray sliding on runners, a sliding panel between two rails.
+```jsonc
+{"id": "spin", "type": "rotate", "boards": ["DISK", "DISK-RIM"], "on": "BASE", "axis": "y", "pivot": [150, 6, 150],
+ "range": [0, 360], "axle": {"diameter": 8}},
+{"id": "drawer", "type": "slide", "boards": ["DR-FRONT", "DR-BOTTOM", "DR-SIDE-L", "DR-SIDE-R", "DR-BACK"], "on": "RUNNER",
+ "direction": "z", "range": [0, 250]}
+```
+
 ## What this generator cannot build (do not attempt; use the alternative)
 - Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
   no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
 - Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its pitch
   (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
-- Round or bent parts: dowels, axles, rods, wheels on axles, curved or kerf-bent panels. For a purchased dowel or axle,
-  add a `"hole"` opening where it passes and leave the rod itself out of the design.
-- Moving parts other than hinged doors: drawers on runners, sliding trays, wheels, folding mechanisms. Draw a drawer as
-  a fixed box standing on its runner board; draw a folding product in its open position.
+- Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
+  compiler gives its length); curved or kerf-bent panels stay flat. Round flat parts (wheels, disks) are fine.
+- Mechanisms where several moving parts drive each other: meshing gears, cams, a crank pushing a rod, springs. Each
+  motion moves one rigid group on its own; build each moving part as its own motion and draw linked parts in one
+  pose.
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
@@ -246,8 +294,14 @@ and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing o
    trapezoids / triangles with a polygon `profile`. Support them with vertical trusses standing on the ceiling whose
    `profile` top edges follow the panels' lower faces exactly; tab the trusses into the ceiling and into each panel.
 3. Surface detail on a tilted panel (tile courses, battens, solar cells, planks): build each piece flat, standing on
-   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot) as the
-   panel - it then stands square on the panel and `tab_slot` joins it. Split long courses into pieces (about 40 mm)
+   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot - or the
+   same list of steps) as the panel - it then stands square on the panel and `tab_slot` joins it.
+   Flared / upswept roofs (temples, pagodas, gates): build the sweep from 2-3 bands of flat panels - steep near the
+   ridge, shallower towards the eave - each band tilted to its own whole-number pitch. Support them on rafters whose
+   `profile` top edge is a polyline with one straight segment per band at exactly that band's pitch, and tab each band
+   into the rafters (a band never joins the next band: leave 1 mm between them). Lift the corners with corner pieces
+   tilted by a list (the band's pitch, then a few degrees about the eave line), resting on a hip rafter whose top edge
+   lies in that tilted plane. Split long courses into pieces (about 40 mm)
    with 1 mm gaps, and put gaps where trusses or other joints meet the panel so no two slots share a place.
 4. Two colours on one wall (a painted band, a plinth stripe): a separate board standing on the floor in front of the
    wall, tabbed into the floor. Door / window frames: an opening in the wall plus a coloured lining board behind it
@@ -263,6 +317,12 @@ and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing o
    `engravings` for stone courses, planks and outlines, wavy `profile` tops for tile courses, dark undersides for
    eaves. Small parts are fine on a laser: write the laser kerf in "material" (e.g. "kerf": 0.15); with a kerf below
    1 mm the minimum part width is 3 mm instead of the router minimum in the table below.
+8. Very large models (thousands of parts - a stadium, a village, a ship with every rib and plank): design a module
+   once as an assembly (a seat row, a window bay, a truss, a house) and place it with "instances" (and their
+   "repeat" / "mirror"); the compiler expands them, so the JSON stays short while the model has 5,000-10,000+ parts.
+   Connect the modules to each other and to the base under the top-level "connections" by their expanded ids
+   ("<instance id>-<board id>"). Turn and flip instances to face every way (quarter turns stay exact): one seat module
+   fills all four sides of a stadium, one gallery bay runs round a courtyard.
 Snippet (front roof slope, one truss, one tile piece - all whole millimetres, pitch 8-15-17, panel 3 mm):
 ```jsonc
 {"id": "R-F", "position": [30, 81, 141], "size": [300, 3, 102],
@@ -298,6 +358,8 @@ edge indices for the edge joints).
 Return **one** fenced ```json code block containing only the design object — no comments outside it, no prose inside it.
 
 ## Complete valid example (study table, glue-free)
+This first example only shows the syntax and is deliberately plain. The cottage example after it shows the least
+shaping a finished design needs (profiles, arches, tilted roof); DESIGN QUALITY asks for more.
 ```json
 {
   "format": "board-design/v1",

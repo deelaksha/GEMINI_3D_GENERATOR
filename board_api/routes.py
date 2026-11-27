@@ -25,7 +25,7 @@ from board_engine.manufacturing import manufacturing_report
 from board_engine.joining import check_joint
 from board_engine.model import SchemaError, check_id, find_component, normalize_design
 from board_engine.nesting import NestingError, SHEET_PRESETS
-from board_engine.operations import OperationRejected, apply_batch, apply_operation
+from board_engine.operations import OperationRejected, apply_batch, apply_operation, import_boards
 from board_engine.store import Conflict, NotFound
 from board_engine.validation import TOL, validate_design
 from board_engine.views import component_view, export, model3d, production_package
@@ -126,18 +126,12 @@ def ai_quota(fn):
     return wrapper
 
 
-def budgeted_by_size(fn):
-    """Like `budgeted`, for routes that compile AND then produce (export, AI fix): the budget grows with the design's
-    size the way the compiler's own does (about one '"position"' per board), so large designs are not cut off midway."""
-    @functools.wraps(fn)
-    def wrapper(*a, **kw):
-        from board_engine.canvas import BUDGET_BOARDS, MAX_BUDGET
-        src = (request.get_json(silent=True) or {}).get('source')
-        n = src.count('"position"') if isinstance(src, str) else 0
-        seconds = max(budget(), min(MAX_BUDGET, budget() * n / BUDGET_BOARDS))
-        with time_budget(seconds):
-            return fn(*a, **kw)
-    return wrapper
+def size_budget(boards):
+    """Seconds for the work that follows a compile (production files, an import), grown with the compiled design's
+    real board count the way the compiler's own budget is - counted after repeat / mirror / instances are expanded,
+    so a design that places one module thousands of times is not cut off midway."""
+    from board_engine.canvas import BUDGET_BOARDS, MAX_BUDGET
+    return max(budget(), min(MAX_BUDGET, budget() * boards / BUDGET_BOARDS))
 
 
 def budgeted(fn):
@@ -944,7 +938,6 @@ def canvas_compile_stream():
 @bp.post('/canvas/export')
 @require('viewer')
 @heavy
-@budgeted_by_size
 def canvas_export():
     """Everything a cutting machine needs, in one zip: per sheet an SVG (laser) and a DXF (CNC / CAD), the PDF booklet
     and a README with material, kerf, sheet size, colour / layer map and cut order. Kerf-compensated, 1:1 in mm.
@@ -952,7 +945,7 @@ def canvas_export():
     import io
     import zipfile
     from board_engine.canvas import compile_source
-    from board_engine.cutpaths import LEGEND
+    from board_engine.cutpaths import LEGEND, sheet_print_svg
     from board_engine.jobreport import job_lines, job_report
     from board_engine.lightburn import sheet_lbrn2
     from board_engine.painting import painting_guide, painting_lines
@@ -962,7 +955,8 @@ def canvas_export():
     design = res.get('design')
     if not design or not design['components']:
         return fail(422, 'compile_failed', 'the design does not compile yet; fix its errors first', issues=res['diagnostics'])
-    pkg = production_package(design, {'compensate_kerf': True, 'labels': data.get('labels', True) is not False})
+    with time_budget(size_budget(len(design['components']))):
+        pkg = production_package(design, {'compensate_kerf': True, 'labels': data.get('labels', True) is not False})
     # the production checks only see the part of the design that compiled, so compile errors block production too
     blocking = [d for d in res['diagnostics'] if d['severity'] == 'error'] + pkg['blocking_issues']
     draft = bool(blocking)
@@ -978,6 +972,10 @@ def canvas_export():
             for fmt in ('svg', 'dxf'):
                 z.writestr(f"{prefix}-sheet{i + 1}.{fmt}", export(pkg, fmt, i)[0])
             z.writestr(f"{prefix}-sheet{i + 1}.lbrn2", sheet_lbrn2(design, n, cut, i, machine, labels=data.get('labels', True) is not False))
+            for face in ('front', 'back'):          # printed decals (colouring on): artwork aligned with the cut sheet
+                art = sheet_print_svg(design, n, cut, i, face)
+                if art:
+                    z.writestr(f"{prefix}-sheet{i + 1}-print-{face}.svg", art)
         z.writestr(f'{prefix}-booklet.pdf', export(pkg, 'pdf', None, data.get('paper') or 'A4')[0])
         from board_engine.testfit import test_fit_files
         z.writestr(f'{prefix}-test-fit.svg', test_fit_files((machine or {}).get('measured') or mat['thickness'], mat['kerf'])['svg'])
@@ -1051,7 +1049,6 @@ def canvas_ai_generate():
 @require('editor')
 @ai_quota
 @heavy
-@budgeted_by_size
 def canvas_ai_fix():
     """Compile the code; if it has errors, send the strict fix prompt to the AI and return its corrected design."""
     from board_engine.ai_client import AIError, complete, provider
@@ -1165,6 +1162,7 @@ def canvas_save():
 
 @bp.post('/canvas/import')
 @require('editor')
+@heavy
 def canvas_import():
     """Import selected boards (and the connections among them) into an existing design via validated operations."""
     from board_engine.canvas import compile_source
@@ -1181,18 +1179,32 @@ def canvas_import():
     existing = {c['id'] for c in store().get(target)['components']}
     rename = {cid: (f'AI-{cid}' if cid in existing else cid) for cid in wanted}
     keep_joints = [j for j in src_design['joints'] if j.get('status') == 'joined' and j['a'] in wanted and j['b'] in wanted]
-    ops = []
-    for c in src_design['components']:
-        if c['id'] not in wanted:
-            continue
-        # keep the board's own openings / holes; slots are regenerated by the joins below
-        c = dict(c, id=rename[c['id']], features=[f for f in c.get('features', []) if f.get('generated_by') is None])
-        ops.append({'op': 'add_component', 'component': c})
+    # keep each board's own openings / holes; slots are regenerated by the joins
+    comps = [dict(c, id=rename[c['id']], features=[f for f in c.get('features', []) if f.get('generated_by') is None])
+             for c in src_design['components'] if c['id'] in wanted]
+    specs = []
     for j in keep_joints:
         spec = {k: v for k, v in j.items() if k not in ('status', 'repairs', 'joined_at', 'slot')}
         spec.update(a=rename[j['a']], b=rename[j['b']], id=f"AI-{j['id']}")
-        ops.append({'op': 'join', 'joint': spec, 'auto_repair': True})
-    if not ops:
+        specs.append(spec)
+    if not comps:
         raise SchemaError('no boards selected', 'boards')
-    return mutate(target, lambda d: apply_batch(d, ops), 'canvas_import',
-                  detail={'boards': sorted(rename.values()), 'joints': len(keep_joints)})
+    # moving parts come along when all their boards (and the board they are mounted on) are imported
+    moves = []
+    for m in src_design.get('motions') or []:
+        if all(b in wanted for b in m['boards']) and m['on'] in wanted:
+            nm = dict(m, boards=[rename[b] for b in m['boards']], on=rename[m['on']])
+            if m.get('axle'):
+                nm['axle'] = dict(m['axle'], boards=[rename[b] for b in m['axle'].get('boards', []) if b in rename])
+            moves.append(nm)
+
+    def run(d):
+        results = import_boards(d, comps, specs)      # any number of boards: validated once, not per operation
+        if moves:
+            taken = {m['id'] for m in d.get('motions') or []}
+            d['motions'] = list(d.get('motions') or []) + [
+                dict(m, id=f"AI-{m['id']}" if m['id'] in taken else m['id']) for m in moves]
+        return d, results
+    with time_budget(size_budget(len(src_design['components']))):
+        return mutate(target, run, 'canvas_import',
+                      detail={'boards': sorted(rename.values()), 'joints': len(keep_joints), 'motions': len(moves)})

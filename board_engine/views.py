@@ -7,6 +7,7 @@ from .cutlist import cut_list
 from .cutpaths import generate_cut_paths, sheet_dxf, sheet_svg
 from .manufacturing import manufacturing_report
 from .model import Plate, edge_frame, tab_geometry, feature_polygon
+from .motion import model_motions
 from .nesting import nest
 from .support import support_report
 from .validation import component_states, validate_design
@@ -44,6 +45,7 @@ def component_view(design, comp):
                      for f in comp.get('features', [])],
         'marks': comp.get('marks', []), 'hinges': comp.get('hinges', []),
         'images': [{'id': im['id'], 'corners': im['corners']} for im in comp.get('images', [])],   # outline only: no data in 3D
+        **({'decals': comp['decals']} if comp.get('decals') else {}),
         'tabs': tabs, 'edges': edges,
         'placement': comp['placement'], 'matrix_world': _r(pl.frame.matrix4(), 6),
         'world_normal': _r(pl.frame.normal),
@@ -73,6 +75,7 @@ def model3d(design, report=None):
         'components': comps,
         'joints': design['joints'],
         'validation': {'valid': report['valid'], 'complete': report['complete'], 'summary': report['summary']},
+        **({'motions': model_motions(design['motions'])} if design.get('motions') else {}),
     }
 
 

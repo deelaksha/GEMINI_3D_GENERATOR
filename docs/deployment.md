@@ -24,6 +24,7 @@ proxy (nginx, Caddy) for HTTPS, and let the proxy pass streaming responses throu
 | `BOARD_COMPILE_SLOTS` | 2 | compiles one user may run at the same time (more answer 429 "busy") |
 | `BOARD_AI_PER_HOUR` | 20 | paid AI calls (Generate / Fix with AI) per user per hour |
 | `BOARD_AI_PER_DAY` | 300 | paid AI calls per worker process per day: the real cap on the AI bill, since any visitor gets a session |
+| `BOARD_ENGINE_WORKERS` | half the CPU cores (at most 8) | worker processes one very large compile (20,000+ board pairs) uses for its collision checks; `1` = no worker processes |
 | `BOARD_COMPILE_TOTAL` | 2 x CPU cores (at least 4) | compiles one worker process runs at the same time (more answer 503 with `Retry-After`) |
 | `TRUST_PROXY` | unset | number of reverse proxies in front; set it only behind a proxy, so HTTPS is detected and the session cookie stays `Secure` |
 

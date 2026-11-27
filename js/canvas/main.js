@@ -7,8 +7,8 @@
  * compiler as data; nothing is evaluated in the page.
  */
 /* global CodeMirror */
-import { Api, ApiError } from '../studio/api.js?v=2.35';
-import { Viewport3D } from '../studio/viewport3d.js?v=2.24';
+import { Api, ApiError } from '../studio/api.js?v=2.36';
+import { Viewport3D } from '../studio/viewport3d.js?v=2.28';
 import { Sheet2D } from '../studio/sheet2d.js';
 import { bindFullscreen } from '../studio/fullscreen.js';
 import { CompileLoader } from './compile-loader.js?v=2.20';
@@ -622,6 +622,8 @@ function render(keepCamera = false) {
   if (r?.model3d) {
     if (!keepCamera) view3d._framed = false;
     view3d.load(r.model3d);
+    $('#btn-play-motion').hidden = !r.model3d.motions?.length;
+    $('#btn-play-motion').setAttribute('aria-pressed', 'false');
     const s = r.summary;
     const j = LASER && r.job?.totals;
     $('#pv-summary').textContent = `${s.boards} boards · ${s.joined}/${s.joints} joints${r.layout ? ` · ${r.layout.nesting.sheet_count} sheet(s)` : ''}`
@@ -1000,6 +1002,11 @@ $('#btn-move-parts').onclick = (e) => {
   if (on) toast('Drag a board to pull it out and see its joints · double-click puts it back');
 };
 $('#btn-reset-parts').onclick = () => view3d.resetPulls();
+$('#btn-play-motion').onclick = (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  view3d.playMotion(on);
+};
 $('#btn-gen-prompt').onclick = generatePrompt;
 $('#btn-change-prompt').onclick = changePrompt;
 $('#btn-repair-prompt').onclick = repairPrompt;

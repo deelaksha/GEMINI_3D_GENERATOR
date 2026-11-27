@@ -16,6 +16,8 @@ The main assembly is the joined group standing on the floor (most anchored board
 """
 import math
 
+from . import geometry as G
+
 TOUCH = 0.5          # mm: boxes closer than this touch
 
 
@@ -62,17 +64,20 @@ def analyze(design, plates, support=None):
     for j in design['joints']:
         if j.get('status') == 'joined' and j['a'] in parent and j['b'] in parent:
             parent[find(j['a'])] = find(j['b'])
+    for m in design.get('motions') or []:          # a moving part is attached through its motion's mount
+        for b in m['boards']:
+            if b in parent and m['on'] in parent:
+                parent[find(b)] = find(m['on'])
     groups = {}
     for i in ids:
         groups.setdefault(find(i), []).append(i)
     groups = sorted(groups.values(), key=lambda g: (-len(g), g[0]))
     touches = {i: set() for i in ids}
-    for x in range(len(ids)):
-        for y in range(x + 1, len(ids)):
-            a, b = ids[x], ids[y]
-            if _gap(box[a], box[b])[1] <= TOUCH:
-                touches[a].add(b)
-                touches[b].add(a)
+    for x, y in G.near_pairs([box[i] for i in ids], TOUCH):
+        a, b = ids[x], ids[y]
+        if _gap(box[a], box[b])[1] <= TOUCH:
+            touches[a].add(b)
+            touches[b].add(a)
     status = (support or {}).get('components', {})
     anchored = lambda g: sum(1 for i in g if status.get(i, {}).get('status') == 'anchored')
     volume = lambda g: sum((box[i][1][0] - box[i][0][0]) * (box[i][1][1] - box[i][0][1]) * (box[i][1][2] - box[i][0][2])

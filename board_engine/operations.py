@@ -13,10 +13,11 @@ Policy:
 """
 import copy
 
-from .joining import check_joint, join
+from .deadline import check as check_budget
+from .joining import _issue_key, check_joint, join
 from .model import (SchemaError, build_plates, find_component, normalize_component, normalize_feature,
                     normalize_tab)
-from .validation import TOL, _signature, evaluate_joint, validate_component
+from .validation import TOL, _signature, evaluate_joint, joining_loop, validate_component, validate_design
 
 EDITABLE = ('name', 'group', 'description', 'outline', 'arcs', 'features', 'marks', 'tabs', 'placement', 'thickness',
             'color', 'grain_locked', 'grain', 'material', 'edge_banding')
@@ -266,6 +267,63 @@ def apply_operation(design, op):
     if not isinstance(op, dict) or op.get('op') not in OPERATIONS:
         raise SchemaError(f"op must be one of {sorted(OPERATIONS)}", 'op')
     return OPERATIONS[op['op']](design, op)
+
+
+def import_boards(design, components, joints):
+    """Add many boards and join them in one step (the canvas import). Each board gets the same checks as
+    add_component and each joint the same join, but the whole design is validated once before and once after instead
+    of around every operation, so importing thousands of boards stays fast. Works on `design` in place; all or nothing:
+    OperationRejected (with the failing index) on the first problem, or when the joins add errors - like a join one by
+    one, which compares the design before and after it (adding a board alone never checked the whole design)."""
+    ids = {c['id'] for c in design['components']}
+    sigs = {_signature(design, c): c['id'] for c in design['components']}
+    for n, raw in enumerate(components):
+        check_budget()
+        try:
+            comp, _notes = normalize_component(raw)
+        except SchemaError as e:
+            raise OperationRejected(f'operation {n}: {e}', [e.to_dict()], status='invalid_request',
+                                    extra={'failed_index': n, 'failed_op': 'add_component'})
+        if comp['id'] in ids:
+            raise OperationRejected(f"component id '{comp['id']}' already exists",
+                                    [{'code': 'DUPLICATE_COMPONENT_ID', 'severity': 'error', 'category': 'design',
+                                      'components': [comp['id']], 'message': 'Component ids must be unique.'}],
+                                    extra={'failed_index': n, 'failed_op': 'add_component'})
+        design['components'].append(comp)
+        ids.add(comp['id'])
+        errs = [i for i in validate_component(design, comp, TOL) if i['severity'] == 'error']
+        if errs:
+            raise OperationRejected(f"component '{comp['id']}' has invalid 2D geometry", errs,
+                                    extra={'failed_index': n, 'failed_op': 'add_component'})
+        sig = _signature(design, comp)
+        if sig in sigs:
+            raise OperationRejected(f"'{comp['id']}' would be an exact duplicate of '{sigs[sig]}'",
+                                    [{'code': 'DUPLICATE_COMPONENT', 'severity': 'error', 'category': 'design',
+                                      'components': [comp['id'], sigs[sig]],
+                                      'message': f"'{comp['id']}' has the same profile and placement as '{sigs[sig]}'."}],
+                                    extra={'failed_index': n, 'failed_op': 'add_component'})
+        sigs[sig] = comp['id']
+    before = ({_issue_key(i) for i in validate_design(design, TOL)['issues'] if i['severity'] == 'error'}
+              if joints else set())
+    work = design
+    with joining_loop(work):
+        for n, spec in enumerate(joints):
+            res = join(work, spec, auto_repair=True, whole_design_check=False)
+            if not res['accepted']:
+                extra = {k: res[k] for k in ('repairs_available', 'repairs_attempted') if k in res}
+                raise OperationRejected(f"join '{res['joint']['id']}' {res['status']}", res['issues'], status=res['status'],
+                                        extra=dict(extra, joint=res['joint'], failed_index=len(components) + n,
+                                                   failed_op='join'))
+            work = res['design']
+    new = [i for i in validate_design(work, TOL)['issues'] if i['severity'] == 'error' and _issue_key(i) not in before] \
+        if joints else []
+    if new:
+        raise OperationRejected(f'the imported joints would add {len(new)} error(s) to the design', new,
+                                status='rejected_post_validation')
+    if work is not design:
+        design.clear()
+        design.update(work)
+    return {'components': len(components), 'joints': len(joints)}
 
 
 def apply_batch(design, ops):

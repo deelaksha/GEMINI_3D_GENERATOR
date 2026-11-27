@@ -21,8 +21,8 @@ import logging
 import time
 
 from .deadline import check as check_budget
-from .model import Plate, build_plates, find_component, normalize_joint
-from .validation import TOL, evaluate_joint, validate_component, validate_design
+from .model import Plate, build_plates, component_index, find_component, normalize_joint
+from .validation import GROWING_JOINTS, TOL, evaluate_joint, validate_component, validate_design
 
 log = logging.getLogger('board_engine.joining')
 
@@ -62,10 +62,10 @@ def _pair_plates(design, spec):
 
 def _own(work, cid):
     """Give `work` its own copy of component `cid` (with its own feature list) before a repair changes it."""
-    for k, c in enumerate(work['components']):
-        if c['id'] == cid:
-            work['components'][k] = dict(c, features=list(c.get('features') or []))
-            return
+    k = component_index(work, cid)
+    if k is not None:
+        c = work['components'][k]
+        work['components'][k] = dict(c, features=list(c.get('features') or []))
 
 
 def check_joint(design, spec, tol=TOL):
@@ -93,17 +93,23 @@ def join(design, spec, auto_repair=False, tol=TOL, whole_design_check=True):
         log.info('join %s rejected: %s (%s)', spec['id'], status, ', '.join(i['code'] for i in issues))
         return dict({'accepted': False, 'status': status, 'joint': spec, 'issues': issues}, **extra)
 
-    if any(j['id'] == spec['id'] for j in design['joints']):
+    grow = GROWING_JOINTS.get()                 # the compiler's joining loop keeps these lookups indexed
+    if grow is not None and not grow.sync(design['joints']):
+        grow = None
+    if spec['id'] in grow.ids if grow else any(j['id'] == spec['id'] for j in design['joints']):
         return reject('rejected', [{'code': 'JOINT_ID_EXISTS', 'severity': 'error', 'category': 'joint',
                                     'message': f"A joint with id '{spec['id']}' already exists.",
                                     'components': [spec['a'], spec['b']], 'joint': spec['id']}])
-    for j in design['joints']:
-        same = (j['type'] == spec['type'] and j['a'] == spec['a'] and j['b'] == spec['b']
-                and j.get('tab') == spec.get('tab') and j.get('a_edge') == spec.get('a_edge'))
-        if same and j.get('status') == 'joined':
-            return reject('rejected', [{'code': 'DUPLICATE_JOINT', 'severity': 'error', 'category': 'joint',
-                                        'message': f"'{spec['a']}' is already joined to '{spec['b']}' by '{j['id']}'.",
-                                        'components': [spec['a'], spec['b']], 'joint': spec['id']}])
+    if grow:
+        dup = grow.joined.get((spec['type'], spec['a'], spec['b'], spec.get('tab'), spec.get('a_edge')))
+    else:
+        dup = next((j['id'] for j in design['joints'] if j['type'] == spec['type'] and j['a'] == spec['a']
+                    and j['b'] == spec['b'] and j.get('tab') == spec.get('tab') and j.get('a_edge') == spec.get('a_edge')
+                    and j.get('status') == 'joined'), None)
+    if dup:
+        return reject('rejected', [{'code': 'DUPLICATE_JOINT', 'severity': 'error', 'category': 'joint',
+                                    'message': f"'{spec['a']}' is already joined to '{spec['b']}' by '{dup}'.",
+                                    'components': [spec['a'], spec['b']], 'joint': spec['id']}])
 
     before = validate_design(design, tol) if whole_design_check else None
     before_errors = {_issue_key(i) for i in before['issues'] if i['severity'] == 'error'} if before else set()

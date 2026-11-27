@@ -237,6 +237,17 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             issues.append(_iss('DIMENSION_DRIFT', pl.id, f"Cut path of '{pl.id}' deviates from design dimensions "
                                                           f"by {drift:.3f} mm."))
 
+        for face in sorted({d['face'] for d in comp.get('decals', [])}) if comp.get('colors') else ():
+            # the face colour is printed under the artwork (white lettering on a red board must not land on white paper)
+            sheet.setdefault('print_base', []).append({'part': pl.id, 'face': face, 'color': comp['colors'][face],
+                                                       'points': [tf(q) for q in pl.cut]})
+        for d in comp.get('decals', []):        # printed artwork: never cut, exported as print sheets
+            e = {'id': f"{pl.id}/{d['id']}", 'part': pl.id, 'face': d['face'], 'color': d['color']}
+            if d.get('points'):
+                e['points'] = [tf(q) for q in d['points']]
+            else:
+                e.update(lines=[[tf(q) for q in ln] for ln in d['lines']], width=d['width'])
+            sheet.setdefault('decals', []).append(e)
         for im in comp.get('images', []):       # raster engraving: placed by its corners (top-left, top-right, bottom-left)
             sheet['images'].append({'id': f"{pl.id}/{im['id']}", 'part': pl.id, 'src': im['src'],
                                     'corners': [tf(q) for q in im['corners']]})
@@ -322,6 +333,49 @@ def _svg_d(p):
             r, sweep = sg[3], sg[4]
             d.append(f'A{_fmt(r)},{_fmt(r)} 0 {int(abs(sweep) > math.pi)} {int(sweep > 0)} {_fmt(x)},{_fmt(y)}')
     return ' '.join(d) + (' Z' if p.get('closed', True) else '')
+
+
+def sheet_print_svg(design, nesting, cut, index, face):
+    """Print artwork of one sheet (colouring on), or None when it has none on that face: every part's decals at 1:1,
+    placed exactly like the cut sheet, over each decorated part's face colour, with the part outlines as light-grey
+    registration guides. Print it straight on
+    the sheet (UV printer) or on paper / sticker film laid on it before cutting. The back is mirrored left to right, so
+    it lines up once the sheet is turned over about its vertical edge."""
+    sheet = cut['sheets'][index]
+    decals = [d for d in sheet.get('decals', []) if d['face'] == face]
+    if not decals:
+        return None
+    sh = nesting['sheet']
+    w, h = sh['width'], sh['height']
+    X = (lambda x: w - x) if face == 'back' else (lambda x: x)
+    pts = lambda ps: ' '.join(f'{_fmt(X(x))},{_fmt(y)}' for x, y in ps)
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           f'<!-- {_esc(design["name"])} | sheet {index + 1} of {nesting["sheet_count"]} | print artwork, {face} faces'
+           + (' (mirrored: turn the sheet over about its vertical edge)' if face == 'back' else '')
+           + ' | 1 user unit = 1 mm | grey outlines are registration guides, not cut -->',
+           f'<svg xmlns="http://www.w3.org/2000/svg" width="{_fmt(w)}mm" height="{_fmt(h)}mm" viewBox="0 0 {_fmt(w)} {_fmt(h)}">',
+           f'  <g id="FACE_COLOUR">']
+    for b in sheet.get('print_base', []):
+        if b['face'] == face:
+            out.append(f'    <polygon data-part="{_esc(b["part"])}" fill="{b["color"]}" points="{pts(b["points"])}"/>')
+    out += ['  </g>', '  <g id="GUIDES" fill="none" stroke="#bbbbbb" stroke-width="0.3">']
+    for p in sheet['paths']:
+        if p['type'] == 'outer' and p.get('points'):
+            out.append(f'    <polygon data-part="{_esc(p["part"])}" points="{pts(p["points"])}"/>')
+    out.append('  </g>')
+    out.append('  <g id="PRINT">')
+    for d in decals:
+        attrs = f'id="{_esc(d["id"])}" data-part="{_esc(d["part"])}"'
+        if d.get('points'):
+            out.append(f'    <polygon {attrs} fill="{d["color"]}" points="{pts(d["points"])}"/>')
+        else:
+            for k, ln in enumerate(d['lines']):
+                out.append(f'    <polyline id="{_esc(d["id"])}-{k + 1}" data-part="{_esc(d["part"])}" fill="none" '
+                           f'stroke="{d["color"]}" stroke-width="{_fmt(d["width"])}" stroke-linecap="round" '
+                           f'stroke-linejoin="round" points="{pts(ln)}"/>')
+    out.append('  </g>')
+    out.append('</svg>')
+    return '\n'.join(out) + '\n'
 
 
 def sheet_svg(design, nesting, cut, index, labels=True):

@@ -19,14 +19,17 @@ Issue shape:
    repair?:     {action, ...}   # set only when the engine can SAFELY auto-correct it
    suggestion?: {...}}          # a hint the caller (user / AI agent) may apply
 """
+import contextlib
+import contextvars
 import copy
 import math
+import os
 
 from . import geometry as G
 from .deadline import check as check_budget
 from .progress import report as progress
-from .model import (INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry, edge_frame,
-                    find_component, material_of, thickness_of)
+from .model import (COMPONENT_POSITIONS, INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry,
+                    edge_frame, find_component, material_of, thickness_of)
 
 TOL = {
     'contact': 0.25,          # mm: allowed gap/penetration at a mating surface
@@ -257,7 +260,76 @@ def _find_tab(comp, tab_id):
     return None
 
 
+_SLOT_INDEX = contextvars.ContextVar('slot_index', default=None)
+
+
+@contextlib.contextmanager
+def indexed_slots(design):
+    """While every joint of an unchanging design is evaluated, slot_users() looks a slot up instead of scanning all
+    joints again for each one (that scan made evaluating 10,000 joints quadratic)."""
+    idx = {}
+    for j in design['joints']:
+        if j.get('status') == 'joined' and j['type'] == 'tab_slot':
+            idx.setdefault((j['b'], j.get('slot')), []).append(j['id'])
+    token = _SLOT_INDEX.set((design['joints'], idx))
+    try:
+        yield
+    finally:
+        _SLOT_INDEX.reset(token)
+
+
+class GrowingJoints:
+    """Lookups over a joint list that only grows at its end (the compiler joining one connection after another):
+    joint ids, the first joined joint per (type, a, b, tab, a_edge) and slot users, brought up to date with each new
+    joint instead of scanning every joint for each new one."""
+
+    def __init__(self):
+        self.count, self.last = 0, None
+        self.ids, self.joined, self.slots = set(), {}, {}
+
+    def sync(self, joints):
+        """Catch up with `joints`. False (the caller scans instead) when the list is shorter than what was indexed or
+        its last indexed joint is a different object. Earlier entries are not re-checked: only use this where the list
+        is append-only, as inside `joining_loop`."""
+        if len(joints) < self.count or (self.count and joints[self.count - 1] is not self.last):
+            return False
+        for j in joints[self.count:]:
+            self.ids.add(j['id'])
+            if j.get('status') == 'joined':
+                self.joined.setdefault((j['type'], j['a'], j['b'], j.get('tab'), j.get('a_edge')), j['id'])
+                if j['type'] == 'tab_slot':
+                    self.slots.setdefault((j['b'], j.get('slot')), []).append(j['id'])
+        self.count = len(joints)
+        self.last = joints[-1] if joints else None
+        return True
+
+
+GROWING_JOINTS = contextvars.ContextVar('growing_joints', default=None)
+
+
+@contextlib.contextmanager
+def joining_loop(design):
+    """Around a loop that joins connection after connection into `design` (components fixed, joints only appended):
+    joining stays linear in the number of joints for designs with thousands of them."""
+    pos = {}
+    for k, c in enumerate(design['components']):
+        pos.setdefault(c['id'], k)
+    t1 = GROWING_JOINTS.set(GrowingJoints())
+    t2 = COMPONENT_POSITIONS.set((len(design['components']), pos))
+    try:
+        yield
+    finally:
+        COMPONENT_POSITIONS.reset(t2)
+        GROWING_JOINTS.reset(t1)
+
+
 def slot_users(design, comp_id, slot_id, exclude_joint=None):
+    cur = _SLOT_INDEX.get()
+    if cur and cur[0] is design['joints']:
+        return [i for i in cur[1].get((comp_id, slot_id), ()) if i != exclude_joint]
+    grow = GROWING_JOINTS.get()
+    if grow is not None and grow.sync(design['joints']):
+        return [i for i in grow.slots.get((comp_id, slot_id), ()) if i != exclude_joint]
     return [j['id'] for j in design['joints']
             if j.get('status') == 'joined' and j['type'] == 'tab_slot' and j['b'] == comp_id
             and j.get('slot') == slot_id and j['id'] != exclude_joint]
@@ -1039,6 +1111,7 @@ def _line_range_2d(p, u, bb):
 
 
 _INTERFERENCE_CACHE = {}
+INTERFERENCE_CACHE_MAX = 200_000    # pairs: enough for a 10,000-board design, so a second validation reuses them
 
 
 def plate_interference(a, b, tol=TOL):
@@ -1051,10 +1124,72 @@ def plate_interference(a, b, tol=TOL):
     key = (a.signature(), b.signature(), tol['contact'], tol['sample_step'])
     hit = _INTERFERENCE_CACHE.get(key)
     if hit is None:
-        if len(_INTERFERENCE_CACHE) > 20000:
+        if len(_INTERFERENCE_CACHE) > INTERFERENCE_CACHE_MAX:
             _INTERFERENCE_CACHE.clear()
         hit = _INTERFERENCE_CACHE[key] = _plate_interference(a, b, tol)
     return copy.deepcopy(hit)
+
+
+PARALLEL_PAIRS = 20000       # board pairs: below this, checking them here is faster than starting worker processes
+
+
+def engine_workers():
+    """Worker processes for the parallel geometry checks (BOARD_ENGINE_WORKERS; 1 = check everything here)."""
+    env = os.environ.get('BOARD_ENGINE_WORKERS')
+    return max(1, int(env)) if env else min(8, max(1, (os.cpu_count() or 2) // 2))
+
+
+def _interference_chunk(plates, pairs, tol):
+    """Runs in a worker process: the shared material of each (id, id) pair."""
+    return [_plate_interference(plates[a], plates[b], tol) if _aabb_overlap(plates[a], plates[b], -0.01) else []
+            for a, b in pairs]
+
+
+def parallel_interference(plates, pairs, tol=TOL, label='collisions'):
+    """plate_interference for many (id, id) pairs at once, split over worker processes. -> results in pair order,
+    identical to checking them one by one. The time budget and progress stay in this thread: when the budget runs
+    out the remaining work is cancelled and TimeBudgetExceeded is raised here."""
+    workers = min(engine_workers(), max(1, len(pairs) // 2000))
+    out = [None] * len(pairs)
+    todo = []
+    for n, (a, b) in enumerate(pairs):            # pairs already checked in this process are reused
+        if not _aabb_overlap(plates[a], plates[b], -0.01):
+            out[n] = []
+            continue
+        hit = _INTERFERENCE_CACHE.get((plates[a].signature(), plates[b].signature(), tol['contact'], tol['sample_step']))
+        if hit is not None:
+            out[n] = copy.deepcopy(hit)
+        else:
+            todo.append(n)
+    if workers < 2 or len(todo) < PARALLEL_PAIRS:
+        for n, (a, b) in enumerate(pairs):
+            check_budget()
+            progress(label, n, len(pairs), a=a, b=b)
+            if out[n] is None:
+                out[n] = plate_interference(plates[a], plates[b], tol)
+        return out
+    from .parallel import run
+    size = max(500, len(todo) // (workers * 6))          # several chunks per worker keeps them all busy to the end
+    chunks = [todo[i:i + size] for i in range(0, len(todo), size)]
+    tasks = []
+    for chunk in chunks:
+        ids = {x for n in chunk for x in pairs[n]}
+        tasks.append(('board_engine.validation._interference_chunk',
+                      ({i: plates[i] for i in ids}, [pairs[n] for n in chunk], tol)))
+    finished = [0]
+
+    def done(c, hits):
+        chunk = chunks[c]
+        for n, hit in zip(chunk, hits):
+            a, b = plates[pairs[n][0]], plates[pairs[n][1]]
+            if len(_INTERFERENCE_CACHE) > INTERFERENCE_CACHE_MAX:
+                _INTERFERENCE_CACHE.clear()
+            _INTERFERENCE_CACHE[(a.signature(), b.signature(), tol['contact'], tol['sample_step'])] = hit
+            out[n] = copy.deepcopy(hit)
+        finished[0] += len(chunk)
+        progress(label, finished[0], len(todo), a=pairs[chunk[-1]][0], b=pairs[chunk[-1]][1])
+    run(tasks, workers, check=check_budget, done=done)
+    return out
 
 
 def _plate_interference(a, b, tol):
@@ -1325,28 +1460,27 @@ def find_near_misses(design, plates, tol=TOL, near=NEAR_MISS):
     ids = sorted(plates)
     boxes = {i: plates[i].world_aabb() for i in ids}
     out = []
-    for x in range(len(ids)):
-        for y in range(x + 1, len(ids)):
-            p, q = plates[ids[x]], plates[ids[y]]
-            if frozenset((p.id, q.id)) in declared or p.id in doors or q.id in doors:
-                continue
-            (lo1, hi1), (lo2, hi2) = boxes[p.id], boxes[q.id]
-            if any(lo1[k] > hi2[k] + near or lo2[k] > hi1[k] + near for k in range(3)):
-                continue
-            best = None
-            for a, b in ((p, q), (q, p)):
-                hit = _end_face_near(a, b, tol, near)
-                if hit and (best is None or hit[0] < best[0]):
-                    best = hit + (a, b)
-            hit = _broad_face_near(p, q, tol, near)
+    for x, y in G.near_pairs([boxes[i] for i in ids], near):
+        p, q = plates[ids[x]], plates[ids[y]]
+        if frozenset((p.id, q.id)) in declared or p.id in doors or q.id in doors:
+            continue
+        (lo1, hi1), (lo2, hi2) = boxes[p.id], boxes[q.id]
+        if any(lo1[k] > hi2[k] + near or lo2[k] > hi1[k] + near for k in range(3)):
+            continue
+        best = None
+        for a, b in ((p, q), (q, p)):
+            hit = _end_face_near(a, b, tol, near)
             if hit and (best is None or hit[0] < best[0]):
-                best = hit + (p, q)
-            if best:
-                gap, where, a, b = best
-                out.append(issue('NEAR_MISS_GAP', 'warning', 'assembly',
-                                 f"'{a.id}' is {gap:.2f} mm from '{b.id}' with no joint between them. If they are meant "
-                                 f"to touch, close the gap and connect them; if the gap is intentional, ignore this.",
-                                 [a.id, b.id], gap=_r(gap), location=_r(where)))
+                best = hit + (a, b)
+        hit = _broad_face_near(p, q, tol, near)
+        if hit and (best is None or hit[0] < best[0]):
+            best = hit + (p, q)
+        if best:
+            gap, where, a, b = best
+            out.append(issue('NEAR_MISS_GAP', 'warning', 'assembly',
+                             f"'{a.id}' is {gap:.2f} mm from '{b.id}' with no joint between them. If they are meant "
+                             f"to touch, close the gap and connect them; if the gap is intentional, ignore this.",
+                             [a.id, b.id], gap=_r(gap), location=_r(where)))
     return out
 
 
@@ -1417,29 +1551,26 @@ def find_collisions(design, plates, only=None, tol=TOL):
         if j.get('status') == 'joined' and j['type'] == 'edge_mitre' and j.get('bevel') and j['a'] in plates \
                 and j['b'] in plates and j['a_edge'] < len(plates[j['a']].outline):
             bevelled.setdefault(frozenset((j['a'], j['b'])), []).append(_edge_world(plates[j['a']], j['a_edge']))
-    pairs, done = len(ids) * (len(ids) - 1) // 2, 0
-    for i in range(len(ids)):
-        for k in range(i + 1, len(ids)):
-            check_budget()
-            progress('collisions', done, pairs, a=ids[i], b=ids[k])
-            done += 1
-            a, b = plates[ids[i]], plates[ids[k]]
-            if only and a.id not in only and b.id not in only:
+    near = G.near_pairs([plates[i].world_aabb() for i in ids], 0.0)    # only boxes that meet can share material
+    if only:
+        near = [(i, k) for i, k in near if ids[i] in only or ids[k] in only]
+    found = parallel_interference(plates, [(ids[i], ids[k]) for i, k in near], tol)
+    for (i, k), hits in zip(near, found):
+        a, b = plates[ids[i]], plates[ids[k]]
+        for hit in hits:
+            edges = bevelled.get(frozenset((a.id, b.id)), [])
+            if hit['kind'] == 'crossing' and any(
+                    _dist_point_segment3(hit['location'], e0, e1) <= max(a.t, b.t) for e0, e1 in edges):
                 continue
-            for hit in plate_interference(a, b, tol):
-                edges = bevelled.get(frozenset((a.id, b.id)), [])
-                if hit['kind'] == 'crossing' and any(
-                        _dist_point_segment3(hit['location'], e0, e1) <= max(a.t, b.t) for e0, e1 in edges):
-                    continue
-                joined = frozenset((a.id, b.id)) in joined_pairs
-                size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
-                out.append(issue('COLLISION', 'error', 'assembly',
-                                 f"Solid material of '{a.id}' and '{b.id}' occupies the same space ({size}) "
-                                 f"near [{', '.join(f'{v:.1f}' for v in hit['location'])}]"
-                                 + (" although they are joined — another tab/slot or a placement error." if joined
-                                    else ". Add a joint (slot) or move one of them."),
-                                 [a.id, b.id], location=hit['location'], interference=hit,
-                                 between_joined_components=joined))
+            joined = frozenset((a.id, b.id)) in joined_pairs
+            size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
+            out.append(issue('COLLISION', 'error', 'assembly',
+                             f"Solid material of '{a.id}' and '{b.id}' occupies the same space ({size}) "
+                             f"near [{', '.join(f'{v:.1f}' for v in hit['location'])}]"
+                             + (" although they are joined — another tab/slot or a placement error." if joined
+                                else ". Add a joint (slot) or move one of them."),
+                             [a.id, b.id], location=hit['location'], interference=hit,
+                             between_joined_components=joined))
     return out
 
 
@@ -1495,38 +1626,39 @@ def validate_design(design, tol=TOL):
     joined_adj = {c['id']: set() for c in comps}
     joint_results = {}
     progress('dimensions', len(comps), len(comps))
-    for n, j in enumerate(design['joints']):
-        progress('joint_validation', n, len(design['joints']), a=j['a'], b=j['b'])
-        key = (j['type'], j['a'], j['b'], j.get('tab'), j.get('a_edge'), j.get('b_edge'))
-        rkey = (j['type'], j['b'], j['a'], j.get('tab'), j.get('b_edge'), j.get('a_edge'))
-        if key in keys or (j['type'] in ('face_lap', 'edge_mitre') and rkey in keys):
-            issues.append(issue('DUPLICATE_JOINT', 'error', 'design',
-                                f"Joint '{j['id']}' duplicates joint '{keys.get(key) or keys.get(rkey)}'.",
-                                [j['a'], j['b']], joint=j['id']))
-            continue
-        keys[key] = j['id']
-        if j.get('status') != 'joined':
-            issues.append(issue('JOINT_NOT_JOINED', 'warning', 'joint',
-                                f"Connection '{j['id']}' ({j['type']} {j['a']} -> {j['b']}) is {j.get('status') or 'not joined'}"
-                                + (f" ({j['detached_reason']})" if j.get('detached_reason') else '') + '.',
-                                [j['a'], j['b']], joint=j['id']))
-            continue
-        res = evaluate_joint(design, plates, j, tol)
-        joint_results[j['id']] = res
-        errs = [i for i in res['issues'] if i['severity'] == 'error']
-        if errs:
-            issues.append(issue('JOINT_BROKEN', 'error', 'joint',
-                                f"Joined connection '{j['id']}' is no longer valid: {errs[0]['message']}",
-                                [j['a'], j['b']], joint=j['id'], causes=errs,
-                                suggestion=errs[0].get('suggestion')))
-        issues.extend(i for i in res['issues'] if i['severity'] == 'warning')
-        if j['type'] == 'tab_slot':
-            used_tabs.add((j['a'], j['tab']))
-            if res.get('matched_slot'):
-                used_slots.add((j['b'], res['matched_slot']))
-        if j['a'] in joined_adj and j['b'] in joined_adj:
-            joined_adj[j['a']].add(j['b'])
-            joined_adj[j['b']].add(j['a'])
+    with indexed_slots(design):
+        for n, j in enumerate(design['joints']):
+            progress('joint_validation', n, len(design['joints']), a=j['a'], b=j['b'])
+            key = (j['type'], j['a'], j['b'], j.get('tab'), j.get('a_edge'), j.get('b_edge'))
+            rkey = (j['type'], j['b'], j['a'], j.get('tab'), j.get('b_edge'), j.get('a_edge'))
+            if key in keys or (j['type'] in ('face_lap', 'edge_mitre') and rkey in keys):
+                issues.append(issue('DUPLICATE_JOINT', 'error', 'design',
+                                    f"Joint '{j['id']}' duplicates joint '{keys.get(key) or keys.get(rkey)}'.",
+                                    [j['a'], j['b']], joint=j['id']))
+                continue
+            keys[key] = j['id']
+            if j.get('status') != 'joined':
+                issues.append(issue('JOINT_NOT_JOINED', 'warning', 'joint',
+                                    f"Connection '{j['id']}' ({j['type']} {j['a']} -> {j['b']}) is {j.get('status') or 'not joined'}"
+                                    + (f" ({j['detached_reason']})" if j.get('detached_reason') else '') + '.',
+                                    [j['a'], j['b']], joint=j['id']))
+                continue
+            res = evaluate_joint(design, plates, j, tol)
+            joint_results[j['id']] = res
+            errs = [i for i in res['issues'] if i['severity'] == 'error']
+            if errs:
+                issues.append(issue('JOINT_BROKEN', 'error', 'joint',
+                                    f"Joined connection '{j['id']}' is no longer valid: {errs[0]['message']}",
+                                    [j['a'], j['b']], joint=j['id'], causes=errs,
+                                    suggestion=errs[0].get('suggestion')))
+            issues.extend(i for i in res['issues'] if i['severity'] == 'warning')
+            if j['type'] == 'tab_slot':
+                used_tabs.add((j['a'], j['tab']))
+                if res.get('matched_slot'):
+                    used_slots.add((j['b'], res['matched_slot']))
+            if j['a'] in joined_adj and j['b'] in joined_adj:
+                joined_adj[j['a']].add(j['b'])
+                joined_adj[j['b']].add(j['a'])
 
     for c in comps:
         for f in c.get('features', []):

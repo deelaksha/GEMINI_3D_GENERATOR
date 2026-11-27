@@ -21,7 +21,7 @@ import math
 from . import geometry as G
 from .manufacturing import manufacturing_report
 from .model import build_plates, edge_frame, material_of
-from .validation import _r, evaluate_joint
+from .validation import _r, evaluate_joint, indexed_slots
 
 
 def _orientation(plate):
@@ -213,8 +213,9 @@ def cut_list(design, mfg=None):
     """Per-board identification plus the grouped cut list (quantities of identical boards)."""
     mfg = mfg or manufacturing_report(design)
     plates = build_plates(design)
-    joint_results = {j['id']: evaluate_joint(design, plates, j) for j in design['joints']
-                     if j['a'] in plates and j['b'] in plates}
+    with indexed_slots(design):
+        joint_results = {j['id']: evaluate_joint(design, plates, j) for j in design['joints']
+                         if j['a'] in plates and j['b'] in plates}
     boards = [board_entry(design, plates[c['id']], joint_results, mfg['drilling']) for c in design['components']]
     groups = {}
     for b in boards:

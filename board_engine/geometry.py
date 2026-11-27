@@ -11,6 +11,7 @@ Coordinate conventions (used everywhere: engine, API, and the Three.js studio):
     rotation matrix is R = Rx · Ry · Rz. The API also returns the full 4x4
     world matrix so renderers never re-derive the transform.
 """
+import itertools
 import math
 
 EPS = 1e-9
@@ -360,3 +361,57 @@ def offset_edges(poly, inward):
         t = ((p2[0] - p1[0]) * d2[1] - (p2[1] - p1[1]) * d2[0]) / den
         out.append([p1[0] + d1[0] * t, p1[1] + d1[1] * t])
     return out
+
+
+def near_pairs(boxes, gap):
+    """Index pairs (i < j, sorted: the order a full double loop visits them) of axis-aligned boxes [(lo, hi), ...]
+    (any number of axes; points are boxes with lo == hi) that are at most `gap` apart on every axis - a superset of every pair a proximity check can match.
+    A uniform grid keeps this near-linear for thousands of boards wherever they are; boxes far larger than a cell (a
+    base plate under everything) are compared with every box directly instead of filling thousands of cells."""
+    n = len(boxes)
+    if n < 2:
+        return []
+    dim, h = len(boxes[0][0]), gap / 2.0
+    grown = [([lo[k] - h for k in range(dim)], [hi[k] + h for k in range(dim)]) for lo, hi in boxes]
+    cell = []                                               # per axis: flat boards are thin along different axes
+    for k in range(dim):
+        ext = sorted(hi[k] - lo[k] for lo, hi in grown)
+        cell.append(max(ext[len(ext) // 2], gap, 1e-3))     # the median board spans about one cell
+    limit = 4 ** dim if dim > 3 else 64 if dim == 3 else 256    # cells a box may cover before it counts as "large"
+    grid, large, first = {}, [], [None] * n            # first: each box's lowest cell on every axis
+    for i, (lo, hi) in enumerate(grown):
+        span = [(int(math.floor(lo[k] / cell[k])), int(math.floor(hi[k] / cell[k]))) for k in range(dim)]
+        cells = 1
+        for a, b in span:
+            cells *= b - a + 1
+        if cells > limit:
+            large.append(i)
+            continue
+        first[i] = tuple(a for a, _b in span)
+        for key in itertools.product(*(range(a, b + 1) for a, b in span)):
+            grid.setdefault(key, []).append(i)
+
+    def close(i, j):
+        (alo, ahi), (blo, bhi) = grown[i], grown[j]
+        for k in range(dim):
+            if alo[k] > bhi[k] or blo[k] > ahi[k]:
+                return False
+        return True
+    pairs = []
+    for key, members in grid.items():
+        for p in range(len(members)):
+            i = members[p]
+            fi = first[i]
+            for q in range(p + 1, len(members)):
+                j = members[q]
+                # two overlapping boxes share every cell of their overlap: report the pair only from its first cell
+                fj = first[j]
+                if all(key[k] == (fi[k] if fi[k] > fj[k] else fj[k]) for k in range(dim)) and close(i, j):
+                    pairs.append((i, j) if i < j else (j, i))
+    big = set(large)
+    for i in large:
+        for j in range(n):
+            if j != i and (j not in big or j > i) and close(i, j):
+                pairs.append((i, j) if i < j else (j, i))
+    pairs.sort()
+    return pairs

@@ -31,7 +31,8 @@ import math
 from . import geometry as G
 from .deadline import check as check_budget
 from .model import build_plates, edge_frame, material_of, tab_geometry
-from .validation import HINGE, TOL, _edge_world, _material_intervals, _r, evaluate_joint, hinge_count, issue
+from .validation import (HINGE, TOL, _edge_world, _material_intervals, _r, evaluate_joint, hinge_count, indexed_slots,
+                         issue)
 
 # ---------------------------------------------------------------------------
 # Catalogues
@@ -542,11 +543,13 @@ def find_contacts(design, plates, tol=TOL):
     doors = {j['a'] for j in design['joints'] if j['type'] == 'hinge'}
     out = []
     ids = sorted(p for p in plates if p not in doors)
+    near = {}
+    for i, k in G.near_pairs([plates[p].world_aabb() for p in ids], GAP_SEARCH):
+        near.setdefault(i, []).append(k)
+        near.setdefault(k, []).append(i)
     for i in range(len(ids)):
         check_budget()
-        for k in range(len(ids)):
-            if i == k:
-                continue
+        for k in sorted(near.get(i, ())):
             a, b = plates[ids[i]], plates[ids[k]]
             if frozenset((a.id, b.id)) in declared:
                 continue
@@ -990,10 +993,13 @@ def manufacturing_report(design, compensate_kerf=None, validation=None):
     """Everything needed to judge whether the design can be made and assembled."""
     plates = build_plates(design)
     joint_results, issues, bodies, drills = {}, [], [], []
+    with indexed_slots(design):
+        results = {j['id']: evaluate_joint(design, plates, j) for j in design['joints']
+                   if j['a'] in plates and j['b'] in plates}
     for j in design['joints']:
         if j['a'] not in plates or j['b'] not in plates:
             continue
-        res = evaluate_joint(design, plates, j)
+        res = results[j['id']]
         joint_results[j['id']] = res
         if j.get('fasteners'):
             bd, dr, iss = joint_fasteners(design, plates, j)

@@ -98,18 +98,21 @@ def test_stream_gives_its_slot_back_even_if_never_read(app_mod):
     assert routes._SLOTS == {}
 
 
-def test_export_budget_grows_with_the_design(app_mod, monkeypatch):
+def test_export_budget_follows_the_compiled_board_count(app_mod, monkeypatch):
+    import copy
     from board_api import routes
+    from board_engine import canvas
     seen = []
     real = routes.time_budget
     monkeypatch.setattr(routes, 'time_budget', lambda s: seen.append(s) or real(s))
-    c = app_mod.app.test_client()
+    monkeypatch.setattr(canvas, 'BUDGET_BOARDS', 2)                # scale the effect down to a small design
     app_mod.app.config['BOARD_TIME_BUDGET'] = 90
-    c.post('/api/v1/canvas/export', headers=H, json={'source': json.dumps(EXAMPLE)})
-    small = seen[-1]
-    many = json.dumps(EXAMPLE) + ' ' + ('"position" ' * 3595)       # 5 + 3595 = 3600 boards
-    c.post('/api/v1/canvas/export', headers=H, json={'source': many})
-    assert small == 90 and seen[-1] == 360                         # 3600 boards -> 4 x the budget (capped at 900 s)
+    d = copy.deepcopy(EXAMPLE)
+    shelf = next(b for b in d['boards'] if b['id'] == 'SHELF')
+    shelf['repeat'] = {'count': 2, 'step': [0, 100, 0]}           # one "position" in the text, two boards
+    app_mod.app.test_client().post('/api/v1/canvas/export', headers=H, json={'source': json.dumps(d), 'force': True})
+    boards = len(canvas.compile_source(json.dumps(d), run_production=False)['design']['components'])
+    assert seen and seen[-1] == 90 * boards / 2 > 90 and boards > json.dumps(d).count('"position"')
 
 
 def test_the_process_wide_compile_cap_cannot_be_dodged_with_new_sessions(app_mod):

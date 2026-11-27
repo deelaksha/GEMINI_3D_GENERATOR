@@ -45,7 +45,7 @@ from .nesting import SHEET_PRESETS
 from .json_repair import repair_json, summarize as _summarize_repair
 from .progress import active as _reporting, report as _progress
 from .shapes import ShapeError, arc_sweep, reverse as reverse_shape, shape_polygon
-from .validation import TOL, _edge_line_intervals, validate_design
+from .validation import TOL, _edge_line_intervals, joining_loop, validate_design
 
 FORMAT = 'board-design/v1'
 CONNECTION_TYPES = ('tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre')
@@ -474,10 +474,12 @@ def _check_boards(data, mat, diags, src, off):
             ok = False
             continue
         rot = b.get('rotate')
-        if rot is not None and not (isinstance(rot, dict) and rot.get('axis') in ('x', 'y', 'z') and _num(rot.get('angle'))
-                                    and -360 <= rot['angle'] <= 360 and (rot.get('pivot') is None or _vec3(rot['pivot']))):
+        step_ok = lambda st: (isinstance(st, dict) and st.get('axis') in ('x', 'y', 'z') and _num(st.get('angle'))
+                              and -360 <= st['angle'] <= 360 and (st.get('pivot') is None or _vec3(st['pivot'])))
+        if rot is not None and not (step_ok(rot) or (isinstance(rot, list) and 1 <= len(rot) <= 4 and all(map(step_ok, rot)))):
             diags.append(diag('error', 'BOARD_ROTATE', f"Board '{bid}': \"rotate\" must be {{\"axis\": \"x\"|\"y\"|\"z\", "
-                              f"\"angle\": degrees, \"pivot\"?: [x, y, z]}} (pivot defaults to the board centre).",
+                              f"\"angle\": degrees, \"pivot\"?: [x, y, z]}} (pivot defaults to the board centre), or a list "
+                              f"of 1-4 of them applied in order (a compound tilt, e.g. a flared roof corner).",
                               path=p + '.rotate', board=bid, line=line))
             ok = False
             continue
@@ -729,18 +731,34 @@ def _euler_xyz(R):
     return [round(math.degrees(v), 6) for v in (rx, ry, rz)]
 
 
+def _rotation_steps(rot):
+    """A board's "rotate": one tilt {"axis", "angle", "pivot"?} or a list of them, applied in order."""
+    return rot if isinstance(rot, list) else [rot]
+
+
 def _rotate_matrix(rot):
+    """Rotation matrix of one tilt step."""
     return G.rotation_matrix([rot['angle'] if AXES[i] == rot['axis'] else 0.0 for i in range(3)])
 
 
+def _tilt_points(rot, pts, centre):
+    """World points after the board's tilt steps. A step without a pivot turns about the board's current centre."""
+    for st in _rotation_steps(rot):
+        R, P = _rotate_matrix(st), st.get('pivot') or centre
+        turn = lambda q: [P[i] + sum(R[i][k] * (q[k] - P[k]) for k in range(3)) for i in range(3)]
+        pts, centre = [turn(q) for q in pts], turn(centre)
+    return pts, centre
+
+
 def _apply_rotate(comp, rot):
-    """Tilt a finished component by `rot` about its pivot (default: the board centre)."""
-    Rr = _rotate_matrix(rot)
-    c = comp['placement']['position']
-    pivot = rot.get('pivot') or c
-    rel = [c[i] - pivot[i] for i in range(3)]
-    comp['placement'] = {'position': [round(pivot[i] + sum(Rr[i][k] * rel[k] for k in range(3)), 4) for i in range(3)],
-                         'rotation': _euler_xyz(G.mat_mul(Rr, G.rotation_matrix(comp['placement']['rotation'])))}
+    """Tilt a finished component by its tilt step(s), each about its pivot (default: the board's current centre)."""
+    for st in _rotation_steps(rot):
+        Rr = _rotate_matrix(st)
+        c = comp['placement']['position']
+        pivot = st.get('pivot') or c
+        rel = [c[i] - pivot[i] for i in range(3)]
+        comp['placement'] = {'position': [round(pivot[i] + sum(Rr[i][k] * rel[k] for k in range(3)), 4) for i in range(3)],
+                             'rotation': _euler_xyz(G.mat_mul(Rr, G.rotation_matrix(comp['placement']['rotation'])))}
 
 
 def _component(bd, mat, diags):
@@ -846,7 +864,7 @@ def _component(bd, mat, diags):
                               f"{' or '.join(repr(x) for x in MARK_KINDS)}.", path=p, board=bd.id, line=bd.line))
             continue
         if m.get('text') is not None:          # engraved text: single-stroke font, one mark per stroke
-            marks += _text_marks(m, k, kind, p, bd, to_local, su, sv, diags)
+            marks += _text_marks(m, k, kind, p, bd, comp, to_local, su, sv, diags)
             continue
         try:
             if m.get('shape'):
@@ -873,7 +891,97 @@ def _component(bd, mat, diags):
         comp['marks'] = marks
     if r.get('living_hinge') is not None:
         _living_hinges(r['living_hinge'], bd, comp, to_local, su, sv, diags)
+    if r.get('decals') is not None:
+        _decals(r['decals'], bd, comp, to_local, su, sv, diags)
     return comp
+
+
+def _reading_axes(bd, comp, face):
+    """-> (right, up): face-coordinate [u, v] directions in which text reads upright for a reader outside `face`
+    ('front' = the +thickness side): up is world +y on a vertical face and away from the product's front (-z) on a
+    horizontal one; right x up points at the reader. Face axes u, v run along the in-plane axes in x, y, z order, so
+    on some faces (the top of a board thin along y, the back of one thin along x or z) plain [u, v] text is mirrored."""
+    unit = lambda i: [1.0 if j == i else 0.0 for j in range(3)]
+    fu, fv = unit(bd.inplane[0]), unit(bd.inplane[1])
+    n = _frame(comp).dir_to_world([0.0, 0.0, 1.0])
+    if face == 'back':
+        n = G.v_scale(n, -1.0)
+    up = [0.0, 1.0, 0.0] if abs(n[1]) < 0.5 else [0.0, 0.0, -1.0]
+    right = G.v_cross(up, n)
+    return [G.v_dot(right, fu), G.v_dot(right, fv)], [G.v_dot(up, fu), G.v_dot(up, fv)]
+
+
+MAX_DECALS = 2000        # per board
+
+
+def _decals(raw, bd, comp, to_local, su, sv, diags):
+    """board "decals": printed / painted artwork on a face (colouring on), never cut - [{"id"?, "face": "front"|"back",
+    "color", ...shape}] or lettering {"text", "position" (its centre), "height", "color", "face"?}. Face coordinates as for
+    engravings (the same [u, v] on both faces). Lettering reads upright on the face it is printed on, seen from outside:
+    "up" is world +y on a vertical face and away from the product's front (-z) on a horizontal one; "position" is the
+    centre of the text, so placing it does not depend on the reading direction. Shown in 3D and exported as print sheets laid out like the cut sheets."""
+    from .colors import parse_color
+    from .strokefont import text_strokes, text_width
+    p0 = f"boards[{bd.index}].decals"
+    if not isinstance(raw, list) or len(raw) > MAX_DECALS:
+        diags.append(diag('error', 'DECAL_INVALID', f"Board '{bd.id}': {p0} must be a list of at most {MAX_DECALS} decals.",
+                          path=p0, board=bd.id, line=bd.line))
+        return
+    out = []
+    for k, m in enumerate(raw):
+        p = f'{p0}[{k}]'
+
+        def bad(msg, code='DECAL_INVALID'):
+            diags.append(diag('error', code, f"Board '{bd.id}': {p} {msg}.", path=p, board=bd.id, line=bd.line))
+        if not isinstance(m, dict):
+            bad('must be an object')
+            continue
+        face = m.get('face', 'front')
+        if face not in ('front', 'back'):
+            bad('"face" must be "front" or "back"')
+            continue
+        try:
+            color = parse_color(m.get('color'))
+        except (ValueError, TypeError) as e:
+            bad(f'needs a "color": {e}')
+            continue
+        did = str(m.get('id') or f'decal-{k + 1}')
+        if m.get('text') is not None:
+            text, pos, h = m['text'], m.get('position'), m.get('height', 10)
+            if not isinstance(text, str) or not text.strip() or len(text) > 120:
+                bad('"text" must be 1..120 characters')
+                continue
+            if not (isinstance(pos, list) and len(pos) == 2 and all(_num(v) for v in pos)) or not _num(h) or not 2 <= h <= 500:
+                bad('lettering needs "position": [u, v] (the centre of the text, face mm) and "height" 2..500 mm')
+                continue
+            w = text_width(text, h)
+            (ru, rv), (uu, uv) = _reading_axes(bd, comp, face)
+            strokes = [[[pos[0] + q[0] * ru + q[1] * uu, pos[1] + q[0] * rv + q[1] * uv] for q in s]
+                       for s in text_strokes(text, 0.0, -h / 2, h, 'center')]      # centred on "position"
+            flat = [q for s in strokes for q in s]
+            if not flat or min(q[0] for q in flat) < -0.01 or min(q[1] for q in flat) < -0.01 \
+                    or max(q[0] for q in flat) > su + 0.01 or max(q[1] for q in flat) > sv + 0.01:
+                bad(f'lettering "{text}" ({w:.0f} x {h:g} mm) does not fit on the {su:g} x {sv:g} mm face at {pos}',
+                    'DECAL_OUTSIDE_BOARD')
+                continue
+            out.append({'id': did, 'face': face, 'color': color, 'width': round(h / 7, 3),
+                        'lines': [[to_local(q) for q in s] for s in strokes]})
+            continue
+        if not m.get('shape'):
+            bad('needs a "shape" (rect, circle, ellipse, arch, regular_polygon, polygon, path) or "text"')
+            continue
+        try:
+            pts, _arcs, fpts = _local_shape(m, to_local, (0.0, 0.0), p)
+        except ShapeError as e:
+            bad(str(e))
+            continue
+        outside = [q for q in fpts if not (-0.01 <= q[0] <= su + 0.01 and -0.01 <= q[1] <= sv + 0.01)]
+        if outside:
+            bad(f'leaves the {su:g} x {sv:g} mm face (e.g. point [{outside[0][0]:g}, {outside[0][1]:g}])', 'DECAL_OUTSIDE_BOARD')
+            continue
+        out.append({'id': did, 'face': face, 'color': color, 'points': pts})
+    if out:
+        comp['decals'] = out
 
 
 MAX_IMAGE = 400_000      # characters of the data: URI (~300 KB of PNG / JPEG)
@@ -901,7 +1009,7 @@ def _image_engraving(m, k, p, bd, to_local, su, sv, diags):
             'corners': [to_local([u, v + h]), to_local([u + w, v + h]), to_local([u, v])]}
 
 
-def _text_marks(m, k, kind, p, bd, to_local, su, sv, diags):
+def _text_marks(m, k, kind, p, bd, comp, to_local, su, sv, diags):
     """engravings[k] = {"kind": "engrave", "text": str, "position": [u, v] (baseline start, face mm), "height": mm,
     "align"?: "left"|"center"|"right", "depth"?} -> one engrave mark per stroke of the single-stroke font."""
     from .strokefont import text_strokes, text_width
@@ -927,9 +1035,17 @@ def _text_marks(m, k, kind, p, bd, to_local, su, sv, diags):
         return []
     base = str(m.get('id') or f'text-{k + 1}')
     depth = m['depth'] if m.get('depth') is not None else None
+    strokes = text_strokes(text, pos[0], pos[1], h, align)
+    (ru, rv), (uu, uv) = _reading_axes(bd, comp, 'front')          # engravings are cut into the front face
+    if ru * uv - rv * uu < 0:
+        # plain [u, v] text reads mirrored on this face: flip it within its own box (same place and size), across the
+        # axis that leaves its letters closest to upright for the reader
+        w, lo, hi = text_width(text, h), pos[1] - h / 6, pos[1] + h
+        strokes = ([[[q[0], lo + hi - q[1]] for q in s] for s in strokes] if uv < 0 else
+                   [[[2 * x0 + w - q[0], q[1]] for q in s] for s in strokes])
     return [dict({'id': f'{base}-{n + 1}', 'kind': 'engrave', 'points': [to_local(q) for q in stroke], 'closed': False},
                  **({'depth': depth} if depth is not None else {}), **({'note': text} if n == 0 else {}))
-            for n, stroke in enumerate(text_strokes(text, pos[0], pos[1], h, align))]
+            for n, stroke in enumerate(strokes)]
 
 
 def _apply_colors(comp, bd, data, diags):
@@ -1168,11 +1284,12 @@ def _contact_tilted(ca, cb, t_a, t_b, only_edge=None):
 
 
 def _tilted_move_fix(bd, delta, title):
-    """Fix that moves board `bd` by the world vector `delta` (its position is pre-rotation; with an explicit pivot
-    the tilt would turn the move, so it is un-rotated first)."""
-    if bd.rot and bd.rot.get('pivot') is not None:
-        R = _rotate_matrix(bd.rot)
-        delta = [sum(R[k][q] * delta[k] for k in range(3)) for q in range(3)]
+    """Fix that moves board `bd` by the world vector `delta` (its position is pre-rotation; a tilt step about an
+    explicit pivot turns the move with it - one about the board's own centre does not - so those are undone first)."""
+    for st in reversed(_rotation_steps(bd.rot) if bd.rot else []):
+        if st.get('pivot') is not None:
+            R = _rotate_matrix(st)
+            delta = [sum(R[k][q] * delta[k] for k in range(3)) for q in range(3)]
     pos = [round(bd.raw['position'][q] + delta[q], 4) for q in range(3)]
     return {'id': f'move-{bd.id}', 'title': title, 'safe': False, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]}
 
@@ -1357,31 +1474,39 @@ def _corner(A, B, ct):
     return 0
 
 
+def _world_box(bd):
+    """World box of a board: its box, or for a tilted board the box around its tilted corners."""
+    if not bd.rot:
+        return bd.lo, bd.hi
+    corners = [[x, y, z] for x in (bd.lo[0], bd.hi[0]) for y in (bd.lo[1], bd.hi[1]) for z in (bd.lo[2], bd.hi[2])]
+    pts, _c = _tilt_points(bd.rot, corners, [(bd.lo[i] + bd.hi[i]) / 2.0 for i in range(3)])
+    return [min(p[i] for p in pts) for i in range(3)], [max(p[i] for p in pts) for i in range(3)]
+
+
 def _infer_connections(boards, comps):
     """Connections implied by the geometry: end face on a face (tab_slot, or finger at a flush corner), crossing
     boards (cross_lap) and tilted boards resting on an edge (tab_slot)."""
     out, ids = [], sorted(boards)
-    for x in range(len(ids)):
-        for y in range(x + 1, len(ids)):
-            P, Q = boards[ids[x]], boards[ids[y]]
-            found = None
-            if P.rot or Q.rot:
-                for A, B in ((P, Q), (Q, P)):
-                    ct = _contact_tilted(comps[A.id], comps[B.id], A.t, B.t)
-                    if ct and abs(ct['gap']) <= TOL['contact'] and ct['t1'] - ct['t0'] > 2 * A.t + TOL['min_tab_width']:
-                        found = ('tab_slot', A, B)
-                        break
-            else:
-                for A, B in ((P, Q), (Q, P)):
-                    ct = _contact(A, B)
-                    if ct and abs(ct['gap']) <= TOL['contact']:
-                        found = ('finger' if _corner(A, B, ct) else 'tab_slot', A, B)
-                        break
-                if not found and _crossing(P, Q):
-                    found = ('cross_lap', P, Q)
-            if found:
-                t, A, B = found
-                out.append({'id': _fit_id(f'auto-{A.id}-{B.id}'), 'type': t, 'board': A.id, 'into': B.id, '_i': None, '_auto': True})
+    for x, y in G.near_pairs([_world_box(boards[i]) for i in ids], TOL['contact'] + 1.0):   # only touching boards
+        P, Q = boards[ids[x]], boards[ids[y]]
+        found = None
+        if P.rot or Q.rot:
+            for A, B in ((P, Q), (Q, P)):
+                ct = _contact_tilted(comps[A.id], comps[B.id], A.t, B.t)
+                if ct and abs(ct['gap']) <= TOL['contact'] and ct['t1'] - ct['t0'] > 2 * A.t + TOL['min_tab_width']:
+                    found = ('tab_slot', A, B)
+                    break
+        else:
+            for A, B in ((P, Q), (Q, P)):
+                ct = _contact(A, B)
+                if ct and abs(ct['gap']) <= TOL['contact']:
+                    found = ('finger' if _corner(A, B, ct) else 'tab_slot', A, B)
+                    break
+            if not found and _crossing(P, Q):
+                found = ('cross_lap', P, Q)
+        if found:
+            t, A, B = found
+            out.append({'id': _fit_id(f'auto-{A.id}-{B.id}'), 'type': t, 'board': A.id, 'into': B.id, '_i': None, '_auto': True})
     return out
 
 
@@ -1705,13 +1830,14 @@ def _compile_native(data, design_id, result, run_production, machine=None):
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
     _progress('geometry', 1, 1, **({'preview': _preview(design['components'], design)} if _reporting() else {}))
-    for n, spec in enumerate(pending):
-        _progress('joints', n, len(pending), **({'joins': [[s['a'], s['b']] for s in pending]} if n == 0 and _reporting() else {}))
-        res = join(design, spec, auto_repair=True, whole_design_check=False)
-        if res['accepted']:
-            design = res['design']
-        else:
-            design['joints'].append(dict(spec, status='detached', detached_reason=res['status']))
+    with joining_loop(design):
+        for n, spec in enumerate(pending):
+            _progress('joints', n, len(pending), **({'joins': [[s['a'], s['b']] for s in pending]} if n == 0 and _reporting() else {}))
+            res = join(design, spec, auto_repair=True, whole_design_check=False)
+            if res['accepted']:
+                design = res['design']
+            else:
+                design['joints'].append(dict(spec, status='detached', detached_reason=res['status']))
     return _finish(design, result, {}, run_production, machine=machine)
 
 
@@ -1738,6 +1864,9 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         diags.append(diag('error', 'MOUNTING', f'"product.mounting" must be one of {list(MOUNTINGS)}.',
                           line=_key_line(src, 'mounting', off)))
         mounting = None
+    from .motion import add_axle_holes, parse_motions
+    motions = parse_motions(data, _ORIGIN.get(), diags, diag, line=_key_line(src, 'motions', off))
+    add_axle_holes(data, motions, mat['thickness'], diags, diag)
     boards = _check_boards(data, mat, diags, src, off)
     if not boards:
         return result
@@ -1760,9 +1889,12 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         comps[bid] = _component(bd, mat, diags)
         if coloring:
             _apply_colors(comps[bid], bd, data, diags)
-    if not coloring and any(isinstance(b, dict) and (b.get('color') or b.get('colour')) for b in data.get('boards') or []):
-        diags.append(diag('info', 'COLORS_IGNORED', 'The design has board colours, but colouring is off: boards are shown '
-                          'and cut as plain material. Turn on "Include colouring" to use them.'))
+        else:
+            comps[bid].pop('decals', None)          # artwork is colour: only with colouring on
+    if not coloring and any(isinstance(b, dict) and (b.get('color') or b.get('colour') or b.get('decals'))
+                            for b in data.get('boards') or []):
+        diags.append(diag('info', 'COLORS_IGNORED', 'The design has board colours or printed decals, but colouring is off: '
+                          'boards are shown and cut as plain material. Turn on "Include colouring" to use them.'))
     comps0 = copy.deepcopy(comps)      # unrotated: edge directions ("+x", ...) always refer to the unrotated box
     for bid, bd in boards.items():
         if bd.rot:
@@ -1962,31 +2094,33 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         design['coloring'] = True
         design['color_sheets'] = bool(machine.get('color_sheets'))     # each colour cut from its own (pre-coloured) sheets
     design['source'] = {'format': FORMAT, 'code': None}
+    design['motions'] = [m for m in motions if all(b in comps for b in m['boards']) and m['on'] in comps]
 
-    for n, (j, c, cid, cline) in enumerate(joints):
-        _progress('joints', n, len(joints), **({'joins': [[x[0]['a'], x[0]['b']] for x in joints]} if n == 0 and _reporting() else {}))
-        try:
-            res = join(design, j, auto_repair=True, whole_design_check=False)
-        except SchemaError as e:      # connection options out of range (hinge count, gap, fasteners, ...)
-            diags.append(diag('error', 'CONNECTION_INVALID', f"Connection '{cid}': {e}", connection=cid, line=cline))
-            continue
-        if res['accepted']:
-            design = res['design']
-            continue
-        errs = [i for i in res['issues'] if i['severity'] == 'error']
-        first = errs[0] if errs else {'code': res['status'], 'message': res['status']}
-        fixes = []
-        sug = first.get('suggestion')
-        if sug and sug.get('action') == 'translate' and sug['component'] in boards:
-            bd = boards[sug['component']]
-            delta = sug['delta']
-            mag = math.sqrt(sum(v * v for v in delta))
-            pos = [round(bd.raw['position'][i] + delta[i], 4) for i in range(3)]
-            fixes.append({'id': f'move-{bd.id}', 'title': f"Move '{bd.id}' by [{', '.join(f'{v:g}' for v in delta)}] mm",
-                          'safe': mag <= SAFE_MOVE, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]})
-        diags.append(diag('error', first['code'], f"Connection '{cid}' could not be joined ({res['status']}): {first['message']}",
-                          connection=cid, board=j['a'], line=cline or boards[j['a']].line, fixes=fixes or None))
-        design['joints'].append(dict(j, status='detached', detached_reason=first['code']))
+    with joining_loop(design):
+        for n, (j, c, cid, cline) in enumerate(joints):
+            _progress('joints', n, len(joints), **({'joins': [[x[0]['a'], x[0]['b']] for x in joints]} if n == 0 and _reporting() else {}))
+            try:
+                res = join(design, j, auto_repair=True, whole_design_check=False)
+            except SchemaError as e:      # connection options out of range (hinge count, gap, fasteners, ...)
+                diags.append(diag('error', 'CONNECTION_INVALID', f"Connection '{cid}': {e}", connection=cid, line=cline))
+                continue
+            if res['accepted']:
+                design = res['design']
+                continue
+            errs = [i for i in res['issues'] if i['severity'] == 'error']
+            first = errs[0] if errs else {'code': res['status'], 'message': res['status']}
+            fixes = []
+            sug = first.get('suggestion')
+            if sug and sug.get('action') == 'translate' and sug['component'] in boards:
+                bd = boards[sug['component']]
+                delta = sug['delta']
+                mag = math.sqrt(sum(v * v for v in delta))
+                pos = [round(bd.raw['position'][i] + delta[i], 4) for i in range(3)]
+                fixes.append({'id': f'move-{bd.id}', 'title': f"Move '{bd.id}' by [{', '.join(f'{v:g}' for v in delta)}] mm",
+                              'safe': mag <= SAFE_MOVE, 'edits': [{'board': bd.id, 'field': 'position', 'value': pos}]})
+            diags.append(diag('error', first['code'], f"Connection '{cid}' could not be joined ({res['status']}): {first['message']}",
+                              connection=cid, board=j['a'], line=cline or boards[j['a']].line, fixes=fixes or None))
+            design['joints'].append(dict(j, status='detached', detached_reason=first['code']))
 
     _progress('joints', len(joints), len(joints))
     # Overall dimensions (the classic AI mistake: forgetting to subtract board thickness)
@@ -2011,6 +2145,11 @@ def _remove_fix(raw_conns, i, cid):
         return None
     return [{'id': f'remove-{cid}', 'title': f"Remove connection '{cid}' (these boards do not touch)", 'safe': False,
              'edits': [{'field': 'connections', 'value': [x for k, x in enumerate(raw_conns) if k != i]}]}]
+
+
+# reports that do not apply to a moving part: it rests on, and runs with clearance to, the boards around it
+_MOVING_OK = {'UNJOINED_CONTACT', 'NEAR_MISS_GAP', 'VISIBLE_GAP', 'HELD_FROM_ABOVE', 'RESTING_COMPONENT', 'CANTILEVER',
+              'UNSUPPORTED_COMPONENT', 'RESTING_OFF_SUPPORT'}
 
 
 def _finish(design, result, boards, run_production, raw_conns=None, held=(), conn_pairs=None, machine=None):
@@ -2040,6 +2179,11 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     bodies = {cid: ([float(v) for v in bd.raw['position']], [bd.raw['position'][k] + bd.raw['size'][k] for k in range(3)])
               for cid, bd in boards.items() if _laid_out(bd.raw)}
     insp = inspect(plates, design['joints'], bodies)
+    motions = design.get('motions') or []
+    moving = {b for m in motions for b in m['boards']}
+    if motions:
+        from .motion import check_motions
+        insp['issues'] += check_motions(design, plates, motions)
     covered = {c for i in conn['issues'] for c in i['components'][:1 if i['code'] == 'ISOLATED_BOARD' else None]}
     for d in _unattached(conn, diags, conn_pairs or {}, boards):
         diags.append(d)
@@ -2048,6 +2192,8 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     for i in report['issues'] + conn['issues'] + insp['issues']:
         if i['code'] in ('JOINT_NOT_JOINED', 'FLOATING_COMPONENT'):
             continue                    # loose boards are reported by the connectivity analysis (ISOLATED_BOARD, ...)
+        if i['code'] in _MOVING_OK and moving & set(i.get('components') or ()):
+            continue                    # a moving part rests and runs with clearance by design: its motion mounts it
         if _follow_on(i, held, failed_pairs):
             continue                    # a consequence of an error already reported for that board / connection
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
@@ -2072,6 +2218,8 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
                           location=i.get('location'), fixes=fixes, calc=i.get('calc')))
     for i in support['issues']:
         if _follow_on(i, held, failed_pairs) or (held and i['code'] in _STABILITY):
+            continue
+        if i['code'] in _MOVING_OK and moving & set(i.get('components') or ()):
             continue                    # stability of a partly built structure says nothing about the real product
         if i['code'] in ('UNSUPPORTED_COMPONENT', 'RESTING_COMPONENT') and set(i['components']) <= covered:
             continue                    # already reported as floating / not joined

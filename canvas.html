@@ -160,6 +160,7 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
             <div class="seg tiny"><button data-cam="iso">Iso</button><button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="top">Top</button></div>
             <button class="tool txt" id="btn-move-parts" aria-pressed="false" title="Drag a board to pull it out and see where and how it is joined (Shift + drag works any time). Double-click a board to put it back.">Move parts</button>
             <button class="tool txt" id="btn-reset-parts" title="Put every pulled-out board back">Reset parts</button>
+            <button class="tool txt" id="btn-play-motion" aria-pressed="false" hidden title="Play the design's moving parts (lids, flaps, wheels, drawers) through their whole travel">Play motion</button>
             <button class="tool" id="btn-fit-3d" title="Fit to view"><svg><use href="#i-fit"/></svg></button>
             <button class="tool" id="btn-full-3d" title="Full screen"></button>
           </div>
@@ -209,6 +210,6 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
     <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
     <div class="dlg-body" id="import-body"></div></dialog>
   <div class="toast" id="toast" role="status"></div>
-  <script type="module" src="js/canvas/main.js?v=2.35"></script>
+  <script type="module" src="js/canvas/main.js?v=2.39"></script>
 </body>
 </html>

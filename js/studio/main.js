@@ -165,6 +165,9 @@ async function refresh() {
   S.validation = val.validation;
   if (S.selected && !model.components.some((c) => c.id === S.selected)) S.selected = null;
   view3d.load(model);
+  $('#btn-play-motion').hidden = !model.motions?.length;
+  $('#btn-play-motion').setAttribute('aria-pressed', 'false');
+  $('#btn-play-motion').classList.remove('on');
   await refreshLayout();
   renderAll();
 }
@@ -764,6 +767,12 @@ $('#btn-fit-2d').onclick = () => sheet2d.fit();
 bindFullscreen($('.view-3d'), $('#btn-full-3d'), () => requestAnimationFrame(() => view3d.resize()));
 bindFullscreen($('.view-2d'), $('#btn-full-2d'), () => requestAnimationFrame(() => { sheet2d._apply(); sheet2d.fit(); }));
 $('#btn-edges').onclick = (e) => { view3d.setEdges(!view3d.showEdges); e.currentTarget.classList.toggle('on', view3d.showEdges); };
+$('#btn-play-motion').onclick = (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  e.currentTarget.classList.toggle('on', on);
+  view3d.playMotion(on);
+};
 $('#btn-labels-2d').onclick = (e) => { sheet2d.setLabels(!sheet2d.labels); e.currentTarget.classList.toggle('on', sheet2d.labels); };
 $('#explode').oninput = (e) => view3d.setExplode(e.target.value / 100);
 

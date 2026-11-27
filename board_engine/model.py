@@ -33,6 +33,7 @@ Feature kinds have distinct meaning and are never interchangeable:
   opening - intentional design opening (cockpit, window, lightening hole); the
             engine never fills, moves or places joints inside it
 """
+import contextvars
 import copy
 import math
 import re
@@ -165,6 +166,30 @@ def _images(raw, path):
     return out
 
 
+def _decals(raw, path):
+    """Printed / painted artwork on a face: {'id', 'face': front|back, 'color': #rrggbb} plus 'points' (a filled
+    polygon, local mm) or 'lines' + 'width' (lettering strokes). Never cut."""
+    if not isinstance(raw, list) or len(raw) > 2000:
+        raise SchemaError(f'{path} must be a list of <= 2000 decals', path)
+    out = []
+    for i, d in enumerate(raw):
+        p = f'{path}[{i}]'
+        if not (isinstance(d, dict) and d.get('face') in ('front', 'back') and isinstance(d.get('color'), str)
+                and re.fullmatch(r'#[0-9a-fA-F]{6}', d['color'])):
+            raise SchemaError(f'{p} must be {{"id", "face": "front"|"back", "color": #rrggbb, ...}}', p)
+        e = {'id': check_id(d.get('id'), p + '.id'), 'face': d['face'], 'color': d['color']}
+        if isinstance(d.get('points'), list) and len(d['points']) >= 3:
+            e['points'] = [_vec(q, 2, f'{p}.points[{k}]') for k, q in enumerate(d['points'][:LIMITS['max_outline_points']])]
+        elif isinstance(d.get('lines'), list) and d['lines']:
+            e['lines'] = [[_vec(q, 2, f'{p}.lines[{k}]') for q in ln] for k, ln in enumerate(d['lines'][:500])
+                          if isinstance(ln, list) and len(ln) >= 2]
+            e['width'] = _num(d.get('width', 1), p + '.width', 0.05, 100)
+        else:
+            raise SchemaError(f'{p} needs "points" (a polygon) or "lines" (strokes)', p)
+        out.append(e)
+    return out
+
+
 def _hinges(raw, path):
     """Living hinges: through-cut line segments (local mm) that let the board bend. Bending is not simulated."""
     if not isinstance(raw, list):
@@ -293,6 +318,7 @@ def normalize_component(c, path='component'):
         **({'marks': _marks(c.get('marks'), path + '.marks')} if c.get('marks') else {}),
         **({'hinges': _hinges(c.get('hinges'), path + '.hinges')} if c.get('hinges') else {}),
         **({'images': _images(c.get('images'), path + '.images')} if c.get('images') else {}),
+        **({'decals': _decals(c.get('decals'), path + '.decals')} if c.get('decals') else {}),
         'placement': {
             'position': _vec(pl.get('position', [0, 0, 0]), 3, path + '.placement.position'),
             'rotation': _vec(pl.get('rotation', [0, 0, 0]), 3, path + '.placement.rotation', 720),
@@ -443,6 +469,46 @@ def _mounting(v):
     return {'mounting': v}
 
 
+MOTION_AXES = ('x', 'y', 'z')
+
+
+def normalize_motions(raw, comp_ids):
+    """Stored moving parts (the canvas compiler's "motions"). A motion whose boards were deleted since is dropped; the
+    rest keeps only its known fields."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise SchemaError('motions must be a list', 'motions')
+    out = []
+    for i, m in enumerate(raw):
+        p = f'motions[{i}]'
+        if not isinstance(m, dict) or m.get('type') not in ('rotate', 'slide'):
+            raise SchemaError(f'{p}.type must be "rotate" or "slide"', p + '.type')
+        boards = [b for b in m.get('boards') or [] if b in comp_ids]
+        if not boards or m.get('on') not in comp_ids:
+            continue
+        rng = m.get('range')
+        if not (isinstance(rng, list) and len(rng) == 2):
+            raise SchemaError(f'{p}.range must be [from, to]', p + '.range')
+        nm = {'id': check_id(m.get('id'), p + '.id'), 'type': m['type'], 'boards': boards, 'on': m['on'],
+              'range': [_num(rng[0], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord']),
+                        _num(rng[1], p + '.range', -LIMITS['max_coord'], LIMITS['max_coord'])]}
+        if m['type'] == 'rotate':
+            if m.get('axis') not in MOTION_AXES or not (isinstance(m.get('pivot'), list) and len(m['pivot']) == 3):
+                raise SchemaError(f'{p} needs "axis" and "pivot"', p)
+            nm.update(axis=m['axis'], pivot=[_num(v, p + '.pivot', -LIMITS['max_coord'], LIMITS['max_coord']) for v in m['pivot']])
+            if isinstance(m.get('axle'), dict):
+                nm['axle'] = {'diameter': _num(m['axle'].get('diameter'), p + '.axle.diameter', 1, 50),
+                              **({'boards': [b for b in m['axle']['boards'] if b in comp_ids]}
+                                 if isinstance(m['axle'].get('boards'), list) else {})}
+        else:
+            if m.get('direction') not in MOTION_AXES:
+                raise SchemaError(f'{p}.direction must be "x", "y" or "z"', p + '.direction')
+            nm['direction'] = m['direction']
+        out.append(nm)
+    return out
+
+
 def normalize_design(d):
     if not isinstance(d, dict):
         raise SchemaError('design must be an object')
@@ -460,6 +526,7 @@ def normalize_design(d):
     for i, c in enumerate(comps_in):
         nc, _ = normalize_component(c, f'components[{i}]')
         comps.append(nc)
+    motions = normalize_motions(d.get('motions'), {c['id'] for c in comps})
     return {
         'id': check_id(d.get('id'), 'id'),
         'name': _text(d.get('name'), 'name', default=d.get('id')),
@@ -485,6 +552,7 @@ def normalize_design(d):
         'joinery': _joinery(d.get('joinery')),
         **_mounting(d.get('mounting')),
         **_source(d.get('source')),
+        **({'motions': motions} if motions else {}),
         'created': d.get('created'),
         'updated': d.get('updated'),
     }
@@ -631,11 +699,27 @@ def build_plates(design):
     return {c['id']: Plate(design, c) for c in design['components']}
 
 
-def find_component(design, cid):
-    for c in design['components']:
+COMPONENT_POSITIONS = contextvars.ContextVar('component_positions', default=None)   # (count, {id: first index})
+
+
+def component_index(design, cid):
+    """Index of the first component with id `cid`, or None. While a joining loop has recorded the positions (the ids
+    and their order do not change there) this is a lookup, checked against the list, instead of a scan."""
+    comps = design['components']
+    pos = COMPONENT_POSITIONS.get()
+    if pos is not None and len(comps) == pos[0]:
+        i = pos[1].get(cid)
+        if i is not None and comps[i]['id'] == cid:
+            return i
+    for k, c in enumerate(comps):
         if c['id'] == cid:
-            return c
+            return k
     return None
+
+
+def find_component(design, cid):
+    i = component_index(design, cid)
+    return None if i is None else design['components'][i]
 
 
 def find_joint(design, jid):

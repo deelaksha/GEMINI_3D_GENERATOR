@@ -77,9 +77,9 @@ export const Api = {
   canvasAiFix: (source, machine) => request('POST', '/canvas/ai-fix', { source, machine }, { timeout: 330000 }),
   canvasResize: (source, size) => request('POST', '/canvas/resize', { source, ...size }),
   canvasTestFit: (thickness, machine, format = 'svg') => request('POST', '/canvas/test-fit', { thickness, machine, format }).then((r) => r.blob()),
-  canvasExport: (source, force = false, extra = {}) => request('POST', '/canvas/export', { source, force, ...extra }, { timeout: 150000 }).then((r) => r.blob()),
+  canvasExport: (source, force = false, extra = {}) => request('POST', '/canvas/export', { source, force, ...extra }, { timeout: 900000 }).then((r) => r.blob()),
   canvasSave: (source, name, designId, machine) => request('POST', '/canvas/save', { source, name, design_id: designId || undefined, machine }),
-  canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }),
+  canvasImport: (source, target, boards) => request('POST', '/canvas/import', { source, target, boards }, { timeout: 900000 }),
   createBoat: (id, name, params) => request('POST', '/designs/examples/boat', { id, params }).then(async (r) => {
     if (name) await request('PATCH', `/designs/${enc(id)}`, { name });
     return r;

@@ -165,9 +165,16 @@ export class Viewport3D {
     this._bindPointer();
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    // Draw only when something changed (camera, a method call, a resize): redrawing an unchanged scene every frame
+    // kept the page too busy to respond once a design had thousands of boards.
+    this._dirty = true;
+    this.controls.addEventListener('change', () => { this._dirty = true; });
     const loop = () => {
       requestAnimationFrame(loop);
-      this.controls.update();
+      if (this.controls.update()) this._dirty = true;      // still gliding (damping)
+      if (this.playing) this._motionTick(performance.now());
+      if (!this._dirty) return;
+      this._dirty = false;
       r.render(this.scene, this.camera);
     };
     loop();
@@ -200,26 +207,91 @@ export class Viewport3D {
       color: new THREE.Color(colors[k]).convertSRGBToLinear(), roughness: 0.62, metalness: 0 }));
   }
 
+  /** Printed decals (colouring on): each decorated face gets its own texture - the face colour with the artwork drawn
+   *  on it in the part's local millimetres, which is what the extruded faces use as texture coordinates. */
+  _decalMaterials(geo, comp) {
+    const NATURAL = '#d9b98b';
+    const colors = comp.colors || { front: NATURAL, back: NATURAL, edges: NATURAL };
+    const mats = this._paint(geo, colors);                    // front (+z), back, edges
+    const pts = comp.cut_outline || comp.outline;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1;
+    const s = Math.min(6, 2048 / Math.max(w, h));             // pixels per mm, at most 2048 px a side
+    ['front', 'back'].forEach((face, i) => {
+      const ds = comp.decals.filter((d) => d.face === face);
+      if (!ds.length) return;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(2, Math.ceil(w * s));
+      cv.height = Math.max(2, Math.ceil(h * s));
+      const g = cv.getContext('2d');
+      g.fillStyle = colors[face];
+      g.fillRect(0, 0, cv.width, cv.height);
+      const P = ([x, y]) => [(x - x0) * s, (y0 + h - y) * s];
+      for (const d of ds) {
+        g.fillStyle = g.strokeStyle = d.color;
+        if (d.points) {
+          g.beginPath();
+          d.points.forEach((q, k) => (k ? g.lineTo(...P(q)) : g.moveTo(...P(q))));
+          g.closePath();
+          g.fill();
+        } else {
+          g.lineWidth = d.width * s;
+          g.lineCap = g.lineJoin = 'round';
+          for (const ln of d.lines) {
+            g.beginPath();
+            ln.forEach((q, k) => (k ? g.lineTo(...P(q)) : g.moveTo(...P(q))));
+            g.stroke();
+          }
+        }
+      }
+      const tex = new THREE.CanvasTexture(cv);
+      tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = 4;
+      tex.repeat.set(1 / w, 1 / h);
+      tex.offset.set(-x0 / w, -y0 / h);
+      tex.name = 'decal';                                      // this board's alone: disposed with it (r128: no userData)
+      mats[i].map = tex;
+      mats[i].color.set('#ffffff');
+    });
+    return mats;
+  }
+
   _materials(comp) {
     const t = comp.thickness;
     const light = comp.color && parseInt(comp.color.slice(1), 16) > 0xd8d8d8;
-    const map = (light ? this.sailTex : this.faceTex).clone();
-    map.needsUpdate = true;
-    map.repeat.set(1 / 160, 1 / 160);
+    // textures are shared (one per finish and thickness): a copy per board meant thousands of texture uploads
+    const map = this._sharedMap(light ? 'sail' : 'face', () => {
+      const m = (light ? this.sailTex : this.faceTex).clone();
+      m.repeat.set(1 / 160, 1 / 160);
+      return m;
+    });
     const face = new THREE.MeshStandardMaterial({ map, roughness: 0.78, metalness: 0,
       color: new THREE.Color(light ? '#ffffff' : '#ffffff') });
-    const edgeMap = this.edgeTex.clone();
-    edgeMap.needsUpdate = true;
-    edgeMap.repeat.set(1 / 30, 1 / t);
+    const edgeMap = this._sharedMap(`edge:${t}`, () => {
+      const m = this.edgeTex.clone();
+      m.repeat.set(1 / 30, 1 / t);
+      return m;
+    });
     const side = new THREE.MeshStandardMaterial({ map: edgeMap, roughness: 0.9, metalness: 0,
       color: new THREE.Color(light ? '#f2ede4' : '#ffffff') });
     return [face, side];
   }
 
+  _sharedMap(key, make) {
+    this._maps ??= new Map();
+    if (!this._maps.has(key)) {
+      const m = make();
+      m.needsUpdate = true;
+      this._maps.set(key, m);
+    }
+    return this._maps.get(key);
+  }
+
   load(model) {
     for (const it of this.items.values()) {
       it.mesh.geometry.dispose();
-      it.mesh.material.forEach((m) => { m.map?.dispose(); m.dispose(); });
+      it.mesh.material.forEach((m) => { if (m.map?.name === 'decal') m.map.dispose(); m.dispose(); });  // shared textures stay
       it.edges.geometry.dispose();
       it.edges.material.dispose();
       it.marks?.forEach((m) => { m.geometry.dispose(); m.material.dispose(); });
@@ -228,14 +300,18 @@ export class Viewport3D {
     this.root.clear();
     this.items.clear();
     this.model = model;
+    this.motions = model.motions || [];
+    this.playing = false;
     const c = model.bounds.center;
     this.center = new THREE.Vector3(...c);
 
+    const shadows = model.components.length <= 4000;      // a shadow pass doubles the drawing of a huge model
     for (const comp of model.components) {
       const geo = new THREE.ExtrudeGeometry(shapeFromComponent(comp), { depth: comp.thickness, bevelEnabled: false, curveSegments: 32 });
       geo.translate(0, 0, -comp.thickness / 2);
-      const mesh = new THREE.Mesh(geo, comp.colors ? this._paint(geo, comp.colors) : this._materials(comp));
-      mesh.castShadow = mesh.receiveShadow = true;
+      const mesh = new THREE.Mesh(geo, comp.decals?.length ? this._decalMaterials(geo, comp)
+        : comp.colors ? this._paint(geo, comp.colors) : this._materials(comp));
+      mesh.castShadow = mesh.receiveShadow = shadows;
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
         new THREE.LineBasicMaterial({ color: STATE_EDGE[comp.state] || STATE_EDGE.joined, transparent: true, opacity: 0.7 }));
       const inner = new THREE.Group();
@@ -325,9 +401,58 @@ export class Viewport3D {
     for (const it of this.items.values()) {
       const d = it.dir.lengthSq() > 1e-6 ? it.dir.clone().normalize() : new THREE.Vector3(0, 1, 0);
       it.base.copy(d.multiplyScalar(k));
-      it.outer.position.copy(it.base).add(it.pull);
+      this._place(it);
     }
     this._showLinks();
+  }
+
+  /** A board's group: exploded offset + pulled-out offset + its motion (turned about a pivot or slid). */
+  _place(it) {
+    it.outer.quaternion.copy(it.motionTurn || new THREE.Quaternion());
+    it.outer.position.copy(it.base).add(it.pull);
+    if (it.motionShift) it.outer.position.add(it.motionShift);
+  }
+
+  /** Animate every motion of the model (lids open, wheels turn, drawers slide) or put them back at rest. */
+  playMotion(on) {
+    this.playing = !!on && !!this.motions?.length;
+    this._motionStart = performance.now();
+    if (!this.playing) this._pose(() => 0);
+  }
+
+  _motionTick(now) {
+    // rest -> one end of the range -> the other end -> rest, about 1.5 s per 90 degrees or 100 mm
+    this._pose((m) => {
+      const [a, b] = m.range, path = [0, b, a, 0].filter((v, i, l) => i === 0 || v !== l[i - 1]);
+      const legs = path.slice(1).map((v, i) => Math.abs(v - path[i]));
+      const total = legs.reduce((s, x) => s + x, 0) || 1;
+      const per = m.type === 'rotate' ? 90 : 100;
+      let d = (((now - this._motionStart) / 1500) * per) % total;
+      for (let i = 0; i < legs.length; i += 1) {
+        if (d <= legs[i]) return path[i] + (path[i + 1] - path[i]) * (legs[i] ? d / legs[i] : 0);
+        d -= legs[i];
+      }
+      return 0;
+    });
+  }
+
+  _pose(valueOf) {
+    for (const m of this.motions || []) {
+      const v = valueOf(m);
+      let turn = null, shift;
+      if (m.type === 'rotate') {
+        turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...m.axis), THREE.MathUtils.degToRad(v));
+        const p = new THREE.Vector3(...m.pivot);
+        shift = p.clone().sub(p.clone().applyQuaternion(turn));      // turn about the pivot, not the origin
+      } else shift = new THREE.Vector3(...m.direction).multiplyScalar(v);
+      for (const id of m.boards) {
+        const it = this.items.get(id);
+        if (!it) continue;
+        it.motionTurn = turn;
+        it.motionShift = shift;
+        this._place(it);
+      }
+    }
   }
 
   /** World point where a joint sits at rest: the centre of its slot in the receiving board, else the middle of the
@@ -345,7 +470,7 @@ export class Viewport3D {
     const it = this.items.get(id);
     if (!it) return;
     it.pull.copy(v || new THREE.Vector3());
-    it.outer.position.copy(it.base).add(it.pull);
+    this._place(it);
     this._showLinks();
   }
 
@@ -486,4 +611,14 @@ export class Viewport3D {
     });
     el.addEventListener('pointerleave', () => this.onHover?.(null));
   }
+}
+
+// Any method may change what is shown: ask for a fresh frame whenever one runs (the loop draws only on request).
+for (const name of Object.getOwnPropertyNames(Viewport3D.prototype)) {
+  const fn = Viewport3D.prototype[name];
+  if (name === 'constructor' || typeof fn !== 'function') continue;
+  Viewport3D.prototype[name] = function (...args) {
+    this._dirty = true;
+    return fn.apply(this, args);
+  };
 }

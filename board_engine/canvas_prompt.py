@@ -707,7 +707,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
               only; "glue_allowed" also permits butt, hinge and mitre. Derived from the connections when omitted),
   "sheet"?:   {{"width": mm, "height": mm}}   (stock sheet; chosen automatically when omitted),
   "boards":   [board, ...],
-  "connections": [connection, ...]
+  "connections": [connection, ...],
+  "motions"?: [motion, ...]   (moving parts, see "Moving parts")
 }}
 ```
 - `thickness` between {LIMITS['min_thickness']:g} and {LIMITS['max_thickness']:g} mm. `clearance` = extra width of every slot over the
@@ -769,18 +770,29 @@ Shapes (used by `profile`, `openings` and `engravings`):
   (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
   copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
 - `"mirror": {{"axis": "x"|"y"|"z", "at": mm}}` on a board also builds its mirror image `"<id>-M"` across the plane
-  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings and hinges are mirrored; text stays
-  readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
-- Top level `"assemblies": [{{"id", "boards": [...], "connections": [...]}}]` with `"instances": [{{"assembly", "id",
-  "offset": [x, y, z], "repeat"?, "mirror"?}}]` reuses a sub-assembly (drawers, identical modules, legs): every instance
-  gets copies of the assembly's boards named `"<instance id>-<board id>"`, moved by `offset`, with its internal
-  connections; connect instance boards to the rest by those names under the top-level `"connections"`.
-- Top level `"plan": {{"assemblies": [...], "steps": [...], "checks": [...], "reference"?: [...]}}` is your design plan,
-  written before `"boards"` ("reference": what attached reference images show); the compiler ignores it.
+  axis = at (left/right sides, symmetric gables). Profiles, openings, engravings, hinges and tilts are mirrored; text
+  stays readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
+- Top level `"assemblies": [{{"id", "boards": [...], "connections": [...], "motions"?: [...]}}]` with `"instances":
+  [{{"assembly", "id", "offset": [x, y, z], "flip"?, "rotate"?, "repeat"?, "mirror"?}}]` reuses a sub-assembly (seats,
+  drawers, window bays, modules, legs): every instance gets copies of the assembly's boards named
+  `"<instance id>-<board id>"`, with its internal connections and motions; connect instance boards to the rest by those
+  names under the top-level `"connections"`. Design the assembly around its own origin [0, 0, 0]; each instance is
+  flipped, then turned, then moved by `offset`:
+  - `"flip": "x"|"y"|"z"` (or a list): a mirror-image copy in place (a left-hand version of a right-hand module).
+  - `"rotate": {{"axis", "angle"}}` (or a list of steps): multiples of 90° are exact - every board stays square and
+    every joint type works (seats facing a stage from all four sides: angles 0, 90, 180, 270 about y). Any other angle
+    tilts the whole copy about its origin (a fan of seats around a circle); finger and cross_lap joints inside it cannot
+    follow a tilt, so use tab_slot there. An assembly with motions can only be turned by multiples of 90°.
+- Top level `"plan": {{"concept"?: str, "economy"?: str, "assemblies": [...], "steps": [...], "checks": [...],
+  "reference"?: [...]}}` is your design plan, written before `"boards"` ("reference": what attached reference images
+  show); the compiler ignores it.
 - `"rotate": {{"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down
   the axis (about z: +x turns towards +y).
+- A compound tilt is a LIST of 1-3 such steps applied in order, each about its own pivot (default: the board's centre
+  at that moment): `"rotate": [{{"axis": "x", "angle": 28, "pivot": [...]}}, {{"axis": "z", "angle": 8, "pivot": [...]}}]`
+  - a roof corner that lifts (flared eaves), a hip piece, a canted panel. Everything else about tilted boards applies.
 - Tilted tab_slot / butt: a straight edge of board A must lie flat on a broad face of board B — e.g. a gable's sloped
   top edge under a roof panel tilted to exactly the same pitch (within 0.5°) — and touch it (|gap| ≤ {tol['contact']:g} mm).
   Tabs insert square to B's face. Two roof panels meeting at a ridge should each end where their lower faces meet
@@ -870,15 +882,51 @@ tenon", "T-joint" and "interlocking" are a through `tab_slot`; "halving" / "cros
 (rebate), blind mortise, sliding dovetail and knock-down fittings (cam locks) are **not available**: use `tab_slot` or
 `finger`, or a `butt` with fasteners, and say so in the description.
 
+## Moving parts (motions) - checked through their whole travel and animated in 3D
+```
+"motions": [
+  {{"id": str, "type": "rotate", "boards": [ids that turn together], "on": static board id, "axis": "x"|"y"|"z",
+   "pivot": [x, y, z], "range": [from, to] (degrees), "axle"?: {{"diameter": mm}}}},
+  {{"id": str, "type": "slide", "boards": [ids], "on": static board id, "direction": "x"|"y"|"z", "range": [from, to] (mm)}}
+]
+```
+- The design is drawn at position 0 of every motion (closed lid, drawer in); `range` must include where it goes. Angles
+  turn counter-clockwise looking down the axis (as `rotate`); the pivot is a point on the turning line.
+- The moving boards move rigidly together: join them to each other as usual, but NEVER fix them to a static board with
+  tab_slot / finger / cross_lap / butt / mitre (they could not move - MOTION_LOCKED). A `hinge` connection may hold a
+  moving board (needs "joinery": "glue_allowed"); otherwise the motion itself mounts the group on `"on"`.
+- The group must touch its `"on"` board (it rests on it or turns on its axle). A slide runs along the contact - a
+  drawer resting on a runner board (contact across y) slides along x or z - or straight off it: a lid or roof lifted
+  off (`"direction": "y"`, `"range": [0, 120]`), a plug pulled out. Never into it.
+- `"axle"`: the compiler cuts a dowel hole of that diameter through every board the pivot line passes square through
+  (each must be thin along the axis, with the pivot inside it and room for the hole), and reports the dowel length:
+  a real, glue-free pivot for turntables, wheels, swing arms, flaps and rotating signs.
+- The compiler turns / slides the group every 5° (or about 1/48 of a slide) through the whole range and reports every
+  board it would run into (MOTION_COLLISION) with the last clear position: put a lid's pivot on the OUTER edge it opens
+  about, leave running clearance (1-2 mm) around turning parts, and keep the range within what really clears.
+- A repeated / mirrored / instanced board may be named by its source id: every copy moves (all blades of a fan).
+- A motion written inside an assembly is copied into every instance (its own ids, pivot and direction, turned and
+  flipped with it): one animated door module, placed a hundred times, gives a hundred working doors.
+Mechanisms that work well in flat boards: a turntable (a round disk on a base, axis y, axle), a wheel on a wall
+(round board thin along x, axis x, axle), a swinging flap or arm on a pin, a rotating sign or vane, a hinged lid, a
+drawer or tray sliding on runners, a sliding panel between two rails.
+```jsonc
+{{"id": "spin", "type": "rotate", "boards": ["DISK", "DISK-RIM"], "on": "BASE", "axis": "y", "pivot": [150, 6, 150],
+ "range": [0, 360], "axle": {{"diameter": 8}}}},
+{{"id": "drawer", "type": "slide", "boards": ["DR-FRONT", "DR-BOTTOM", "DR-SIDE-L", "DR-SIDE-R", "DR-BACK"], "on": "RUNNER",
+ "direction": "z", "range": [0, 250]}}
+```
+
 ## What this generator cannot build (do not attempt; use the alternative)
 - Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
   no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
 - Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its pitch
   (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
-- Round or bent parts: dowels, axles, rods, wheels on axles, curved or kerf-bent panels. For a purchased dowel or axle,
-  add a `"hole"` opening where it passes and leave the rod itself out of the design.
-- Moving parts other than hinged doors: drawers on runners, sliding trays, wheels, folding mechanisms. Draw a drawer as
-  a fixed box standing on its runner board; draw a folding product in its open position.
+- Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
+  compiler gives its length); curved or kerf-bent panels stay flat. Round flat parts (wheels, disks) are fine.
+- Mechanisms where several moving parts drive each other: meshing gears, cams, a crank pushing a rod, springs. Each
+  motion moves one rigid group on its own; build each moving part as its own motion and draw linked parts in one
+  pose.
 
 ## Support and stability (checked)
 - The product is ONE connected structure (checked): every board touches at least one other board and is joined to the
@@ -930,8 +978,14 @@ and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing o
    trapezoids / triangles with a polygon `profile`. Support them with vertical trusses standing on the ceiling whose
    `profile` top edges follow the panels' lower faces exactly; tab the trusses into the ceiling and into each panel.
 3. Surface detail on a tilted panel (tile courses, battens, solar cells, planks): build each piece flat, standing on
-   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot) as the
-   panel - it then stands square on the panel and `tab_slot` joins it. Split long courses into pieces (about 40 mm)
+   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot - or the
+   same list of steps) as the panel - it then stands square on the panel and `tab_slot` joins it.
+   Flared / upswept roofs (temples, pagodas, gates): build the sweep from 2-3 bands of flat panels - steep near the
+   ridge, shallower towards the eave - each band tilted to its own whole-number pitch. Support them on rafters whose
+   `profile` top edge is a polyline with one straight segment per band at exactly that band's pitch, and tab each band
+   into the rafters (a band never joins the next band: leave 1 mm between them). Lift the corners with corner pieces
+   tilted by a list (the band's pitch, then a few degrees about the eave line), resting on a hip rafter whose top edge
+   lies in that tilted plane. Split long courses into pieces (about 40 mm)
    with 1 mm gaps, and put gaps where trusses or other joints meet the panel so no two slots share a place.
 4. Two colours on one wall (a painted band, a plinth stripe): a separate board standing on the floor in front of the
    wall, tabbed into the floor. Door / window frames: an opening in the wall plus a coloured lining board behind it
@@ -947,6 +1001,12 @@ and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing o
    `engravings` for stone courses, planks and outlines, wavy `profile` tops for tile courses, dark undersides for
    eaves. Small parts are fine on a laser: write the laser kerf in "material" (e.g. "kerf": 0.15); with a kerf below
    1 mm the minimum part width is 3 mm instead of the router minimum in the table below.
+8. Very large models (thousands of parts - a stadium, a village, a ship with every rib and plank): design a module
+   once as an assembly (a seat row, a window bay, a truss, a house) and place it with "instances" (and their
+   "repeat" / "mirror"); the compiler expands them, so the JSON stays short while the model has 5,000-10,000+ parts.
+   Connect the modules to each other and to the base under the top-level "connections" by their expanded ids
+   ("<instance id>-<board id>"). Turn and flip instances to face every way (quarter turns stay exact): one seat module
+   fills all four sides of a stadium, one gallery bay runs round a courtyard.
 Snippet (front roof slope, one truss, one tile piece - all whole millimetres, pitch 8-15-17, panel 3 mm):
 ```jsonc
 {{"id": "R-F", "position": [30, 81, 141], "size": [300, 3, 102],
@@ -977,6 +1037,8 @@ edge indices for the edge joints).
 Return **one** fenced ```json code block containing only the design object — no comments outside it, no prose inside it.
 
 ## Complete valid example (study table, glue-free)
+This first example only shows the syntax and is deliberately plain. The cottage example after it shows the least
+shaping a finished design needs (profiles, arches, tilted roof); DESIGN QUALITY asks for more.
 ```json
 {json.dumps(EXAMPLE, indent=2)}
 ```
@@ -1020,17 +1082,21 @@ OUTPUT_CONTRACT = """OUTPUT CONTRACT (strict — your reply is pasted straight i
 FINAL_REMINDER = ('FINAL REMINDER: your entire reply is one ```json code block with the complete design (or, for a design '
                   'too large for one reply, the next part of it) — no other text, nothing simplified or left out.')
 
-DESIGN_TEAM = """YOUR ROLE - a design team of four specialists working one after another inside this single reply (do the
+DESIGN_TEAM = """YOUR ROLE - a design team of five specialists working one after another inside this single reply (do the
 work in your head; the only output is the JSON):
 1. ANALYST - reads the product, the requirements (and any reference images) and lists every part, size and feature
    that must exist. Writes "plan.reference" (with images: the measured inventory).
-2. ARCHITECT - splits the product into sub-assemblies and layers (base -> structure -> skin -> details -> fittings),
+2. DESIGNER - the creative director: rejects the obvious form, chooses a surprising but buildable concept with one
+   signature feature, a style and motifs carried through every part, and decides where the curves, layers, openings,
+   rhythm and detail go - richness from shape, not extra material (see DESIGN QUALITY). Writes "plan.concept" and
+   "plan.economy".
+3. ARCHITECT - splits the product into sub-assemblies and layers (base -> structure -> skin -> details -> fittings),
    fixes the overall size, the origin and every board's role. Writes "plan.assemblies" and "plan.steps".
-3. JOINERY ENGINEER - places every board in whole millimetres with thickness accounted for, chooses each joint from
+4. JOINERY ENGINEER - places every board in whole millimetres with thickness accounted for, chooses each joint from
    the geometry, keeps slots apart and tabs on solid material, makes every part sit or lock (nothing hangs). Writes
    "boards" and "connections".
-4. INSPECTOR - checks the finished JSON against the SUCCESS CRITERIA, the COMMON MISTAKES and the SELF-CHECK and
-   has every problem fixed before handing over. Writes "plan.checks" (what was verified, with board ids).
+5. INSPECTOR - checks the finished JSON against the SUCCESS CRITERIA, DESIGN QUALITY, the COMMON MISTAKES and the
+   SELF-CHECK and has every problem fixed before handing over. Writes "plan.checks" (what was verified, with board ids).
 Each specialist builds on the previous one's result without undoing it; when the Inspector finds a problem, the
 specialist responsible fixes it before the reply is written."""
 
@@ -1039,6 +1105,32 @@ SUCCESS_CRITERIA = """SUCCESS CRITERIA (the compiler measures every one of these
 - one connected structure: every board touches and is joined into it - nothing floats, nothing hangs on upward tabs;
 - every requirement (size, count, feature) and every inventory item present at the right place and size;
 - whole millimetres everywhere, a standard thickness, every part fits on a stock sheet."""
+
+DESIGN_QUALITY = """DESIGN QUALITY (compiling is the minimum - the design must be creative AND economical; never a stack of boxes):
+- Creative concept: do not build the first obvious form. Pick a buildable but surprising idea and give the product one
+  signature feature someone would remember. Flat-board construction is good at: waffle / egg-crate frames, stacked
+  contour slices (a curved form cut as a series of profiled ribs), radial ribs and fins, folding living-hinge skins,
+  interlocking lattices, cantilevers and tiers, layered relief facades. Pick a style (art deco, Japanese joinery,
+  streamlined, gothic, parametric, organic ...) and carry its motifs through every part. Write it in "plan.concept".
+- Richness from shape, not from material: openings, lattices and shaped profiles remove material while adding
+  detail; a ribbed skeleton or a thin skin over ribs replaces a solid block; never add a hidden or filler board.
+- Silhouette: shape outlines with "profile" - arched or pitched tops, curved sides (path arcs), tapered legs, stepped
+  or scalloped edges, rounded corners ("corner_radius"). Depth: 2-3 layers on visible faces (a frame or lining board
+  with its own openings), recessed doors and windows, plinths, cornices and trims.
+- Movement: bring the product to life with moving parts where they suit it - a lid that opens, a turning top or
+  sign, a wheel, a swinging flap or arm, a sliding drawer or panel - declared in "motions" (see "Moving parts"): each is
+  checked through its whole travel and animated in the 3D view. A static product is the dull default.
+- Rhythm: fins, slats, ribs, columns, balusters and rafters as "repeat" arrays or assembly instances; "mirror" for
+  symmetric halves; tilted planes ("rotate") and "living_hinge" for curves and angles; engraved lines, panels,
+  planks, lettering and contrasting colours (colouring on) for surface detail.
+- Economy (measured by the compiler: part count, sheets, waste): every part does structural AND visual work; reuse
+  identical parts (assemblies, repeat, mirror) so there are few unique shapes to cut; prefer shapes that nest well
+  (straight edges where they do not show); keep the part count and the number of sheets as low as the concept allows.
+  Write the estimate in "plan.economy" (unique parts, total parts, sheets).
+- Effort budget: at least half of the visible boards carry a profile, a shaped opening, an engraving or detail parts;
+  plain rectangles only where they are hidden or structural (a base, an internal floor).
+All of this still follows the joint rules: straight profile edges where tabs go, tabs on solid material, every part
+joined - creativity that does not compile is worth nothing."""
 
 COMMON_MISTAKES = """COMMON MISTAKES (each is a compile error or warning - avoid them up front):
 1. Forgetting thickness: leg height = overall height - top thickness; a shelf between two sides is the inner width.
@@ -1054,7 +1146,9 @@ COMMON_MISTAKES = """COMMON MISTAKES (each is a compile error or warning - avoid
 9. Profile / engraving points outside the board's box or on the wrong axes: face coordinates follow the board's
    in-plane axes in x, y, z order (a board thin along x uses [y, z]).
 10. Tilted boards: a straight edge must lie flat on the other board's face at the same pitch; pivot on the lower face.
-11. Abbreviating or shrinking the design to fit a reply - use the compact style or multi-part replies instead."""
+11. Abbreviating or shrinking the design to fit a reply - use the compact style or multi-part replies instead.
+12. A moving part fixed to the static part with tab_slot / finger / cross_lap (it cannot move), or a pivot / angle sign
+    that swings it through another board - mount it with "motions" (pivot on the outer edge, an axle, the right sign)."""
 
 INTEGER_RULE = ('All sizes, positions, product.overall values and profile / opening / engraving coordinates are whole '
                 'millimetres (integers such as 30, 38, 150 — never 30.27). Only the material thickness and clearance '
@@ -1070,7 +1164,24 @@ Accepted formats: "#rrggbb", "#rgb", "rgb(r, g, b)", "hsl(h, s%, l%)", CSS colou
 Rules: choose a coherent palette of 2-6 colours that suits the product; boards with the same role share a colour and
 different roles get clearly different, unique colours (a roof, the walls, a door, the trim); paint only the visible
 side with a front/back pair where that is how the product would be finished; keep every board's colour unchanged when
-you change or fix the design unless asked to recolour."""
+you change or fix the design unless asked to recolour.
+Printed artwork ("decals", on any board): coloured shapes and lettering printed on a face - never cut, so they cost no
+material and no cutting time. Use them for ornament a flat board cannot carry by shape alone: gilded trims and bands,
+painted panels, lattice and wave patterns, crests and medallions, signs and lettering, window frames, tile and brick
+patterns. They show in the 3D view and come out as print sheets lined up with the cut sheets.
+```jsonc
+"decals": [
+  {"face": "front", "color": "#c9a227", "shape": "rect", "center": [300, 150], "width": 560, "height": 260, "corner_radius": 12},
+  {"face": "front", "color": "#1b1b1b", "shape": "polygon", "points": [[60, 40], [540, 40], [300, 260]]},
+  {"face": "back", "color": "white", "text": "GATE 1", "position": [300, 150], "height": 40}
+]
+```
+- Shapes use the same face coordinates `[u, v]` and shape types as profiles and openings (rect, circle, ellipse, arch,
+  regular_polygon, polygon, path); they must lie on the face. Later decals are drawn on top of earlier ones: build a
+  motif from a background shape and smaller shapes over it.
+- Lettering: `"text"`, `"height"` (capital height, mm) and `"position"` = the CENTRE of the text; it is turned to read
+  upright on that face automatically.
+- The face's own `"color"` is the background printed under the decals."""
 
 
 IMAGE_SPEC = """## Reference images (attached to this message)
@@ -1194,6 +1305,8 @@ specification exactly.
 
 {SUCCESS_CRITERIA}
 
+{DESIGN_QUALITY}
+
 {COMMON_MISTAKES}
 
 PRODUCT: {title}
@@ -1235,7 +1348,10 @@ INSTRUCTIONS (follow every one):
         flat on it, with its slot >= 2 × thickness from every other slot in that board?
         Does every part SIT on something or lock sideways (no part held only by tabs pushing up into a board above)?
     e3. Do the overall sizes match every size stated in the requirements?
-    f. Is every size and position a whole number of millimetres?{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. Does the design match the attached image(s) from the front, side and top: every visible part, its place, proportions and outline?' if images else ''}
+    f. Is every size and position a whole number of millimetres?
+    f2. Is it creative and economical? Check DESIGN QUALITY: a surprising concept with a signature feature, a shaped
+        silhouette, layered faces, shaped openings, rhythm and detail; at least half of the visible boards shaped,
+        pierced or detailed; identical parts reused, no filler boards, few sheets.{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. Does the design match the attached image(s) from the front, side and top: every visible part, its place, proportions and outline?' if images else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
@@ -1318,7 +1434,8 @@ REPAIR RULES (follow every one):
 2. Where a problem gives a "Suggested fix", apply exactly those values — the compiler computed them.
 3. Make the smallest change that fixes each problem: keep every other board, id, dimension and connection exactly as
    it is — same ids, same order, same names and groups. Do not add, remove or rename boards or connections unless a
-   problem requires it.
+   problem requires it. Never simplify to make a problem go away: keep every profile, shaped opening, engraving,
+   tilt and detail part and fix its position, size or joint instead - a shaped board stays shaped.
 4. When you move or resize a board, update the boards and connections that depend on it so every mating face still
    touches exactly (gap 0) and no two boards overlap.
 5. Line numbers in the problems refer to YOUR PREVIOUS JSON below.
@@ -1396,9 +1513,12 @@ def build_update_prompt(source, change, diagnostics=(), machine=None, images=Fal
 YOUR ROLE - three specialists one after another inside this single reply (the only output is the JSON):
 1. CHANGE ANALYST - works out exactly what the request changes and every board and connection that depends on it.
 2. ENGINEER - makes that change, recomputes the dependent sizes and positions, keeps everything else identical.
-3. INSPECTOR - checks the result against the SUCCESS CRITERIA and the COMMON MISTAKES below before handing over.
+3. INSPECTOR - checks the result against the SUCCESS CRITERIA, DESIGN QUALITY and the COMMON MISTAKES below before
+   handing over.
 
 {SUCCESS_CRITERIA}
+
+{DESIGN_QUALITY}
 
 {COMMON_MISTAKES}
 
@@ -1411,7 +1531,9 @@ RULES FOR THE UPDATE (follow every one):
 1. Identify the boards and connections the change affects, including dependent ones (e.g. a wider product means
    longer tops, shelves and back panels, and moved side panels).
 2. Change only those. Keep every unaffected board's id, position, size and every unaffected connection exactly as it
-   is — do not rename, re-order or re-generate the rest of the design.
+   is — do not rename, re-order or re-generate the rest of the design. New or changed parts follow DESIGN QUALITY; a
+   request to make the design nicer, more detailed or more elegant means applying DESIGN QUALITY to the parts it
+   names (to the whole design when it names none), never simplifying what is already shaped.
 3. Recompute every dependent dimension explicitly (no formulas) so boards still touch exactly and never overlap.
    New boards get new unique ids (at most 24 characters) and a connection for every board they touch.
 4. Update "product.overall" and the "Assumptions" in "product.description" if they change.
