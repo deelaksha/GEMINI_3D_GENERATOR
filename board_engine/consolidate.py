@@ -257,8 +257,10 @@ def _merged(members, k, t, name, shapes=None):
     return out, None
 
 
-def plan(data, t_default, origin=None):
-    """-> (groups [(merged board, member ids)], skipped [(member ids, reason)]) without changing anything."""
+def plan(data, t_default, origin=None, limit=None):
+    """-> (groups [(merged board, member ids)], skipped [(member ids, reason)]) without changing anything. limit =
+    (long, short) mm a board may measure to fit the stock sheet: a merge that would exceed it is not made (pieces
+    split on purpose to fit the sheet stay split)."""
     boards = [b for b in data.get('boards') or [] if isinstance(b, dict)]
     moving = _moving_boards(data, origin)
     taken = {b.get('id') for b in boards}
@@ -323,6 +325,11 @@ def plan(data, t_default, origin=None):
             merged, why = _merged(members, k, t_default, name, [shape_of[b['id']] for b in members])
             if merged is None:
                 skipped.append(([b['id'] for b in members], why))
+                continue
+            flat = sorted((merged['size'][i], merged['size'][j]), reverse=True)
+            if limit and (flat[0] > limit[0] or flat[1] > limit[1]):
+                skipped.append(([b['id'] for b in members], f"one board would be {flat[0]:g} x {flat[1]:g} mm, larger than "
+                                                            f"the stock sheet allows ({limit[0]:g} x {limit[1]:g} mm)"))
                 continue
             taken.add(name)
             groups.append((merged, [b['id'] for b in members]))
@@ -398,11 +405,11 @@ def repeat_openings(data):
     return bad
 
 
-def consolidate(data, t_default, origin=None, do=False):
+def consolidate(data, t_default, origin=None, do=False, limit=None):
     """-> report {'boards_before', 'boards_after', 'groups': [...], 'skipped': [...], 'connections_removed', 'applied'}.
     With do=True the merge is made in `data`."""
     before = len(data.get('boards') or [])
-    groups, skipped = plan(data, t_default, origin)
+    groups, skipped = plan(data, t_default, origin, limit)
     removed = apply(data, groups) if do and groups else 0
     merged = sum(len(m) for _g, m in groups)
     return {'applied': bool(do and groups), 'boards_before': before, 'boards_after': before - merged + len(groups),

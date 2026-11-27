@@ -1841,6 +1841,22 @@ def _compile_native(data, design_id, result, run_production, machine=None):
     return _finish(design, result, {}, run_production, machine=machine)
 
 
+def _sheet_limit(data, mat, machine):
+    """(long, short) mm a single board may measure to be cut: the laser bed, the design's own "sheet", else the
+    material's largest stock sheet - less the margins nesting keeps (10 mm all round, a 14 mm label strip)."""
+    from .manufacturing import MATERIALS
+    sheets = []
+    if _laser(machine):
+        sheets = [[machine['sheet']['width'], machine['sheet']['height']]]
+    elif isinstance(data.get('sheet'), dict) and _num(data['sheet'].get('width')) and _num(data['sheet'].get('height')):
+        sheets = [[data['sheet']['width'], data['sheet']['height']]]
+    else:
+        sheets = (MATERIALS.get(mat.get('type')) or {}).get('stock') or []
+    if not sheets:
+        return None
+    return max(((max(w, h) - 20, min(w, h) - 34) for w, h in sheets), key=lambda s: s[0] * s[1])
+
+
 def _consolidation_notes(merge, diags, line):
     """Diagnostics for board consolidation: what was merged, or what could be (with the fix that turns it on)."""
     if not merge['groups']:
@@ -1895,7 +1911,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
     if not isinstance(want, bool):
         diags.append(diag('error', 'CONSOLIDATE', '"consolidate" must be true or false.', line=_key_line(src, 'consolidate', off)))
         want = False
-    merge = consolidate(data, mat['thickness'], _ORIGIN.get(), do=want)
+    merge = consolidate(data, mat['thickness'], _ORIGIN.get(), do=want, limit=_sheet_limit(data, mat, machine))
     result['consolidation'] = merge
     _consolidation_notes(merge, diags, _key_line(src, 'consolidate', off))
     from .motion import add_axle_holes, parse_motions

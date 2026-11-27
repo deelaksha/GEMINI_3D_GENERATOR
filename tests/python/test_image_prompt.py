@@ -65,18 +65,18 @@ def test_my_home_example_is_served_and_compiles_clean(client):
 
 
 def test_detailed_models_snippet_in_the_spec_compiles():
-    """The roof snippet the AI is told to copy must itself be a working tilted panel + truss + tile."""
+    """The tilted-panel snippet the AI is told to copy must itself be a working tilted panel + truss + tile."""
     from board_engine.canvas import compile_source
     from board_engine.canvas_prompt import spec_markdown
     md = spec_markdown()
-    sn = md[md.index('Snippet (front roof slope'):]
+    sn = md[md.index('Snippet (a tilted panel'):]
     sn = sn[sn.index('```jsonc') + 8: sn.index('```', sn.index('```jsonc') + 8)]
     parts = json.loads('[' + sn.strip() + ']')
     d = {'format': 'board-design/v1', 'product': {'name': 's'}, 'material': {'type': 'plywood', 'thickness': 3, 'kerf': 0.15},
-         'boards': [{'id': 'CEILING', 'position': [30, 78, 63], 'size': [300, 3, 180]}] + parts,
-         'connections': [{'id': 'a', 'type': 'tab_slot', 'board': 'TRUSS-1', 'into': 'CEILING', 'tabs': 1, 'tab_width': 12},
-                         {'id': 'b', 'type': 'tab_slot', 'board': 'TRUSS-1', 'into': 'R-F', 'tabs': 1, 'tab_width': 10},
-                         {'id': 'c', 'type': 'tab_slot', 'board': 'TILE-F1', 'into': 'R-F', 'tabs': 1, 'tab_width': 8}]}
+         'boards': [{'id': 'BELOW', 'position': [30, 78, 63], 'size': [300, 3, 180]}] + parts,
+         'connections': [{'id': 'a', 'type': 'tab_slot', 'board': 'SUPPORT-1', 'into': 'BELOW', 'tabs': 1, 'tab_width': 12},
+                         {'id': 'b', 'type': 'tab_slot', 'board': 'SUPPORT-1', 'into': 'PANEL-1', 'tabs': 1, 'tab_width': 10},
+                         {'id': 'c', 'type': 'tab_slot', 'board': 'PIECE-1', 'into': 'PANEL-1', 'tabs': 1, 'tab_width': 8}]}
     r = compile_source(json.dumps(d), run_production=False)
     assert r['ok'] and r['summary']['joined'] == 3 and not [x for x in r['diagnostics'] if x['severity'] in ('error', 'warning')]
 
@@ -138,7 +138,7 @@ def test_the_advanced_example_compiles_clean_and_shows_the_working_method():
     from board_engine.canvas_prompt import ADVANCED_EXAMPLE, spec_markdown
     r = canvas.compile_source(_json.dumps(ADVANCED_EXAMPLE), run_production=False, machine={'coloring': True})
     assert r['ok'] and not [d for d in r['diagnostics'] if d['severity'] in ('error', 'warning')]
-    assert set(ADVANCED_EXAMPLE['plan']) >= {'reference', 'datums', 'checks'} and 'torii gate cloned' in spec_markdown()
+    assert set(ADVANCED_EXAMPLE['plan']) >= {'reference', 'datums', 'checks'} and 'a framed structure cloned from a reference' in spec_markdown()
     assert not r['structure']['held_by_friction'] and not r['structure']['can_fall_out']
 
 
@@ -191,3 +191,37 @@ def test_the_creative_brief_and_scope_work_for_any_title():
     assert 'CREATIVE BRIEF' in p and 'museum quality' in p and 'SCOPE:' in p
     assert 'CREATIVE BRIEF' not in build_prompt('', images=True)
 
+
+
+def test_nothing_in_the_prompt_is_tied_to_one_kind_of_object():
+    import re as _re
+    p = build_prompt('Anything', thickness=3, images=True, machine={'coloring': True})
+    for word in ('torii', 'pagoda', 'temple', 'nuki', 'kasagi', 'podium', 'rafter tails', 'bracket sets', 'eave sweeps'):
+        assert not _re.search(word, p, _re.I), word
+
+
+def test_the_geometry_card_contact_equations_hold_for_every_working_joint():
+    """The card's tab_slot equation is exactly what the bundled examples (which compile clean) satisfy."""
+    from board_engine.canvas_prompt import ADVANCED_EXAMPLE, COMPLEX_EXAMPLE, EXAMPLE, STRUCTURES_EXAMPLE
+    checked = 0
+    for d in (EXAMPLE, COMPLEX_EXAMPLE, STRUCTURES_EXAMPLE, ADVANCED_EXAMPLE):
+        t = d['material']['thickness']
+        boards = {b['id']: b for b in d['boards']}
+        for c in d['connections']:
+            a, b = boards.get(c.get('board')), boards.get(c.get('into'))
+            if c.get('type', 'tab_slot') != 'tab_slot' or not a or not b or b.get('rotate') or a.get('rotate'):
+                continue
+            k = next(i for i in range(3) if abs(b['size'][i] - b.get('thickness', t)) < 0.01)
+            plus = a['position'][k] == b['position'][k] + b['size'][k]
+            minus = a['position'][k] + a['size'][k] == b['position'][k]
+            assert plus or minus, (c, k)
+            checked += 1
+    assert checked >= 10
+
+
+def test_the_prompt_carries_the_geometry_card_joint_table_and_assembly_order():
+    from board_engine.canvas_prompt import ASSEMBLY_ORDER, GEOMETRY_CARD, JOINT_DECISION, build_repair_prompt
+    p = build_prompt('Anything', thickness=3)
+    assert GEOMETRY_CARD in p and JOINT_DECISION in p and ASSEMBLY_ORDER in p and 'SCORE the design 1-5' in p
+    assert GEOMETRY_CARD in build_repair_prompt('{}', []) and GEOMETRY_CARD in build_update_prompt('{}', 'x')
+    assert 'is 66-90 mm from the object' in IMAGE_SPEC

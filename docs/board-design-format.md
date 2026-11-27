@@ -109,7 +109,8 @@ Shapes (used by `profile`, `openings` and `engravings`):
   the axis (about z: +x turns towards +y).
 - A compound tilt is a LIST of 1-3 such steps applied in order, each about its own pivot (default: the board's centre
   at that moment): `"rotate": [{"axis": "x", "angle": 28, "pivot": [...]}, {"axis": "z", "angle": 8, "pivot": [...]}]`
-  - a roof corner that lifts (flared eaves), a hip piece, a canted panel. Everything else about tilted boards applies.
+  - a corner that lifts or twists out of a sloped surface, a piece meeting two slopes, a canted panel. Everything else
+  about tilted boards applies.
 - Tilted tab_slot / butt: a straight edge of board A must lie flat on a broad face of board B — e.g. a gable's sloped
   top edge under a roof panel tilted to exactly the same pitch (within 0.5°) — and touch it (|gap| ≤ 0.25 mm).
   Tabs insert square to B's face. Two roof panels meeting at a ridge should each end where their lower faces meet
@@ -317,13 +318,41 @@ position (the follower's travel comes from that, give it no "range") and animate
 ]
 ```
 
-## What this generator cannot build (do not attempt; use the alternative)
+## When a shape cannot be made in one piece - cut it into smaller pieces and join them
+Never drop, flatten or simplify a feature because one board cannot make it. Go down this ladder until it can be built,
+and record each split in "plan.joints" (the feature, why it was split, how the pieces join):
+1. TOO LARGE for the stock sheet: split it into sections along natural lines (where the real object has a seam, a
+   frame member or a change of surface, or where it is hidden). Join the sections THROUGH A CONNECTOR: a rib, cleat or
+   frame member standing across the seam, with both sections tabbed into it (or cross_lapped with it). Pieces that
+   touch edge to edge in one plane cannot be joined directly - and are merged back into one board when that would
+   fit the sheet - so leave 1 mm between sections in their own plane and let the connector hold them.
+2. CURVED IN TWO DIRECTIONS (domes, bodies, hulls, heads, organic forms): contour slicing - stacked layers joined by
+   one or two perpendicular spines cross_lapped through every layer (an egg-crate: layers can never be joined face to
+   face), or a spine with cross-section ribs and skin panels.
+3. CURVED IN ONE DIRECTION (a sweep, a cylinder wall, a rolled edge): narrow strips (facets), each a flat board tilted
+   to follow the curve, carried by supports whose profiled edges trace it; or "living_hinge" for a gentle bend.
+4. MEETING AT AN ANGLE that is not 90°: tilt the board onto a support whose edge is cut to exactly that angle; for a
+   compound angle use a list of tilt steps or step the surface as facets; `mitre` where the joinery allows.
+5. TOO FRAGILE in one piece (a web thinner than the board, a long slender arm or spike): split it into pieces that
+   each keep enough material and join them through connectors, or double it with a crossing piece (cross_lap).
+6. TOO INTRICATE for one outline (detail that overlaps itself, undercuts or stands proud in 3D): build it as layers or
+   as separate parts, each joined through a perpendicular piece that passes into all of them.
+7. CANNOT BE JOINED where it touches (parallel faces, a point or edge contact, a curved contact): add a connector -
+   a cleat, ledge, bracket or bridging piece perpendicular to both, tabbed into both.
+8. A MECHANISM TOO COMPLEX for one frame: split it into sub-assemblies, each on its own frame plate and axles, coupled
+   by gears, rods or a shared shaft.
+Every new piece gets its own id (FEATURE-1, FEATURE-2, ...), sits or locks into its neighbours (Strength and
+retention) and keeps the look of the whole: seams follow lines the real object has, and connectors stay hidden or
+become a visible detail on purpose.
+
+## What this generator cannot build directly (build it from smaller joined pieces as above)
 - Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
   no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
-- Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its pitch
-  (roof on a gable) and (b) `mitre`. A side tilted outwards cannot stand on a flat bottom; keep such sides vertical.
+- Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its slope and
+  (b) `mitre`. A side tilted outwards cannot stand on a flat bottom: give it a profiled support (ladder step 4).
 - Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
-  compiler gives its length); curved or kerf-bent panels stay flat. Round flat parts (wheels, disks) are fine.
+  compiler gives its length); curved or kerf-bent panels stay flat - build the curve from facets or slices (ladder
+  steps 2-3). Round flat parts (wheels, disks) are fine.
 - Springs, ratchets and cams with a shaped (non-round) lobe: not solved. Gears and belts link with `"driven_by"`
   (see "Gears"), cranks with rods with `"link"` (see "Linkages"); a rack can follow a gear with
   `"ratio": pi x module x teeth / 360` (mm per degree).
@@ -377,61 +406,59 @@ position (the follower's travel comes from that, give it no "range") and animate
 4. Square to each other: boards are axis aligned unless they use `rotate`; tabs insert perpendicular to the receiving face.
 5. Every board must fit on one stock sheet; standard thicknesses are preferred (table below).
 
-## Detailed models (buildings, vehicles, scale models) — how to build them so they compile first time
+## Detailed models (any object) — how to build them so they compile first time
 A detailed model is many simple, well-joined parts (hundreds are fine; there is no part limit), organised by "group"
-and numbered ids (RAF-F1, RAF-F2, ...). Build it in layers, each part standing on or locking into the layer below:
-1. Ground board (the display base) -> raised floor / plinth (walls under a floor board, floor 5-6 mm wider all round)
-   -> walls (plain rectangles, `finger` at the corners, `tab_slot` into the floor and up into a ceiling board)
-   -> ceiling / eave soffit board (it overhangs the walls: the eaves) -> roof structure -> roof skin -> surface detail
-   -> fittings -> surroundings (plants, yard items: each tabbed into the ground).
-2. Sloped roofs: tilt the panels with `rotate` about the eave line (pivot on the lower face at the eave). Pick a pitch
-   from a whole-number triangle so every length is whole millimetres: 8-15-17 (28.07 deg: run 15 -> rise 8, slope 17),
-   3-4-5 (36.87 deg) or 5-12-13 (22.62 deg). Panels end where their lower faces meet (ridge, hips): cut hip panels as
-   trapezoids / triangles with a polygon `profile`. Support them with vertical trusses standing on the ceiling whose
-   `profile` top edges follow the panels' lower faces exactly; tab the trusses into the ceiling and into each panel.
-3. Surface detail on a tilted panel (tile courses, battens, solar cells, planks): build each piece flat, standing on
-   the panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot - or the
-   same list of steps) as the panel - it then stands square on the panel and `tab_slot` joins it.
-   Flared / upswept roofs (temples, pagodas, gates): build the sweep from 2-3 bands of flat panels - steep near the
-   ridge, shallower towards the eave - each band tilted to its own whole-number pitch. Support them on rafters whose
-   `profile` top edge is a polyline with one straight segment per band at exactly that band's pitch, and tab each band
-   into the rafters (a band never joins the next band: leave 1 mm between them). Lift the corners with corner pieces
-   tilted by a list (the band's pitch, then a few degrees about the eave line), resting on a hip rafter whose top edge
-   lies in that tilted plane. Split long courses into pieces (about 40 mm)
-   with 1 mm gaps, and put gaps where trusses or other joints meet the panel so no two slots share a place.
-4. Two colours on one wall (a painted band, a plinth stripe): a separate board standing on the floor in front of the
-   wall, tabbed into the floor. Door / window frames: an opening in the wall plus a coloured lining board behind it
-   with its own smaller openings (the frame, mullions, a grill); a dark inner wall further in makes openings read as
-   a dark interior.
+and numbered ids (SEG-1, SEG-2, ...). Build it in layers, each part standing on or locking into the layer below:
+1. Base board (the display base) -> plinth or footing -> main structure (frames, walls, spine, chassis: plain or
+   profiled boards, `finger` at box corners, `tab_slot` into the board below and into a top or cross board) ->
+   enclosure or skin -> depth layers -> surface detail -> fittings -> surroundings (each tabbed into the base).
+2. Sloped and tilted panels (any slope: roofs, canopies, ramps, hoods, hull sides, wings, lids): tilt them with
+   `rotate` about their lower edge line (pivot on the lower face at that edge). Pick the slope from a whole-number
+   triangle so every length is whole millimetres: 8-15-17 (28.07 deg: run 15 -> rise 8, slope 17), 3-4-5 (36.87 deg),
+   5-12-13 (22.62 deg). Panels end where their lower faces meet (a crease or ridge); cut panels that meet at angles
+   as trapezoids / triangles with a polygon `profile`. Carry them on vertical supports whose `profile` edges follow
+   the panels' lower faces exactly; tab the supports into the board below and into each panel.
+3. Surface pieces on a tilted panel (courses, strips, plates, cells, planks): build each piece flat, standing on the
+   panel's top face as if the panel were not tilted, then give it the SAME `rotate` (axis, angle, pivot - or the same
+   list of steps) as the panel - it then stands square on the panel and `tab_slot` joins it.
+   Swept and compound curves (a surface that curves along its length, an edge that sweeps up or out): build the
+   sweep from 2-3 bands of flat panels, each tilted to its own whole-number slope, steep to shallow along the curve.
+   Carry them on supports whose `profile` edge is a polyline with one straight segment per band at exactly that
+   band's slope, and tab each band into the supports (a band never joins the next band: leave 1 mm between them).
+   Lift or twist a corner with a piece tilted by a list of steps (the band's slope, then a few degrees about its
+   edge), resting on a support whose edge lies in that tilted plane. Split long courses into pieces (about 40 mm)
+   with 1 mm gaps, and put the gaps where supports or other joints meet the panel so no two slots share a place.
+4. Two colours on one face (a band, a stripe): a separate board standing in front of the face, tabbed into the board
+   below. Framed openings: an opening in the face plus a coloured lining board behind it with its own smaller
+   openings (frame, bars, a grille); a dark inner board further in makes openings read as a dark interior.
 5. Nothing may hang: a part whose only joints are tabs pushing UP into a board above it falls out (HELD_FROM_ABOVE).
-   Give it something to sit on - e.g. rafter ends under the eaves sit on a wall plate (a strip tabbed sideways into
-   the wall) and tab up into the soffit - or tab it sideways into a wall.
+   Give it something to sit on - a ledge strip tabbed sideways into the board behind it - or tab it sideways.
 6. Slots: keep slots in one board >= 2 x thickness apart and never at the same place from both faces; tabs into a
-   wall must land on solid wall clear of its openings (tabs are spread evenly along the contact, one thickness in
+   face must land on solid material clear of its openings (tabs are spread evenly along the contact, one thickness in
    from each end - choose the board length and "tabs" so they miss the openings); small parts use small `tab_width`.
-7. Texture and visibility: per-face `color`s (colouring on) with slightly varied shades for repeated parts,
-   `engravings` for stone courses, planks and outlines, wavy `profile` tops for tile courses, dark undersides for
-   eaves. Small parts are fine on a laser: write the laser kerf in "material" (e.g. "kerf": 0.15); with a kerf below
-   1 mm the minimum part width is 3 mm instead of the router minimum in the table below.
-8. Very large models (thousands of parts - a stadium, a village, a ship with every rib and plank): design a module
-   once as an assembly (a seat row, a window bay, a truss, a house) and place it with "instances" (and their
-   "repeat" / "mirror"); the compiler expands them, so the JSON stays short while the model has 5,000-10,000+ parts.
-   Connect the modules to each other and to the base under the top-level "connections" by their expanded ids
-   ("<instance id>-<board id>"). Turn and flip instances to face every way (quarter turns stay exact): one seat module
-   fills all four sides of a stadium, one gallery bay runs round a courtyard.
-Snippet (front roof slope, one truss, one tile piece - all whole millimetres, pitch 8-15-17, panel 3 mm):
+7. Texture and visibility: per-face `color`s (colouring on) with slightly varied shades for repeated natural parts,
+   `engravings` for courses, planks, seams and outlines, wavy or toothed `profile` edges for overlapping courses,
+   dark undersides for overhangs. Small parts are fine on a laser: write the laser kerf in "material" (e.g.
+   "kerf": 0.15); with a kerf below 1 mm the minimum part width is 3 mm instead of the router minimum in the table below.
+8. Very large models (thousands of parts - any object with many repeated modules): design a module once as an
+   assembly (a bay, a row, a segment, a unit) and place it with "instances" (and their "repeat" / "mirror"); the
+   compiler expands them, so the JSON stays short while the model has 5,000-10,000+ parts. Connect the modules to each
+   other and to the base under the top-level "connections" by their expanded ids ("<instance id>-<board id>"). Turn
+   and flip instances to face every way (quarter turns stay exact): one module can fill all four sides of a square.
+Snippet (a tilted panel, one support, one surface piece - all whole millimetres, slope 8-15-17, panel 3 mm):
 ```jsonc
-{"id": "R-F", "position": [30, 81, 141], "size": [300, 3, 102],
+{"id": "PANEL-1", "position": [30, 81, 141], "size": [300, 3, 102],
   "rotate": {"axis": "x", "angle": 28.0725, "pivot": [30, 81, 243]},
   "profile": {"shape": "polygon", "points": [[0, 102], [300, 102], [210, 0], [90, 0]]}},
-{"id": "TRUSS-1", "position": [150, 81, 78], "size": [3, 48, 150],
+{"id": "SUPPORT-1", "position": [150, 81, 78], "size": [3, 48, 150],
   "profile": {"shape": "polygon", "points": [[0, 0], [0, 150], [8, 150], [48, 75], [8, 0]]}},
-{"id": "TILE-F1", "position": [70, 84, 236], "size": [40, 4, 3],
+{"id": "PIECE-1", "position": [70, 84, 236], "size": [40, 4, 3],
   "rotate": {"axis": "x", "angle": 28.0725, "pivot": [30, 81, 243]},
   "profile": {"shape": "polygon", "points": [[0, 0], [40, 0], [40, 3], [38, 4], [36, 3], [34, 4], [32, 3], [0, 3]]}}
 ```
-(connections: TRUSS-1 -> CEILING, TRUSS-1 -> R-F, TILE-F1 -> R-F, all `tab_slot`; the truss's profile is [height,
-depth] because it is thin along x: face coordinates follow the in-plane axes in x, y, z order.)
+(connections: SUPPORT-1 -> the board below it, SUPPORT-1 -> PANEL-1, PIECE-1 -> PANEL-1, all `tab_slot`; the
+support's profile is [height, depth] because it is thin along x: face coordinates follow the in-plane axes in x, y,
+z order.)
 
 ## Material catalogue (type | standard thicknesses mm | kerf mm | grain | minimum part mm)
 | type | thicknesses | kerf | grain | min part |
@@ -1047,62 +1074,63 @@ shaping a finished design needs (profiles, arches, tilted roof); DESIGN QUALITY 
 }
 ```
 
-## Complete valid example of the working method (torii gate cloned from a reference)
-How a finished answer looks: "plan" holds the scale calibration, grid readings, the counted inventory, the datums with
-a dimension chain and the tick-off; the whole front silhouette (pillars, tie beam, plaque strut, lintels with the
-upswept tips traced point by point) is ONE panel whose enclosed gaps are openings; front pieces give the pillars depth.
+## Complete valid example of the working method (a framed structure cloned from a reference)
+How a finished answer looks - the method is the same for any object: "plan" holds the scale calibration, grid
+readings, the counted inventory, the datums with a dimension chain, the joints, the audit and the tick-off; the whole
+front silhouette (posts, tie beam, centre strut, beams with upswept tips traced point by point) is ONE panel whose
+enclosed gaps are openings; front pieces give the posts depth.
 ```json
 {
   "format": "board-design/v1",
   "plan": {
     "reference": [
-      "scale: anchor = requested width 300 mm; real torii ~7.8 m wide -> model 1:26",
-      "front view grid: pillars x 0.21-0.28 and 0.72-0.79, nuki y 0.63-0.69, kasagi tips y 0.94-1.00",
-      "P1 pillars | front | 2 | round, vermilion | layer 0 + front piece for depth",
-      "K1 kasagi | front | 1 | upswept lintel, black top | traced curve, 9 points per side",
-      "N1 nuki, S1 shimaki, G1 gakuzuka | front | 1 each | in the frame plane"
+      "scale: anchor = requested width 300 mm; reference object ~7.8 m wide -> model 1:26",
+      "front view grid: posts x 0.21-0.28 and 0.72-0.79, tie beam y 0.63-0.69, top beam tips y 0.94-1.00",
+      "P1 posts | front | 2 | round, red | layer 0 + front piece for depth",
+      "B1 top beam | front | 1 | upswept tips | traced curve, 9 points per side",
+      "B2 tie beam, B3 second beam, S1 centre strut | front | 1 each | in the frame plane"
     ],
     "datums": [
       "origin: x 0 left of base, y 0 base bottom, z 0 back",
       "base top y = 3",
-      "frame plane z = 54..57, pillar fronts z = 57..66 (frame centred on the base: 54 + 3 + 54 = 111)",
-      "pillar centre lines x = 70, 230 (symmetric about x = 150)",
-      "nuki y = 123..135, shimaki y = 153..165",
+      "frame plane z = 54..57, post fronts z = 57..66 (frame centred on the base: 54 + 3 + 54 = 111)",
+      "post centre lines x = 70, 230 (symmetric about x = 150)",
+      "tie beam y = 123..135, second beam y = 153..165",
       "chain x: 20 margin + 260 frame + 20 margin = 300"
     ],
-    "concept": "Reference clone: one frame panel carries the whole front silhouette, front pieces give the pillars depth",
+    "concept": "Reference clone: one frame panel carries the whole front silhouette, front pieces give the posts depth",
     "joints": [
-      "FRAME: tabs into BASE from both pillar feet (the pillar fronts lock it: locked every way)",
-      "PILLAR-L-F, PILLAR-R-F: tabs into BASE and into FRAME - two directions, locked every way"
+      "FRAME: tabs into BASE from both post feet (the post fronts lock it: locked every way)",
+      "POST-L-F, POST-R-F: tabs into BASE and into FRAME - two directions, locked every way"
     ],
     "audit": [
       "BASE: [0, 0, 0], size [300, 3, 54 + 3 + 54 = 111]",
-      "FRAME: [margin 20, base top 3, frame plane 54] = [20, 3, 54], size [260, kasagi tip 193 - 3 = 190, 3]",
-      "PILLAR-L-F: [pillar centre 70 - 2 = 68, 3, frame front 57], size [3, 110, 66 - 57 = 9]",
-      "PILLAR-R-F: mirror about x = 150: 300 - 68 - 3 = 229 -> [229, 3, 57]",
+      "FRAME: [margin 20, base top 3, frame plane 54] = [20, 3, 54], size [260, top beam tip 193 - 3 = 190, 3]",
+      "POST-L-F: [post centre 70 - 2 = 68, 3, frame front 57], size [3, 110, 66 - 57 = 9]",
+      "POST-R-F: mirror about x = 150: 300 - 68 - 3 = 229 -> [229, 3, 57]",
       "bay-l: centre x (80 + 144) / 2 = 112, y (135 + 153) / 2 = 144, size [144 - 80 = 64, 153 - 135 = 18]",
       "bay-r: mirror of bay-l: x = 300 - 112 = 188"
     ],
     "assemblies": [
       "base",
       "frame panel",
-      "pillar front pieces"
+      "post front pieces"
     ],
     "checks": [
-      "P1 -> FRAME pillars, PILLAR-L-F, PILLAR-R-F",
-      "K1 -> FRAME profile top edge",
-      "N1, S1, G1 -> FRAME",
+      "P1 -> FRAME posts, POST-L-F, POST-R-F",
+      "B1 -> FRAME profile top edge",
+      "B2, B3, S1 -> FRAME",
       "front projection: 6 / 6 elements within 2%, counts exact"
     ]
   },
   "product": {
-    "name": "Torii gate",
+    "name": "Framed structure",
     "overall": {
       "length": 300,
       "height": 193,
       "depth": 111
     },
-    "description": "Assumptions: 1:26 scale clone of a standard myojin torii; round pillars given depth by a front piece each."
+    "description": "Assumptions: 1:26 scale clone of the reference frame; round posts given depth by a front piece each."
   },
   "material": {
     "type": "plywood",
@@ -1119,7 +1147,7 @@ upswept tips traced point by point) is ONE panel whose enclosed gaps are opening
     },
     {
       "id": "FRAME",
-      "group": "Gate",
+      "group": "Frame",
       "position": [20, 3, 54],
       "size": [260, 190, 3],
       "color": "#c3272b",
@@ -1177,15 +1205,15 @@ upswept tips traced point by point) is ONE panel whose enclosed gaps are opening
       ]
     },
     {
-      "id": "PILLAR-L-F",
-      "group": "Gate",
+      "id": "POST-L-F",
+      "group": "Frame",
       "position": [68, 3, 57],
       "size": [3, 110, 9],
       "color": "#c3272b"
     },
     {
-      "id": "PILLAR-R-F",
-      "group": "Gate",
+      "id": "POST-R-F",
+      "group": "Frame",
       "position": [229, 3, 57],
       "size": [3, 110, 9],
       "color": "#c3272b"
@@ -1199,22 +1227,22 @@ upswept tips traced point by point) is ONE panel whose enclosed gaps are opening
     },
     {
       "type": "tab_slot",
-      "board": "PILLAR-L-F",
+      "board": "POST-L-F",
       "into": "BASE"
     },
     {
       "type": "tab_slot",
-      "board": "PILLAR-R-F",
+      "board": "POST-R-F",
       "into": "BASE"
     },
     {
       "type": "tab_slot",
-      "board": "PILLAR-L-F",
+      "board": "POST-L-F",
       "into": "FRAME"
     },
     {
       "type": "tab_slot",
-      "board": "PILLAR-R-F",
+      "board": "POST-R-F",
       "into": "FRAME"
     }
   ]

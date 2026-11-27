@@ -177,3 +177,28 @@ def test_without_shapely_shaped_boards_are_left_with_the_reason(monkeypatch):
     r = canvas.compile_source(json.dumps(d), run_production=False)
     assert any('shapely' in s['reason'] for s in r['consolidation']['skipped'])
     assert not any(b.startswith('PICKET') for g in r['consolidation']['groups'] for b in g['from'])
+
+
+def test_a_merge_that_would_not_fit_the_sheet_is_not_made():
+    d = fence()
+    for b in d['boards']:                              # stretch the fence to 700 mm: over a 600 x 400 laser bed
+        if b['id'].startswith('RAIL'):
+            b['size'][0] = 700
+    d['boards'][0]['size'][0] = 760
+    d['boards'] += [{'id': f'POST-{k + 11}', 'position': [10 + 38 * k, 6, 50], 'size': [12, 120, 6], 'color': '#a33'}
+                    for k in range(10, 18)]
+    laser = {'kerf': 0.15, 'sheet': {'width': 600, 'height': 400}, 'coloring': True}
+    r = canvas.compile_source(json.dumps(d), run_production=False, machine=laser)
+    assert not r['consolidation']['groups'] and 'larger than the stock sheet' in r['consolidation']['skipped'][0]['reason']
+    r = canvas.compile_source(json.dumps(d), run_production=False, machine={'coloring': True})
+    assert r['consolidation']['groups']                # plywood stock (2500 x 1250) takes it
+
+
+def test_the_prompt_splits_what_one_piece_cannot_make():
+    from board_engine.canvas_prompt import build_prompt, build_repair_prompt
+    p = build_prompt('Anything')
+    for step in ('TOO LARGE', 'CURVED IN TWO DIRECTIONS', 'CURVED IN ONE DIRECTION', 'MEETING AT AN ANGLE', 'TOO FRAGILE',
+                 'TOO INTRICATE', 'CANNOT BE JOINED', 'A MECHANISM TOO COMPLEX'):
+        assert step in p, step
+    assert 'THROUGH A CONNECTOR' in p and 'Never drop, flatten or simplify a feature' in p
+    assert 'never delete it' in build_repair_prompt('{}', [])
