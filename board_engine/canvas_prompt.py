@@ -6,6 +6,7 @@ fastener catalogues, joint/connection types, joinery modes) so the prompt can ne
 The bundled example is compiled by the test-suite and must produce zero errors.
 """
 import json
+import math
 import re
 
 from .canvas import CONNECTION_TYPES, FORMAT, pretty_json
@@ -672,6 +673,177 @@ STRUCTURES_EXAMPLE = {
 }
 
 
+# The working method in practice: a reference clone with the plan filled in (scale, grid readings, inventory, datums,
+# dimension chain, tick-off), the whole front silhouette as ONE traced panel with its gaps cut out, and depth layers.
+ADVANCED_EXAMPLE = {
+    "format": "board-design/v1",
+    "plan": {
+        "reference": [
+            "scale: anchor = requested width 300 mm; real torii ~7.8 m wide -> model 1:26",
+            "front view grid: pillars x 0.21-0.28 and 0.72-0.79, nuki y 0.63-0.69, kasagi tips y 0.94-1.00",
+            "P1 pillars | front | 2 | round, vermilion | layer 0 + front piece for depth",
+            "K1 kasagi | front | 1 | upswept lintel, black top | traced curve, 9 points per side",
+            "N1 nuki, S1 shimaki, G1 gakuzuka | front | 1 each | in the frame plane"
+        ],
+        "datums": [
+            "origin: x 0 left of base, y 0 base bottom, z 0 back",
+            "base top y = 3",
+            "frame plane z = 54..57, pillar fronts z = 57..66 (frame centred on the base: 54 + 3 + 54 = 111)",
+            "pillar centre lines x = 70, 230 (symmetric about x = 150)",
+            "nuki y = 123..135, shimaki y = 153..165",
+            "chain x: 20 margin + 260 frame + 20 margin = 300"
+        ],
+        "concept": "Reference clone: one frame panel carries the whole front silhouette, front pieces give the pillars depth",
+        "joints": [
+            "FRAME: tabs into BASE from both pillar feet (the pillar fronts lock it: locked every way)",
+            "PILLAR-L-F, PILLAR-R-F: tabs into BASE and into FRAME - two directions, locked every way"
+        ],
+        "audit": [
+            "BASE: [0, 0, 0], size [300, 3, 54 + 3 + 54 = 111]",
+            "FRAME: [margin 20, base top 3, frame plane 54] = [20, 3, 54], size [260, kasagi tip 193 - 3 = 190, 3]",
+            "PILLAR-L-F: [pillar centre 70 - 2 = 68, 3, frame front 57], size [3, 110, 66 - 57 = 9]",
+            "PILLAR-R-F: mirror about x = 150: 300 - 68 - 3 = 229 -> [229, 3, 57]",
+            "bay-l: centre x (80 + 144) / 2 = 112, y (135 + 153) / 2 = 144, size [144 - 80 = 64, 153 - 135 = 18]",
+            "bay-r: mirror of bay-l: x = 300 - 112 = 188"
+        ],
+        "assemblies": [
+            "base",
+            "frame panel",
+            "pillar front pieces"
+        ],
+        "checks": [
+            "P1 -> FRAME pillars, PILLAR-L-F, PILLAR-R-F",
+            "K1 -> FRAME profile top edge",
+            "N1, S1, G1 -> FRAME",
+            "front projection: 6 / 6 elements within 2%, counts exact"
+        ]
+    },
+    "product": {
+        "name": "Torii gate",
+        "overall": {
+            "length": 300,
+            "height": 193,
+            "depth": 111
+        },
+        "description": "Assumptions: 1:26 scale clone of a standard myojin torii; round pillars given depth by a front piece each."
+    },
+    "material": {
+        "type": "plywood",
+        "thickness": 3,
+        "kerf": 0.15
+    },
+    "boards": [
+        {
+            "id": "BASE",
+            "group": "Base",
+            "position": [0, 0, 0],
+            "size": [300, 3, 111],
+            "color": "#b9b4a8"
+        },
+        {
+            "id": "FRAME",
+            "group": "Gate",
+            "position": [20, 3, 54],
+            "size": [260, 190, 3],
+            "color": "#c3272b",
+            "profile": {
+                "shape": "polygon",
+                "points": [
+                    [40, 0],
+                    [60, 0],
+                    [60, 120],
+                    [200, 120],
+                    [200, 0],
+                    [220, 0],
+                    [220, 120],
+                    [235, 120],
+                    [235, 132],
+                    [220, 132],
+                    [220, 150],
+                    [240, 150],
+                    [240, 162],
+                    [260, 178],
+                    [260, 190],
+                    [240, 182],
+                    [200, 177],
+                    [160, 175],
+                    [130, 174],
+                    [100, 175],
+                    [60, 177],
+                    [20, 182],
+                    [0, 190],
+                    [0, 178],
+                    [20, 162],
+                    [20, 150],
+                    [40, 150],
+                    [40, 132],
+                    [25, 132],
+                    [25, 120],
+                    [40, 120]
+                ]
+            },
+            "openings": [
+                {
+                    "id": "bay-l",
+                    "kind": "opening",
+                    "shape": "rect",
+                    "center": [112, 144, 55],
+                    "size": [64, 18]
+                },
+                {
+                    "id": "bay-r",
+                    "kind": "opening",
+                    "shape": "rect",
+                    "center": [188, 144, 55],
+                    "size": [64, 18]
+                }
+            ]
+        },
+        {
+            "id": "PILLAR-L-F",
+            "group": "Gate",
+            "position": [68, 3, 57],
+            "size": [3, 110, 9],
+            "color": "#c3272b"
+        },
+        {
+            "id": "PILLAR-R-F",
+            "group": "Gate",
+            "position": [229, 3, 57],
+            "size": [3, 110, 9],
+            "color": "#c3272b"
+        }
+    ],
+    "connections": [
+        {
+            "type": "tab_slot",
+            "board": "FRAME",
+            "into": "BASE"
+        },
+        {
+            "type": "tab_slot",
+            "board": "PILLAR-L-F",
+            "into": "BASE"
+        },
+        {
+            "type": "tab_slot",
+            "board": "PILLAR-R-F",
+            "into": "BASE"
+        },
+        {
+            "type": "tab_slot",
+            "board": "PILLAR-L-F",
+            "into": "FRAME"
+        },
+        {
+            "type": "tab_slot",
+            "board": "PILLAR-R-F",
+            "into": "FRAME"
+        }
+    ]
+}
+
+
 def material_table():
     rows = []
     for k, m in MATERIALS.items():
@@ -784,7 +956,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
     every joint type works (seats facing a stage from all four sides: angles 0, 90, 180, 270 about y). Any other angle
     tilts the whole copy about its origin (a fan of seats around a circle); finger and cross_lap joints inside it cannot
     follow a tilt, so use tab_slot there. An assembly with motions can only be turned by multiples of 90°.
-- Top level `"plan": {{"concept"?: str, "economy"?: str, "assemblies": [...], "steps": [...], "checks": [...],
+- Top level `"plan": {{"reference"?: [...], "datums"?: [...], "concept"?: str, "economy"?: str, "joints"?: [...], "audit"?: [...], "assemblies": [...], "steps": [...], "checks": [...],
   "reference"?: [...]}}` is your design plan, written before `"boards"` ("reference": what attached reference images
   show); the compiler ignores it.
 - `"rotate": {{"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}}` tilts a board (roof panels, sloped backs,
@@ -1148,6 +1320,14 @@ shaping a finished design needs (profiles, arches, tilted roof); DESIGN QUALITY 
 ```json
 {pretty_json(STRUCTURES_EXAMPLE)}
 ```
+
+## Complete valid example of the working method (torii gate cloned from a reference)
+How a finished answer looks: "plan" holds the scale calibration, grid readings, the counted inventory, the datums with
+a dimension chain and the tick-off; the whole front silhouette (pillars, tie beam, plaque strut, lintels with the
+upswept tips traced point by point) is ONE panel whose enclosed gaps are openings; front pieces give the pillars depth.
+```json
+{pretty_json(ADVANCED_EXAMPLE)}
+```
 """
 
 
@@ -1182,18 +1362,21 @@ FINAL_REMINDER = ('FINAL REMINDER: your entire reply is one ```json code block w
 DESIGN_TEAM = """YOUR ROLE - a design team of five specialists working one after another inside this single reply (do the
 work in your head; the only output is the JSON):
 1. ANALYST - reads the product, the requirements (and any reference images) and lists every part, size and feature
-   that must exist. Writes "plan.reference" (with images: the measured inventory).
+   that must exist. With images this is the METROLOGIST: views, scale calibration, grid measurements, counted
+   inventory and traced outlines (REFERENCE CLONING PROTOCOL). Writes "plan.reference".
 2. DESIGNER - the creative director: rejects the obvious form, chooses a surprising but buildable concept with one
    signature feature, a style and motifs carried through every part, and decides where the curves, layers, openings,
    rhythm and detail go - richness from shape, not extra material (see DESIGN QUALITY). Writes "plan.concept" and
    "plan.economy".
 3. ARCHITECT - splits the product into sub-assemblies and layers (base -> structure -> skin -> details -> fittings),
-   fixes the overall size, the origin and every board's role. Writes "plan.assemblies" and "plan.steps".
-4. JOINERY ENGINEER - places every board in whole millimetres with thickness accounted for, chooses each joint from
-   the geometry, keeps slots apart and tabs on solid material, makes every part sit or lock (nothing hangs). Writes
-   "boards" and "connections".
-5. INSPECTOR - checks the finished JSON against the SUCCESS CRITERIA, DESIGN QUALITY, the COMMON MISTAKES and the
-   SELF-CHECK and has every problem fixed before handing over. Writes "plan.checks" (what was verified, with board ids).
+   fixes the overall size, the scale, the DATUMS (origin, levels, planes, centre lines - PRECISION PROTOCOL) and every
+   board's role. Writes "plan.datums", "plan.assemblies" and "plan.steps".
+4. JOINERY ENGINEER - places every board in whole millimetres computed from the datums with thickness accounted for,
+   computes curves from their equations, chooses each joint from the geometry, keeps slots apart and tabs on solid
+   material, makes every part sit or lock (nothing hangs). Writes "boards", "connections" and "motions".
+5. INSPECTOR - checks the finished JSON against the SUCCESS CRITERIA, DESIGN QUALITY, the PRECISION PROTOCOL, the
+   COMMON MISTAKES and the SELF-CHECK (with images: the projection check against every view) and has every problem
+   fixed before handing over. Writes "plan.checks" (what was verified, with board ids and numbers).
 Each specialist builds on the previous one's result without undoing it; when the Inspector finds a problem, the
 specialist responsible fixes it before the reply is written."""
 
@@ -1209,6 +1392,11 @@ DESIGN_QUALITY = """DESIGN QUALITY (compiling is the minimum - the design must b
   contour slices (a curved form cut as a series of profiled ribs), radial ribs and fins, folding living-hinge skins,
   interlocking lattices, cantilevers and tiers, layered relief facades. Pick a style (art deco, Japanese joinery,
   streamlined, gothic, parametric, organic ...) and carry its motifs through every part. Write it in "plan.concept".
+- Creative techniques (use several): exaggerate the signature feature slightly so it reads; contrast solid against
+  lattice and plain against ornate; gradual rhythm (fins, ribs or slats that grow or turn step by step - computed
+  sizes); a reveal (a lid, door or roof that opens to show a hidden interior or mechanism); a story (a small scene or
+  vignette the object belongs to, only if it adds); negative space (the cut-outs draw the motif); layered depth so
+  light and shadow model the form.
 - Richness from shape, not from material: openings, lattices and shaped profiles remove material while adding
   detail; a ribbed skeleton or a thin skin over ribs replaces a solid block; never add a hidden or filler board.
 - Silhouette: shape outlines with "profile" - arched or pitched tops, curved sides (path arcs), tapered legs, stepped
@@ -1247,6 +1435,164 @@ COMMON_MISTAKES = """COMMON MISTAKES (each is a compile error or warning - avoid
 12. A moving part fixed to the static part with tab_slot / finger / cross_lap (it cannot move), or a pivot / angle sign
     that swings it through another board - mount it with "motions" (pivot on the outer edge, an axle, the right sign)."""
 
+PRECISION_PROTOCOL = """PRECISION PROTOCOL (exact placement is what makes a model look real - and compile first time):
+1. DATUMS FIRST. Before any board, fix the reference lines and write them in "plan.datums" as `name = value` mm:
+   the origin (x = 0 left, y = 0 ground, z = 0 back), every level (base top, floor top, sill, lintel, eave, ridge),
+   every wall / face plane, every column, bay and post centre line, and the centre line of symmetry. Compute every
+   board's position and size from these datums (plus or minus thicknesses) - never estimate a board on its own.
+   Parts that line up in the real object use the SAME datum number.
+2. DIMENSION CHAINS: in each direction the parts must add up (overall = parts + gaps). Write the main chains in
+   "plan.datums", e.g. "x: 6 wall + 4 x 150 bay + 6 wall = 612". A chain that does not add up is a gap or an
+   overlap in the model.
+3. MODULE AND RHYTHM: pick a module (bay, post spacing, tile pitch) and place repeated parts on it with "repeat"
+   (step = module) or repeated openings, so spacing is perfectly even. n parts of width w over length L:
+   step = (L - w) / (n - 1) - choose L or n so the step is whole.
+4. SYMMETRY: build one half and "mirror" it about the centre datum; never retype the other half.
+5. CURVES BY EQUATION, NOT BY EYE: arches, eave sweeps, hulls, body sections, wheel arches, domes - compute the
+   points from the curve (circle u = cx + r cos t, v = cy + r sin t; ellipse a cos t, b sin t; superellipse;
+   parabola v = k u^2; catenary; a smooth spline through measured points) every 5-10 degrees or 5-20 mm, round to
+   whole mm, and put the ends exactly on the datums they meet. Use "arc" path segments for true circular arcs.
+   Parts that rest on each other (a rib and its skin, a truss top and its roof panel) use the SAME points.
+   Worked example - a body rib, superellipse half-width a = 60, half-height b = 40, exponent n = 2.5, centred on
+   (60, 40) of its board: u = 60 + 60 sgn(cos t) |cos t|^(2/n), v = 40 + 40 sgn(sin t) |sin t|^(2/n), t every 15 deg:
+   t 0 -> (120, 40), 15 -> (118, 54), 30 -> (113, 63), 45 -> (105, 70), 60 -> (94, 76), 75 -> (80, 79), 90 -> (60, 80),
+   then mirrored to the other three quarters - 24 whole-mm points the next rib repeats with its own a and b.
+6. ANGLES FROM WHOLE-NUMBER TRIANGLES (3-4-5, 5-12-13, 8-15-17, 7-24-25, 20-21-29) so slopes and lengths stay whole.
+7. TOLERANCE BUDGET: joints touch at gap 0; moving parts keep 1-2 mm running clearance; layers sit exactly on each
+   other; nothing is 1-5 mm off a neighbour it should line up with (that reads as a mistake, not a design).
+8. NUMERIC SELF-AUDIT: before answering, recompute at least 10 boards (the largest, the most connected, a curved one,
+   a repeated one) from the datums and confirm every number in the JSON."""
+
+REALISM_PLAYBOOK = """REALISM PLAYBOOK (universal - for any object: a building, a machine, a creature, a product, a scene):
+- IDENTITY FIRST: before anything else write in "plan.reference" the 3-5 features that make THIS object recognisable -
+  the ones a person would draw first (an outline, a proportion, a rhythm of parts, a characteristic detail). They get
+  the most care; everything else supports them.
+- Order of work: SILHOUETTE first (most of the recognition is the outline seen from the front and the side), then the
+  big masses and their proportions, then the layers of depth, then the details. Never detail a wrong silhouette.
+- Scale and level of detail: fix the model scale (real size / model size) and write it in "plan.reference". Work down
+  the detail ladder and stop only at the level the brief asks for (default: level 4):
+  1 masses (silhouette and proportions) -> 2 structure (every visible member: frames, posts, ribs, spars, beams) ->
+  3 openings and layers (every opening, panel and recess, with its frame and depth) -> 4 surface detail (repeated
+  elements, trims, fittings, ornament, lettering) -> 5 fine detail (engraved texture, decals, tiny fittings). Model
+  every real element larger than about 2 x the board thickness at that scale as a shape, opening, layer or part;
+  smaller ones as engravings or decals (colouring on).
+- Real proportions: take every size from the real object at the chosen scale (its standard parts - an opening a person
+  passes through, a step, a seat, a wheel, a limb - set the scale for the rest); never invent proportions.
+- Depth: real faces are never flat. Give every visible face 2-5 layers, each one thickness forward (base surface ->
+  frame -> trim -> projecting parts -> ornament); recesses get a dark inner board; overhangs throw shadow.
+- Detail in one plane belongs to one board (Fewer, smarter boards); detail with real depth is separate layered parts.
+- Context: a base just larger than the footprint; surroundings only where the brief or the reference shows them."""
+
+UNIVERSAL_METHOD = """UNIVERSAL CONSTRUCTION METHOD (the same method builds anything - break the object into the FORM TYPES it is made of
+and build each one with its technique; most objects mix several):
+- FLAT PARTS (walls, panels, plates, fins, wings, signs, blades): one board each, shaped by "profile", pierced by
+  openings, detailed by engravings, given depth by layered trim boards.
+- BOX VOLUMES (rooms, cases, cabinets, bodies, housings): walls with finger corners, top and bottom tabbed in, a back
+  or rails to lock them square; openings recessed over a dark inner board.
+- FRAMES AND SKELETONS (structures, trusses, stands, legs, cages, spars): members as boards, crossing members
+  cross_lapped, end-on members tabbed; triangulate where it must not rack; joints placed where the real ones are.
+- SMOOTH AND ORGANIC VOLUMES (bodies, hulls, heads, domes, fruit, terrain, sculpture): contour slicing - either
+  stacked layers (horizontal sections at equal heights) or a spine carrying the side profile with cross-section ribs
+  at equal stations (cross_lap); every outline computed from the measured width and height curves (superellipse,
+  ellipse, spline); successive sections change by at most about 15%; skin panels only where nearly flat.
+- ROUND AND CYLINDRICAL PARTS (columns, wheels, towers, trunks, pipes, lenses): stacked discs, cross-lapped pairs,
+  radial fins or a faceted polygon - chosen by how the part is seen.
+- TAPERING AND SEGMENTED PARTS (necks, tails, limbs, branches, spires, chains): segments whose size changes by a
+  fixed ratio, each riding on the previous one (nested motions where it should move).
+- REPEATED ELEMENTS (tiles, scales, slats, windows, teeth, feathers, seats, spokes): one module placed with
+  "repeat" / "instances", or ONE board with repeated openings when they share a plane; let them vary gradually where
+  the real thing varies (sizes growing along a row, rows offset by half a module).
+- SHELLS AND SWEEPS (roofs, canopies, sails, fenders, hoods): bands of flat panels at stepped angles on supports
+  whose profiled edges carry them exactly; "living_hinge" for gentle single curves.
+- SURFACE DETAIL (texture, seams, lettering, patterns, markings): engravings and decals - never extra boards.
+- MOVING PARTS: real motions with axles, pins, gears and rods; several movements from one input (Linkages).
+Build in layers from the ground up: base -> structure -> enclosure / skin -> depth layers -> details -> moving parts
+-> colour, each layer standing on or locking into the one below."""
+
+SIGNS_OF_LIFE = """SIGNS OF LIFE (universal - what makes a model feel alive instead of a dead diagram):
+- GESTURE: what can lean, turn or open in the real object is caught in a natural moment, not stiff at attention - a head
+  turned, a lid or door slightly open, wheels steered, weight on one side, a stem leaning, a flag mid-wave.
+- PURPOSEFUL ASYMMETRY: keep structure symmetric where the object is, and break symmetry in pose and use (one window
+  open, one drawer pulled, one arm raised).
+- MOTION: whatever moves in reality moves in the model ("motions") - and the most expressive movement is the centre
+  of the design; several movements from one input, phased so one follows another.
+- NATURAL VARIATION: repeated natural or hand-made elements vary slightly (shades, sizes, angles within a few
+  percent); machine-made elements stay exact. Never a perfect grid where nature or craft would show variation.
+- FOCUS: one focal point carries the most detail and the strongest contrast; the rest is quieter and supports it.
+- LIGHT AND SHADOW: depth layers, recesses over dark boards and overhangs make the form read under light.
+- SIGNS OF USE AND STORY: one or two small details that show the object belongs to a world (something placed on it,
+  a door left open, a lamp by an entrance) - only where they add, always joined to the structure.
+- COLOUR WITH INTENT (colouring on): a palette taken from the real object or the chosen style, with the focal part in
+  contrast."""
+
+UNIVERSAL_STYLES = ['Art Deco - stepped forms, sunburst and chevron cut-outs, vertical fins',
+                    'Japanese joinery - exposed joints, lattices, restraint, natural wood',
+                    'Streamline Moderne - teardrop forms, speed lines, rounded corners',
+                    'Gothic - pointed arches, tracery, vertical rhythm, pinnacles',
+                    'Parametric - ribbed waffle structure, gradually changing slats',
+                    'Organic - flowing curves, branching and leaf-like openings',
+                    'Steampunk - exposed gears, rivet engravings, brass and dark tones',
+                    'Scandinavian - simple planes, warm wood, soft corners, one accent colour',
+                    'Storybook fantasy - exaggerated proportions, crooked lines, round openings',
+                    'Brutalist - bold stacked masses, deep coffers, rhythmic fins',
+                    'Biomechanical - visible mechanism inside a ribbed body',
+                    'Folk ornament - filigree cut-outs and patterned decals',
+                    'Low-poly faceted - crisp planes and sharp creases',
+                    'Industrial - frame plates with lightening holes, bolt-head engravings',
+                    'Art Nouveau - whiplash curves, floral cut-outs',
+                    'Mid-century - tapered splayed legs, rounded corners, two-tone']
+BOARDS_PER_PART = 250
+
+
+def creative_brief(title='', requirements='', images=False):
+    """A universal CREATIVE BRIEF for any object: the AI names the object's identity features and its most alive
+    moment, and chooses from three style directions picked per title (the same title gets the same three). None with
+    reference images: then the reference is the brief."""
+    if images:
+        return ''
+    import hashlib
+    seed = int(hashlib.sha256((title or 'design').strip().lower().encode()).hexdigest(), 16)
+    n = len(UNIVERSAL_STYLES)
+    pick = list(dict.fromkeys(UNIVERSAL_STYLES[(seed // (n ** k)) % n] for k in range(4)))[:3]
+    return '\n'.join([
+        'CREATIVE BRIEF (the brief is short, so make it rich - never build the average version of the object):',
+        '- Identity: name the 3-5 features that make this object recognisable and give each the most care.',
+        '- Life: name its most alive moment (a movement, a gesture, a reveal) and make it the centre of the design.',
+        '- Style: the requirements\' style first; otherwise the object\'s OWN real style (its period, culture or '
+        'make) - identity and precision come before novelty. Only when the object has no fixed style, or as an accent '
+        f"that does not change its identity, choose or fuse from: {' | '.join(pick)}; carry the motifs through every "
+        'part.',
+        '- Concept line: write in "plan.concept" the sentence a visitor would say on seeing the model, and the style '
+        'chosen and why.'])
+
+
+def scope(title='', requirements='', images=False, machine=None):
+    """Universal size planning: the AI counts its own inventory and decides the delivery before writing boards."""
+    file = bool(machine and machine.get('file'))
+    return ('SCOPE: before the first board, count the boards your inventory needs (after consolidation, with '
+            'assemblies / instances / repeat keeping the JSON short) and write the count in "plan.economy". '
+            + ('Generate the file with a script (loops for repeated parts) whatever the count.' if file else
+               f'Up to about {BOARDS_PER_PART} boards fit in one reply; above that decide the number of multi-part '
+               f'replies NOW (count / {BOARDS_PER_PART}, rounded up) - never shorten the design instead.')
+            + ' Fewer boards is fine when one panel carries the detail - never by leaving visible parts out.')
+
+
+FIDELITY_OVERRIDE = """FIDELITY OVERRIDES CREATIVITY (reference images are attached): reproduce the object in the images - do not
+reinterpret, restyle, "improve", simplify or add features they do not show. DESIGN QUALITY's creativity applies only to
+what the images cannot show (hidden structure, joints, the way parts lock); its economy and detail rules still apply.
+The same silhouette, proportions, counts, layering and colours as the reference are the measure of success."""
+
+ANTI_PATTERNS = """FAILURES THAT MAKE A MODEL LOOK FAKE (the reviewer rejects a design that shows any of them):
+- The generic version: a box house, a rectangle car, a blob animal instead of THIS object's silhouette.
+- Wrong counts: 4 columns where there are 6, 3 windows where there are 5, the wrong number of storeys or roof tiers.
+- Flattened depth: everything in one plane, no eave overhang, no recessed openings, no layered trim.
+- Guessed curves: a straight roof where it sweeps, a polygon of 4 points where a smooth arch or hull is.
+- Drifting alignment: windows of one row at slightly different heights, unequal bays, a symmetric object that is not.
+- Wrong proportions: roof too low or too high, doors too big for the storey, legs too thick, the head too small.
+- Colour off: a different palette from the reference, every part the same colour, or random colours per part.
+- Fragmentation: thirty separate posts or bars where one panel with cut-outs looks the same.
+- Floating or held-from-above parts, decorations stuck on without a joint, parts that would fall out."""
+
 INTEGER_RULE = ('All sizes, positions, product.overall values and profile / opening / engraving coordinates are whole '
                 'millimetres (integers such as 30, 38, 150 — never 30.27). Only the material thickness and clearance '
                 'may have decimals.')
@@ -1281,37 +1627,49 @@ patterns. They show in the 3D view and come out as print sheets lined up with th
 - The face's own `"color"` is the background printed under the decals."""
 
 
-IMAGE_SPEC = """## Reference images (attached to this message)
-The image(s) attached to this message ARE the specification. Reproduce the product they show on this platform as
-exactly as flat boards allow — its shape, proportions, parts and details — not a generic product of the same kind.
-1. ANALYSE FIRST, THOROUGHLY - take as long as you need; accuracy matters far more than speed or length:
-   a. Work out which side of the object each image shows (front, left, right, back, top, detail) and combine them.
-   b. Measure: take the overall width and height of each view as 1.0 and read every element's box as fractions
-      (x 0.22-0.30, y 0.40-0.70), like reading a grid laid over the photo.
-   c. Inventory EVERY visible element with a short id, its count and those fractions: walls, roof planes, openings,
-      frames, panes and bars, steps, posts, rails, tiles / courses, rafters, trims, fittings, plants, signs, colours.
-      Count repeated elements one by one (tiles per row, rows, rafters, balusters, panes, steps).
-   d. Write the inventory into "plan.reference" as one line per element, e.g.
-      "W1 left window: front, x 0.22-0.30 y 0.40-0.70, blue frame, iron grill 3 x 4 panes".
-2. SIZE AND PROPORTION: take absolute sizes from the requirements. Where none are given, estimate the real-world size
-   from what the product is and record it as an assumption. Take every proportion from the image: measure ratios
-   (height / length, part width / overall width, positions as fractions of the whole) and apply them to the chosen
-   size. Write the main ratios you measured in "plan.reference".
-3. MATCH EVERY VISIBLE PART: every visible feature, at the same places, with the same proportions (a run of posts in
-   one plane is one panel with its gaps as openings, still showing every post). Outlines and
-   curves → "profile" (polygon points or arcs traced from the image); holes, windows and gaps → "openings"; surface
-   lines, panels, text and logos → "engravings"; repeated parts → "repeat"; left / right twins → "mirror".
-4. WHAT FLAT BOARDS CANNOT MAKE (curved surfaces, round solids, bends): build the closest flat-board version — stacked
-   layers, ribs with a skin of panels, faceted panels, "living_hinge" for gentle bends — and say what was
-   approximated in "product.description".
-5. PARTS THE IMAGE DOES NOT SHOW (inside, back, underside): add only what the structure needs to stand and join
-   (glue-free), keeping the visible look unchanged.
-6. BUILD AND TICK OFF: build the inventory element by element; in "plan.checks" write one line per inventory id
-   naming the board ids that make it ("W1 -> W-F opening win-l, LINING g00..g23"). Every inventory line must be
-   ticked off - nothing visible may be missing, merged into a plain board or left out to save space.
-7. COMPARE BEFORE ANSWERING: view your design from the front, the side and the top and check it against the image:
-   is every visible part present, in the right place, with the right count, proportions and outline? Fix any
-   difference. If the result is large, use the compact style and the multi-part replies of the output contract."""
+IMAGE_SPEC = """## Reference images (attached to this message) - REFERENCE CLONING PROTOCOL
+The image(s) ARE the specification. The goal is a CLONE: someone looking at the image and the 3D model side by side
+must see the same object - the same silhouette, proportions, parts, counts, layering and colours - not a generic
+product of the same kind and not a reinterpretation. Take as long as you need: accuracy matters far more than speed.
+1. READ THE VIEWS: for each image decide the viewpoint (front elevation, side, back, top, three-quarter perspective,
+   detail). A straight-on elevation can be measured directly. In a perspective view measure on faces parallel to the
+   picture and correct the rest: parts further away look smaller, and parallel edges meet at vanishing points - use
+   them to recover right angles and true depth ratios. Combine all views into one 3D understanding: a size seen in
+   two views (the height in the front and the side view) must agree - where they differ trust the straighter view,
+   and record the decision. When images disagree on a detail, follow the clearest, closest image of that detail.
+2. CALIBRATE THE SCALE: choose a scale anchor - a size from the requirements, else a real standard visible in the
+   image (door about 2000 mm, step rise about 170 mm, person about 1700 mm, car wheel about 650 mm, brick course 75 mm)
+   - and work out mm per image unit; then the model scale that gives the requested size. Write
+   "scale: anchor ..., 1.00 of width = ... mm, model 1:..." in "plan.reference".
+3. MEASURE ON A GRID: lay a 20 x 20 grid over each view (0.00-1.00 from the object's left and bottom edges). Read the
+   key lines first - ground, podium top, floor, every eave and ridge, column centres, wall corners, the axis of
+   symmetry - then every element's box, to 0.01. Convert them through the calibration into the datums
+   (PRECISION PROTOCOL) and the element sizes. Write the main ratios (height / width, eave overhang / width, ...).
+4. INVENTORY EVERYTHING in "plan.reference", one line per element:
+   "id | view | box x 0.22-0.30 y 0.40-0.70 | size mm | count | shape | layer | colour",
+   layer = depth order (0 the main face, +1 one step in front, -1 recessed). Count repeated elements one by one -
+   columns, bays, rafter tails, bracket sets, tiles per course and courses, balusters, panes, steps, windows per
+   floor. A wrong count is the most visible error of a clone.
+5. TRACE THE OUTLINES: the silhouette and every shaped part become polygon / path points read off the grid - a point
+   at every visible corner and about every 5% of length along curves; trace symmetric curves once and mirror them.
+   Never replace a traced curve by a rectangle or a generic arc.
+6. COLOURS: pick one hex colour per role from the image (roof, walls, columns, trim, ornament, ground) and use exactly
+   those (colouring on); vary repeated parts slightly only where the image shows variation.
+7. DEPTH: rebuild what stands in front of what and by how much (eave overhang, column projection, recessed doors and
+   windows, stacked brackets, layered trims) - one thickness per step of shallow relief.
+8. PARTS THE IMAGE DOES NOT SHOW (inside, back, underside): only what the structure needs to stand and lock, in the
+   visible style; the hidden back of a symmetric object mirrors its front unless an image shows otherwise.
+9. WHAT FLAT BOARDS CANNOT MAKE (curved surfaces, round solids, bends): the closest flat construction - stacked
+   contour layers, ribs with a skin of panels, faceted panels, "living_hinge" - and record each approximation in
+   "product.description".
+10. BUILD AND TICK OFF: build the inventory element by element; in "plan.checks" write one line per inventory id with
+    the board ids that make it ("W1 -> W-F opening win-l, LINING g00..g23"). Every line must be ticked off - nothing
+    visible may be missing, merged into a plain board or left out to save space.
+11. PROJECTION CHECK BEFORE ANSWERING: project your design onto each reference view (front view: every board's x and
+    y extents; side: z and y; top: x and z) and compare with your measurements - silhouette points, datums, element
+    boxes and counts. Every position must be within 2% of the overall size and every count exact; fix every
+    difference. Write the result in "plan.checks" (e.g. "front: 41 / 41 elements within 2%, counts exact").
+    If the result is large, use the compact style and the multi-part replies of the output contract."""
 
 
 def _coloring(machine):
@@ -1389,8 +1747,10 @@ def build_prompt(title, requirements='', material=None, thickness=None, joinery=
     if joinery:
         extra.append(f"- Joinery: {joinery} ({'glue-free tab & slot only' if joinery == 'interlocking' else 'screws / dowels / hinges allowed'})")
     req_block = '\n'.join(filter(None, [req, *extra])) or '- Choose sensible standard dimensions for this product.'
-    return f"""You are an expert product designer, model maker and CAD engineer working as the design step of an automated
-board-design pipeline.
+    return f"""You are a world-class design team - industrial designer, master model maker, structural engineer and CAD
+engineer - working as the design step of an automated board-design pipeline. Your models are museum quality: the
+object is recognisable at a glance, real in its proportions and depth, rich in detail where it shows, clever in how it
+is built, and alive where movement suits it. A plain, generic or box-like answer is a failure even if it compiles.
 
 TASK: Design the product below as a flat-board design in the exact JSON format `{FORMAT}` specified further down.
 It is compiled automatically: rendered in 3D, every joint, gap and overlap validated, boards nested on stock sheets
@@ -1404,6 +1764,16 @@ specification exactly.
 {SUCCESS_CRITERIA}
 
 {DESIGN_QUALITY}
+{(chr(10) + FIDELITY_OVERRIDE + chr(10)) if images else ''}
+{PRECISION_PROTOCOL}
+
+{REALISM_PLAYBOOK}
+
+{UNIVERSAL_METHOD}
+
+{SIGNS_OF_LIFE}
+
+{ANTI_PATTERNS}
 
 {COMMON_MISTAKES}
 
@@ -1412,13 +1782,35 @@ PRODUCT: {title}
 REQUIREMENTS:
 {req_block}
 
+{hard_constraints(req)}
+
+{scope(title, req, images, machine)}
+
+{creative_brief(title, req, images)}
+
 INSTRUCTIONS (follow every one):
 1. Read the requirements. If a dimension is missing, choose a standard value for this product; if two requirements
    conflict, follow the explicit number. Write every such decision in "product.description" as "Assumptions: …".
    If the product needs something listed under "What this generator cannot build", build the closest supported
    version and say what was left out in the description. Do not ask questions — decide and record the assumption.
-2. PLAN FIRST: write a top-level "plan" before "boards": the sub-assemblies, the build steps and the checks you will
-   run. Then decompose the product into every board it needs (nothing implied, nothing missing). Give each a short
+2. PLAN FIRST: write a top-level "plan" before "boards" (lists of short strings, as in the torii example):
+   "reference": the scale line, grid readings and one inventory line per element (with images: REFERENCE CLONING
+     PROTOCOL; without: the identity features and every part the brief and the object need, with counts);
+   "datums": origin, levels, planes, centre lines and one dimension chain per direction that adds up;
+   "concept" and "economy"; "assemblies" and "steps" (the build passes);
+   "joints": one line per sub-assembly saying what holds it and which way it is locked, e.g. "SHELF: tabs into SIDE-L
+     and SIDE-R (locked every way)", "ROOF-L: tabs into TRUSS-1..4 (lifts straight off: held by its weight)" - no part
+     may be held only from above or slide out sideways (Strength and retention);
+   "audit": at least 10 boards recomputed from the datums, each "ID: position = datum + ... = [x, y, z], size = ...";
+   "checks": the tick-off of the inventory and hard constraints, the red-team findings and their fixes.
+   CONCEPT (free design, no reference image): sketch three different concepts in your head, score each 1-5 for
+   recognisability, structural sense, detail richness and economy, build the best and name the runners-up in
+   "plan.concept" with one line each.
+   BUILD IN PASSES, each one finished and checked before the next: (P1) datums and silhouette boards; (P2) structure -
+   every load path to the ground, every board joined; (P3) openings and layers of depth; (P4) surface detail and
+   repeated elements; (P5) motions and mechanisms; (P6) colours and decals. After each pass re-check the dimension
+   chains and that nothing floats or overlaps; a later pass never moves an earlier datum.
+   Then decompose the product into every board it needs (nothing implied, nothing missing). Give each a short
    unique id (at most 24 characters) and put the boards of each sub-assembly in the same "group". For repeated or
    symmetric parts use "repeat", "mirror" and "assemblies"/"instances" instead of listing every copy.
    For a building, vehicle or scale model, build a DETAILED model (see "Detailed models"): structure first, then
@@ -1447,10 +1839,16 @@ INSTRUCTIONS (follow every one):
         flat on it, with its slot >= 2 × thickness from every other slot in that board?
         Does every part SIT on something or lock sideways (no part held only by tabs pushing up into a board above)?
     e3. Do the overall sizes match every size stated in the requirements?
-    f. Is every size and position a whole number of millimetres?
+    f. Is every size and position a whole number of millimetres, computed from a datum in "plan.datums"? Do the
+       dimension chains add up? Did you recompute 10 boards from the datums (PRECISION PROTOCOL 8)?
+    f0. RED TEAM: name the five biggest differences between your design and the brief (with images: the reference)
+        - silhouette, counts, proportions, depth, curves, colours (FAILURES THAT MAKE A MODEL LOOK FAKE) - and fix
+        each before answering; write them and their fixes in "plan.checks".
+    f1. Realism: is the silhouette right, are real proportions kept, do visible faces have layers of depth, are
+        curves computed rather than guessed (REALISM PLAYBOOK)?
     f2. Is it creative and economical? Check DESIGN QUALITY: a surprising concept with a signature feature, a shaped
         silhouette, layered faces, shaped openings, rhythm and detail; at least half of the visible boards shaped,
-        pierced or detailed; identical parts reused, no filler boards, few sheets.{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. Does the design match the attached image(s) from the front, side and top: every visible part, its place, proportions and outline?' if images else ''}
+        pierced or detailed; identical parts reused, no filler boards, few sheets.{chr(10) + '    g. Does every board have a colour, with one colour per role?' if _coloring(machine) else ''}{chr(10) + '    h. PROJECTION CHECK: does the design match the attached image(s) from the front, side and top - every inventory line ticked off, every count exact, every position within 2% of the overall size, the same colours?' if images else ''}
 11. Return ONLY one ```json code block with the complete design; write number arrays on one line ([x, y, z]).
 
 {spec_markdown()}
@@ -1502,6 +1900,55 @@ def _problem_lines(diagnostics, limit=60):
     return '\n'.join(rows[:limit] + ([f'- … and {more} more distinct problems'] if more > 0 else [])) or '- (none)'
 
 
+def _root_causes(diagnostics, limit=8):
+    """The boards behind the most problems: one misplaced board usually causes several, so it is fixed first."""
+    count = {}
+    for d in diagnostics:
+        if d.get('severity') in ('error', 'warning'):
+            for b in set([d['board']] if d.get('board') else (d.get('components') or [])[:2]):
+                count[b] = count.get(b, 0) + 1
+    top = sorted(((n, b) for b, n in count.items() if n >= 2), key=lambda x: (-x[0], x[1]))[:limit]
+    if not top:
+        return ''
+    return ('LIKELY ROOT CAUSES (boards involved in the most problems - check their position, size and joints first; '
+            'fixing one often clears several problems):\n' + '\n'.join(f"- {b}: {n} problems" for n, b in top) + '\n')
+
+
+_DIM = re.compile(r'(?P<label>[a-z][a-z /-]{0,30}?)?\s*[:=]?\s*(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>mm|cm|m)\b', re.I)
+
+
+def hard_constraints(requirements):
+    """Explicit numbers and demands in the requirements, restated as a checklist the design must tick off: sizes with
+    their labels (converted to mm), a model scale, counts, the thickness, the detail level and movement."""
+    req = requirements or ''
+    out = []
+    for m in _DIM.finditer(req):
+        v = float(m['num']) * {'mm': 1, 'cm': 10, 'm': 1000}[m['unit'].lower()]
+        label = (m['label'] or '').strip(' :-=').split(',')[-1].strip() or 'a size'
+        out.append(f"{label}: {v:g} mm")
+    for m in re.finditer(r'\b1\s*:\s*(\d{1,4})\b', req):
+        out.append(f"model scale 1:{m[1]}")
+    for m in re.finditer(r'\b(\d{1,4})\s+([a-z]{3,}s)\b', req, re.I):
+        if m[2].lower() not in ('mms', 'cms'):
+            out.append(f"{m[2]}: exactly {m[1]}")
+    low = req.lower()
+    if re.search(r'\b(highly detailed|very detailed|ultra|realistic|exact|replica|clone|museum)', low):
+        out.append('detail level: 5 (every visible element, fine detail included)')
+    elif re.search(r'\b(simple|minimal|basic|low detail)', low):
+        out.append('detail level: 2-3 (silhouette, structure, main openings)')
+    if re.search(r'\b(mov(e|es|ing|able)|kinetic|animat|flap|rotat|spin|crank|motor|open(s|ing)?)\b', low):
+        out.append('movement: the moving parts asked for must be real motions driven as described (see Linkages)')
+    seen, uniq = set(), []
+    for x in out:
+        if x.lower() not in seen:
+            seen.add(x.lower())
+            uniq.append(x)
+    if not uniq:
+        return ''
+    return ('HARD CONSTRAINTS (read from the requirements - each must hold in the finished design; tick every one off '
+            'in "plan.checks"):\n' + '\n'.join(f"- {x}" for x in uniq))
+
+
 def build_repair_prompt(source, diagnostics, blocking=(), machine=None):
     """Follow-up prompt: hand the generator's diagnostics (and the production blockers: fasteners, stock, cut paths)
     back to the AI and ask for a minimal correction, returned as code only."""
@@ -1536,7 +1983,8 @@ REPAIR RULES (follow every one):
    problem requires it. Never simplify to make a problem go away: keep every profile, shaped opening, engraving,
    tilt and detail part and fix its position, size or joint instead - a shaped board stays shaped.
 4. When you move or resize a board, update the boards and connections that depend on it so every mating face still
-   touches exactly (gap 0) and no two boards overlap.
+   touches exactly (gap 0) and no two boards overlap. Work from the datums in "plan.datums" when the design has them:
+   a part that lines up with others keeps sharing their datum number.
 5. Line numbers in the problems refer to YOUR PREVIOUS JSON below.
 6. {INTEGER_RULE}{f" {floats} dimension(s) below break this rule: round each to the nearest whole millimetre and keep the boards that touch them touching." if floats else ''}
 7. Every board reported as UNATTACHED_BOARD, ISOLATED_BOARD, DISCONNECTED or NOT_JOINED must be attached after your
@@ -1548,6 +1996,7 @@ SELF-CHECK before answering: every problem below is resolved; each board has exa
 thickness; every connection's faces touch (gap 0); no two boards occupy the same space; ids are unique; all sizes and
 positions are whole millimetres.
 
+{_root_causes(diagnostics)}
 PROBLEMS:
 {_problem_lines(diagnostics)}
 
@@ -1618,12 +2067,20 @@ YOUR ROLE - three specialists one after another inside this single reply (the on
 {SUCCESS_CRITERIA}
 
 {DESIGN_QUALITY}
+{(chr(10) + FIDELITY_OVERRIDE + chr(10)) if images else ''}
+{PRECISION_PROTOCOL}
+
+{REALISM_PLAYBOOK}
+
+{UNIVERSAL_METHOD}
+
+{SIGNS_OF_LIFE}
 
 {COMMON_MISTAKES}
 
 CHANGE REQUEST:
 {change}
-{chr(10) + "REFERENCE IMAGES: the image(s) attached to this message show how the product must look after the change. "
+{(chr(10) + hard_constraints(change) + chr(10)) if hard_constraints(change) else ''}{chr(10) + "REFERENCE IMAGES: the image(s) attached to this message show how the product must look after the change. "
  "Study them first, then change every board that differs from them (shape, proportions, parts, openings, engravings) "
  "and keep the rest. Rules 1-7 below still apply; see \"Reference images\" at the end." + chr(10) if images else ''}
 RULES FOR THE UPDATE (follow every one):

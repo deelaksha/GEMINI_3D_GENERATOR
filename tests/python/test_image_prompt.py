@@ -18,7 +18,7 @@ def test_generation_prompt_makes_the_images_the_specification():
     assert 'PRODUCT: The product shown in the attached image(s)' in p
     assert IMAGE_SPEC in p and p.index(IMAGE_SPEC) > p.index('## ')            # appended after the specification
     assert 'follow the text, on anything else the image' in p                   # sizes from text, the rest from the image
-    assert 'h. Does the design match the attached image(s)' in p                # self-check item
+    assert 'h. PROJECTION CHECK: does the design match the attached image(s)' in p    # self-check item
     assert '"reference"' in p and p.rstrip().endswith(FINAL_REMINDER.rstrip())      # the strict reminder stays last
 
 
@@ -94,3 +94,100 @@ def test_production_blockers_reach_the_fix_prompt_with_their_full_count(client):
     lay = r['layout']
     assert not lay['ready_for_production'] and lay['blocking_total'] >= 60 and len(lay['blocking_issues']) == 50
     assert 'PART_BELOW_MIN_SIZE' in r['repair_prompt'] and 'more production problem(s)' in r['repair_prompt']
+
+
+def test_every_generation_prompt_carries_the_precision_and_realism_rules():
+    from board_engine.canvas_prompt import FIDELITY_OVERRIDE, PRECISION_PROTOCOL, REALISM_PLAYBOOK
+    p = build_prompt('Clock tower', thickness=3)
+    assert PRECISION_PROTOCOL in p and REALISM_PLAYBOOK in p and '"datums"' in p and 'NUMERIC SELF-AUDIT' in p
+    assert FIDELITY_OVERRIDE not in p                                   # free design: creativity is wanted
+
+
+def test_with_images_fidelity_beats_creativity_and_the_clone_is_measured():
+    from board_engine.canvas_prompt import DESIGN_QUALITY, FIDELITY_OVERRIDE
+    p = build_prompt('', 'Width 400 mm', thickness=3, images=True)
+    assert p.index(FIDELITY_OVERRIDE) > p.index(DESIGN_QUALITY)         # read after (and over) the creativity rules
+    for step in ('CALIBRATE THE SCALE', 'MEASURE ON A GRID', 'TRACE THE OUTLINES', 'PROJECTION CHECK', 'within 2%'):
+        assert step in IMAGE_SPEC, step
+    assert 'METROLOGIST' in p and 'PROJECTION CHECK' in p
+    upd = build_update_prompt('{"boards": []}', '', images=True)
+    assert FIDELITY_OVERRIDE in upd and IMAGE_SPEC in upd
+
+
+def test_explicit_numbers_become_hard_constraints():
+    from board_engine.canvas_prompt import hard_constraints
+    h = hard_constraints('Overall width 400 mm, height 35 cm, scale 1:50, 12 columns, highly detailed, doors that open')
+    for want in ('Overall width: 400 mm', 'height: 350 mm', 'model scale 1:50', 'columns: exactly 12', 'detail level: 5',
+                 'movement'):
+        assert want in h, want
+    assert hard_constraints('') == '' and 'HARD CONSTRAINTS' in build_prompt('Pagoda', 'height 600 mm')
+    assert 'HARD CONSTRAINTS' in build_update_prompt('{}', 'make it 500 mm wide')
+
+
+def test_the_repair_prompt_names_the_likely_root_causes():
+    from board_engine.canvas_prompt import build_repair_prompt
+    diags = [{'severity': 'error', 'code': c, 'message': 'x', 'board': 'ROOF-L'} for c in ('COLLISION', 'CONNECTION_GAP', 'TAB_IN_OPENING')]
+    diags.append({'severity': 'error', 'code': 'COLLISION', 'message': 'y', 'board': 'WALL'})
+    p = build_repair_prompt('{}', diags)
+    assert 'LIKELY ROOT CAUSES' in p and '- ROOF-L: 3 problems' in p and '- WALL:' not in p
+
+
+def test_the_advanced_example_compiles_clean_and_shows_the_working_method():
+    import json as _json
+    from board_engine import canvas
+    from board_engine.canvas_prompt import ADVANCED_EXAMPLE, spec_markdown
+    r = canvas.compile_source(_json.dumps(ADVANCED_EXAMPLE), run_production=False, machine={'coloring': True})
+    assert r['ok'] and not [d for d in r['diagnostics'] if d['severity'] in ('error', 'warning')]
+    assert set(ADVANCED_EXAMPLE['plan']) >= {'reference', 'datums', 'checks'} and 'torii gate cloned' in spec_markdown()
+    assert not r['structure']['held_by_friction'] and not r['structure']['can_fall_out']
+
+
+def test_the_worked_superellipse_points_are_right():
+    import math
+    import re as _re
+    from board_engine.canvas_prompt import PRECISION_PROTOCOL
+    for deg, u, v in _re.findall(r'(\d+) -> \((\d+), (\d+)\)', PRECISION_PROTOCOL.replace('t 0', '0')):
+        t = math.radians(int(deg))
+        c, s = math.cos(t), math.sin(t)
+        assert (round(60 + 60 * math.copysign(abs(c) ** 0.8, c)), round(40 + 40 * math.copysign(abs(s) ** 0.8, s))) == (int(u), int(v))
+
+
+def test_red_team_and_failure_patterns_are_in_the_prompt():
+    from board_engine.canvas_prompt import ANTI_PATTERNS
+    p = build_prompt('Pagoda', thickness=3)
+    assert ANTI_PATTERNS in p and 'RED TEAM' in p
+
+
+def test_the_plan_layout_asks_for_joints_and_a_written_audit():
+    from board_engine.canvas_prompt import ADVANCED_EXAMPLE
+    p = build_prompt('Pagoda', thickness=3)
+    assert '"joints": one line per sub-assembly' in p and '"audit": at least 10 boards recomputed' in p
+    assert {'joints', 'audit'} <= set(ADVANCED_EXAMPLE['plan'])
+    assert 'a size seen in\n   two views' in IMAGE_SPEC
+
+
+def test_the_method_is_universal_not_tied_to_a_subject():
+    from board_engine.canvas_prompt import SIGNS_OF_LIFE, UNIVERSAL_METHOD
+    prompts = [build_prompt(t, thickness=3) for t in ('Japanese temple', 'Mechanical dragon', 'Desk lamp',
+                                                      'Something nobody has made before')]
+    for p in prompts:                                   # every subject gets the same full method
+        assert UNIVERSAL_METHOD in p and SIGNS_OF_LIFE in p and 'IDENTITY FIRST' in p
+    for form in ('FLAT PARTS', 'BOX VOLUMES', 'FRAMES AND SKELETONS', 'SMOOTH AND ORGANIC VOLUMES', 'TAPERING AND SEGMENTED',
+                 'REPEATED ELEMENTS', 'SHELLS AND SWEEPS', 'SURFACE DETAIL', 'MOVING PARTS'):
+        assert form in UNIVERSAL_METHOD, form
+    assert 'RECIPE - ' not in prompts[0] and 'GESTURE' in SIGNS_OF_LIFE and 'NATURAL VARIATION' in SIGNS_OF_LIFE
+    assert UNIVERSAL_METHOD in build_update_prompt('{}', 'add a balcony')
+
+
+def test_the_creative_brief_and_scope_work_for_any_title():
+    from board_engine.canvas_prompt import creative_brief, scope
+    for title in ('Pagoda', 'A gift for my sister', 'Clock'):
+        b = creative_brief(title)
+        assert 'Identity:' in b and 'Life:' in b and b.count(' | ') == 2 and creative_brief(title) == b
+    assert creative_brief('Pagoda') != creative_brief('Clock')          # different titles, different directions
+    assert creative_brief('Pagoda', images=True) == ''                  # with a reference, the reference is the brief
+    assert 'multi-part' in scope('x') and 'script' in scope('x', machine={'file': True})
+    p = build_prompt('Pagoda')
+    assert 'CREATIVE BRIEF' in p and 'museum quality' in p and 'SCOPE:' in p
+    assert 'CREATIVE BRIEF' not in build_prompt('', images=True)
+

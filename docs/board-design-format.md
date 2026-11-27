@@ -100,7 +100,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
     every joint type works (seats facing a stage from all four sides: angles 0, 90, 180, 270 about y). Any other angle
     tilts the whole copy about its origin (a fan of seats around a circle); finger and cross_lap joints inside it cannot
     follow a tilt, so use tab_slot there. An assembly with motions can only be turned by multiples of 90°.
-- Top level `"plan": {"concept"?: str, "economy"?: str, "assemblies": [...], "steps": [...], "checks": [...],
+- Top level `"plan": {"reference"?: [...], "datums"?: [...], "concept"?: str, "economy"?: str, "joints"?: [...], "audit"?: [...], "assemblies": [...], "steps": [...], "checks": [...],
   "reference"?: [...]}` is your design plan, written before `"boards"` ("reference": what attached reference images
   show); the compiler ignores it.
 - `"rotate": {"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}` tilts a board (roof panels, sloped backs,
@@ -1042,6 +1042,180 @@ shaping a finished design needs (profiles, arches, tilted roof); DESIGN QUALITY 
       "type": "tab_slot",
       "board": "DIV-Z2",
       "into": "BASE"
+    }
+  ]
+}
+```
+
+## Complete valid example of the working method (torii gate cloned from a reference)
+How a finished answer looks: "plan" holds the scale calibration, grid readings, the counted inventory, the datums with
+a dimension chain and the tick-off; the whole front silhouette (pillars, tie beam, plaque strut, lintels with the
+upswept tips traced point by point) is ONE panel whose enclosed gaps are openings; front pieces give the pillars depth.
+```json
+{
+  "format": "board-design/v1",
+  "plan": {
+    "reference": [
+      "scale: anchor = requested width 300 mm; real torii ~7.8 m wide -> model 1:26",
+      "front view grid: pillars x 0.21-0.28 and 0.72-0.79, nuki y 0.63-0.69, kasagi tips y 0.94-1.00",
+      "P1 pillars | front | 2 | round, vermilion | layer 0 + front piece for depth",
+      "K1 kasagi | front | 1 | upswept lintel, black top | traced curve, 9 points per side",
+      "N1 nuki, S1 shimaki, G1 gakuzuka | front | 1 each | in the frame plane"
+    ],
+    "datums": [
+      "origin: x 0 left of base, y 0 base bottom, z 0 back",
+      "base top y = 3",
+      "frame plane z = 54..57, pillar fronts z = 57..66 (frame centred on the base: 54 + 3 + 54 = 111)",
+      "pillar centre lines x = 70, 230 (symmetric about x = 150)",
+      "nuki y = 123..135, shimaki y = 153..165",
+      "chain x: 20 margin + 260 frame + 20 margin = 300"
+    ],
+    "concept": "Reference clone: one frame panel carries the whole front silhouette, front pieces give the pillars depth",
+    "joints": [
+      "FRAME: tabs into BASE from both pillar feet (the pillar fronts lock it: locked every way)",
+      "PILLAR-L-F, PILLAR-R-F: tabs into BASE and into FRAME - two directions, locked every way"
+    ],
+    "audit": [
+      "BASE: [0, 0, 0], size [300, 3, 54 + 3 + 54 = 111]",
+      "FRAME: [margin 20, base top 3, frame plane 54] = [20, 3, 54], size [260, kasagi tip 193 - 3 = 190, 3]",
+      "PILLAR-L-F: [pillar centre 70 - 2 = 68, 3, frame front 57], size [3, 110, 66 - 57 = 9]",
+      "PILLAR-R-F: mirror about x = 150: 300 - 68 - 3 = 229 -> [229, 3, 57]",
+      "bay-l: centre x (80 + 144) / 2 = 112, y (135 + 153) / 2 = 144, size [144 - 80 = 64, 153 - 135 = 18]",
+      "bay-r: mirror of bay-l: x = 300 - 112 = 188"
+    ],
+    "assemblies": [
+      "base",
+      "frame panel",
+      "pillar front pieces"
+    ],
+    "checks": [
+      "P1 -> FRAME pillars, PILLAR-L-F, PILLAR-R-F",
+      "K1 -> FRAME profile top edge",
+      "N1, S1, G1 -> FRAME",
+      "front projection: 6 / 6 elements within 2%, counts exact"
+    ]
+  },
+  "product": {
+    "name": "Torii gate",
+    "overall": {
+      "length": 300,
+      "height": 193,
+      "depth": 111
+    },
+    "description": "Assumptions: 1:26 scale clone of a standard myojin torii; round pillars given depth by a front piece each."
+  },
+  "material": {
+    "type": "plywood",
+    "thickness": 3,
+    "kerf": 0.15
+  },
+  "boards": [
+    {
+      "id": "BASE",
+      "group": "Base",
+      "position": [0, 0, 0],
+      "size": [300, 3, 111],
+      "color": "#b9b4a8"
+    },
+    {
+      "id": "FRAME",
+      "group": "Gate",
+      "position": [20, 3, 54],
+      "size": [260, 190, 3],
+      "color": "#c3272b",
+      "profile": {
+        "shape": "polygon",
+        "points": [
+          [40, 0],
+          [60, 0],
+          [60, 120],
+          [200, 120],
+          [200, 0],
+          [220, 0],
+          [220, 120],
+          [235, 120],
+          [235, 132],
+          [220, 132],
+          [220, 150],
+          [240, 150],
+          [240, 162],
+          [260, 178],
+          [260, 190],
+          [240, 182],
+          [200, 177],
+          [160, 175],
+          [130, 174],
+          [100, 175],
+          [60, 177],
+          [20, 182],
+          [0, 190],
+          [0, 178],
+          [20, 162],
+          [20, 150],
+          [40, 150],
+          [40, 132],
+          [25, 132],
+          [25, 120],
+          [40, 120]
+        ]
+      },
+      "openings": [
+        {
+          "id": "bay-l",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [112, 144, 55],
+          "size": [64, 18]
+        },
+        {
+          "id": "bay-r",
+          "kind": "opening",
+          "shape": "rect",
+          "center": [188, 144, 55],
+          "size": [64, 18]
+        }
+      ]
+    },
+    {
+      "id": "PILLAR-L-F",
+      "group": "Gate",
+      "position": [68, 3, 57],
+      "size": [3, 110, 9],
+      "color": "#c3272b"
+    },
+    {
+      "id": "PILLAR-R-F",
+      "group": "Gate",
+      "position": [229, 3, 57],
+      "size": [3, 110, 9],
+      "color": "#c3272b"
+    }
+  ],
+  "connections": [
+    {
+      "type": "tab_slot",
+      "board": "FRAME",
+      "into": "BASE"
+    },
+    {
+      "type": "tab_slot",
+      "board": "PILLAR-L-F",
+      "into": "BASE"
+    },
+    {
+      "type": "tab_slot",
+      "board": "PILLAR-R-F",
+      "into": "BASE"
+    },
+    {
+      "type": "tab_slot",
+      "board": "PILLAR-L-F",
+      "into": "FRAME"
+    },
+    {
+      "type": "tab_slot",
+      "board": "PILLAR-R-F",
+      "into": "FRAME"
     }
   ]
 }
