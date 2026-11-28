@@ -262,7 +262,7 @@ def test_ai_prompt_documents_every_field_the_compiler_accepts():
     spec = spec_markdown()
     missing = [k for k in COMPILER_FIELDS if not re.search(r'["`]' + k + r'["`]', spec)]
     assert not missing, f'document these fields in canvas_prompt.spec_markdown(): {missing}'
-    prompt = build_prompt('Bird house')
+    prompt = build_prompt('Bird house', style='full')    # the full prompt embeds the whole spec
     assert spec in prompt and 'rotate' in prompt and 'profile' in prompt
 
 

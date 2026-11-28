@@ -15,13 +15,13 @@ import math
 SHAPE = {'shape', 'center', 'width', 'height', 'corner_radius', 'angle', 'diameter', 'sides', 'rotation', 'teeth',
          'module', 'pressure_angle', 'backlash', 'points', 'symmetric', 'corners', 'exponent', 'start', 'segments'}
 TOP = {'format', 'product', 'material', 'joinery', 'sheet', 'boards', 'connections', 'motions', 'assemblies',
-       'instances', 'plan', 'part', 'auto_connect', 'consolidate', 'mounting'}
+       'instances', 'plan', 'part', 'auto_connect', 'consolidate', 'mounting', 'brief'}
 PRODUCT = {'name', 'description', 'overall', 'mounting'}
 MATERIAL = {'name', 'type', 'thickness', 'kerf', 'clearance', 'color', 'colour'}
 SHEET = {'width', 'height'}
 BOARD = {'id', 'name', 'group', 'position', 'size', 'thickness', 'material', 'grain', 'normal', 'note', 'openings',
          'edge_banding', 'profile', 'engravings', 'rotate', 'repeat', 'mirror', 'radial', 'living_hinge', 'color',
-         'colour', 'colors', 'decals'}
+         'colour', 'colors', 'decals', 'role'}
 OPENING = SHAPE | {'id', 'kind', 'size', 'note', 'repeat'}
 ENGRAVING = SHAPE | {'id', 'kind', 'depth', 'closed', 'text', 'position', 'align', 'src', 'size', 'note', 'repeat'}
 REPEAT = {'count', 'step', 'rows', 'layers', 'grow', 'morph'}
@@ -35,7 +35,7 @@ CONNECTION = {'id', 'type', 'board', 'boards', 'into', 'tabs', 'tab_width', 'tab
 FASTENERS = {'kind', 'count', 'diameter', 'length', 'end'}
 MOTION = {'id', 'type', 'boards', 'on', 'axis', 'direction', 'pivot', 'range', 'axle', 'driven_by', 'ratio', 'link',
           'note'}
-AXLE = {'diameter'}
+AXLE = {'diameter', 'supports', 'retain'}
 LINK = {'rod', 'from', 'to', 'pin'}
 ASSEMBLY = {'id', 'boards', 'connections', 'motions'}
 INSTANCE = {'assembly', 'id', 'offset', 'flip', 'rotate', 'repeat', 'mirror'}

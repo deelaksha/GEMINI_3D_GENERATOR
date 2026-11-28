@@ -26,6 +26,7 @@ TOUCH = 0.5                 # mm: the group must be this close to its mount
 CLEARANCE = 1.0             # mm: running gap a moving part needs to everything it passes (else it binds)
 ROTATE_STEP = 5.0           # degrees between the positions checked along a rotation
 MAX_SAMPLES = 72
+RETAIN = ('collar', 'press', 'cotter', 'washer', 'wedge')   # what keeps an axle in its supports (axle.retain)
 
 
 def _num(v):
@@ -126,6 +127,8 @@ def parse_motions(data, origin, diags, diag, line=None):
             mo['driven_by'] = driver
             if m.get('ratio') is not None:
                 mo['ratio'] = float(m['ratio'])
+        if m.get('_flip') in (-1, 1):
+            mo['_flip'] = m['_flip']        # mirrored assembly instance: a "ratio" coupling changes sense with it
         if link is not None:
             mo['link'] = {'rod': link['rod'], 'from': [float(v) for v in link['from']], 'to': [float(v) for v in link['to']],
                           'pin': float((link.get('pin') or {}).get('diameter', 4)), 'length': length}
@@ -140,8 +143,22 @@ def parse_motions(data, origin, diags, diag, line=None):
             if axle is not None and not (isinstance(axle, dict) and _num(axle.get('diameter')) and 1 <= axle['diameter'] <= 50):
                 bad(m, '"axle" must be {"diameter": mm} between 1 and 50.')
                 continue
+            sup = (axle or {}).get('supports')
+            if sup is not None and not (isinstance(sup, list) and all(isinstance(n, str) for n in sup)):
+                bad(m, '"axle.supports" must list the ids of the boards that also carry the axle.')
+                continue
+            unknown = [n for n in sup or [] if n not in ids and not copies.get(n)]
+            if unknown:
+                bad(m, f"\"axle.supports\" names unknown board(s) {', '.join(unknown)}.")
+                continue
+            supports = [g for n in sup or [] for g in ([n] if n in ids else copies[n])]
+            if (axle or {}).get('retain') is not None and axle['retain'] not in RETAIN:
+                bad(m, f'"axle.retain" must be one of {", ".join(RETAIN)} (what keeps the axle and the parts on it in place).')
+                continue
             mo.update(axis=m['axis'], pivot=[float(v) for v in m['pivot']],
-                      axle={'diameter': float(axle['diameter'])} if axle else None)
+                      axle={'diameter': float(axle['diameter']),
+                            **({'supports': supports} if sup is not None else {}),
+                            **({'retain': axle['retain']} if axle.get('retain') is not None else {})} if axle else None)
         else:
             if m.get('direction') not in AXES:
                 bad(m, 'a slide needs "direction": "x"|"y"|"z".')
@@ -173,6 +190,7 @@ def find_gears(data):
         centre[thin] += b['size'][thin] / 2.0
         out[b['id']] = {'teeth': prof['teeth'], 'module': float(prof['module']), 'rotation': float(prof.get('rotation', 0)),
                         'centre': centre, 'thin': thin, 'span': (b['position'][thin], b['position'][thin] + b['size'][thin]),
+                        'pressure_angle': float(prof['pressure_angle']) if _num(prof.get('pressure_angle')) else 20.0,
                         'profile': prof}
     return out
 
@@ -207,8 +225,9 @@ def _link(motions, gears, diags, diag, line):
         if drv_id is None:
             done.add(m['id'])
             return True
-        if drv_id in path:
-            bad(m, f"its drivers go round in a loop ({' -> '.join(path + [drv_id])}).")
+        if drv_id in path or drv_id == m['id']:
+            loop = path[path.index(drv_id):] if drv_id in path else []
+            bad(m, f"its drivers go round in a loop ({' -> '.join(loop + [m['id'], drv_id])}).")
             return False
         drv = by_id.get(drv_id)
         if drv is None or not resolve(drv, path + [m['id']]) or drv['range'] is None:
@@ -240,11 +259,36 @@ def _link(motions, gears, diags, diag, line):
                                   f"rod meets the arm closer to square.", line=line,
                                   calc=calc + [f"worst transmission angle over the cycle = {worst:.1f}° "
                                                f"(below {TRANSMISSION_MIN:g}° the drive binds)"]))
+            flips = _change_points(drv, m, table)
+            if flips:
+                where = ', '.join(f'{v:g}°' for v in flips)
+                diags.append(diag('warning', 'LINKAGE_CHANGE_POINT', f"Motion '{m['id']}': at {where} of '{drv['id']}' the "
+                                  f"crank, the rod '{m['link']['rod']}', the arm and the frame line up (a change point: "
+                                  f"shortest + longest link = the other two), so from there the linkage can carry on "
+                                  f"either way - as drawn or crossed over - and the real one may flip or lock. Make "
+                                  f"shortest + longest shorter than the other two, or keep '{drv['id']}' clear of "
+                                  f"{'that angle' if len(flips) == 1 else 'those angles'}.", line=line,
+                                  calc=calc + [f"all four pivots in line at {where} of '{drv['id']}' (the rod meets the "
+                                               f"arm at 0° or 180° there)"]))
             drive = _drive_profile(drv, m, table)
             if drive:
                 diags.append(diag('info', 'LINKAGE_DRIVE', drive[0], line=line, calc=calc + drive[1]))
             done.add(m['id'])
             return True
+        if 'ratio' in m:
+            m['ratio'] *= m.get('_flip', 1) * drv.get('_flip', 1)      # a mirrored copy: both senses as mirrored
+            meshing = [(a, b) for a in drv['boards'] if a in gears for b in m['boards'] if b in gears
+                       if _meshes(gears[a], gears[b], GEAR_DISTANCE_TOL)]
+            if meshing:
+                a, b = meshing[0]
+                want = -gears[a]['teeth'] / gears[b]['teeth']
+                if abs(m['ratio'] - want) > 1e-6 * max(1.0, abs(want)):
+                    diags.append(diag('error', 'GEAR_RATIO', f"Motion '{m['id']}': its gear '{b}' meshes with '{a}' of "
+                                      f"'{drv_id}', so it turns at {want:.4g} (the other way, {gears[a]['teeth']} : "
+                                      f"{gears[b]['teeth']} teeth), not at the \"ratio\" {m['ratio']:g} written. Remove "
+                                      f"\"ratio\" (meshing gears set it) or write {want:.6g}.", line=line,
+                                      calc=[f"ratio = -z_driver / z_driven = -{gears[a]['teeth']} / {gears[b]['teeth']} "
+                                            f"= {want:.6g}", f"written: {m['ratio']:g}"]))
         if 'ratio' not in m:
             pairs = [(a, b) for a in drv['boards'] if a in gears for b in m['boards'] if b in gears]
             if not pairs:
@@ -263,7 +307,58 @@ def _link(motions, gears, diags, diag, line):
     for m in motions:
         if resolve(m, []):
             out.append(m)
+    _check_inputs(out, gears, diags, diag, line)
     return out
+
+
+def _meshes(a, b, tol):
+    """Whether two gears (find_gears) are in one plane, of one module, at the meshing centre distance (within tol)."""
+    return (a['thin'] == b['thin'] and min(a['span'][1], b['span'][1]) - max(a['span'][0], b['span'][0]) > 0
+            and abs(a['module'] - b['module']) < 1e-6
+            and abs(math.dist(a['centre'], b['centre']) - a['module'] * (a['teeth'] + b['teeth']) / 2) <= tol)
+
+
+MESH_FIND_TOL = 0.5         # mm: two gears this close to their meshing distance are taken to mesh
+
+
+def _check_inputs(motions, gears, diags, diag, line):
+    """M-14: meshing gears whose motions are independent (an undeclared coupling), and mechanisms with more than one
+    input (the spec's rule: one crank or motor drives everything)."""
+    by_id = {m['id']: m for m in motions}
+
+    def root(mid):
+        seen = []
+        while by_id[mid].get('driven_by') in by_id and mid not in seen:
+            seen.append(mid)
+            mid = by_id[mid]['driven_by']
+        return mid
+    owner = {b: m['id'] for m in motions for b in m['boards'] if b in gears}
+    declared = {frozenset(m['gears']) for m in motions if m.get('gears')}
+    ids = sorted(owner)
+    for x, a in enumerate(ids):
+        for b in ids[x + 1:]:
+            ma, mb = owner[a], owner[b]
+            if root(ma) == root(mb) or frozenset((a, b)) in declared or not _meshes(gears[a], gears[b], MESH_FIND_TOL):
+                continue
+            free = mb if by_id[mb].get('driven_by') is None else ma
+            other = ma if free == mb else mb
+            diags.append(diag('warning', 'MOTION_UNDECLARED_MESH', f"Gears '{a}' (motion '{ma}') and '{b}' (motion "
+                              f"'{mb}') mesh, but their motions are independent, so the compiler moves each on its own and "
+                              f"their teeth clash. Give '{free}' \"driven_by\": \"{other}\" (and no \"range\") so it "
+                              f"follows, or move the gears apart.", line=line,
+                              calc=[f"centre distance {math.dist(gears[a]['centre'], gears[b]['centre']):.2f} mm = module x "
+                                    f"(z1 + z2) / 2 = {gears[a]['module'] * (gears[a]['teeth'] + gears[b]['teeth']) / 2:g} mm"]))
+    kids = {}
+    for m in motions:
+        kids.setdefault(root(m['id']), []).append(m)
+    inputs = [r for r, ms in kids.items() if by_id[r].get('driven_by') is None
+              and any(m.get('driven_by') or m.get('link') or any(b in gears for b in m['boards']) for m in ms)]
+    if len(inputs) > 1:
+        diags.append(diag('warning', 'MOTION_INPUTS', f"The mechanism has {len(inputs)} independent inputs "
+                          f"({', '.join(repr(i) for i in inputs)}): each turns on its own. A machine normally has ONE input - "
+                          f"a hand crank or motor - that drives the rest (\"driven_by\"); if they really are separate "
+                          f"mechanisms, keep them apart.", line=line,
+                          calc=[f"input '{i}' drives {', '.join(m['id'] for m in kids[i]) }" for i in inputs]))
 
 
 TRANSMISSION_MIN = 30.0     # degrees: a rod meeting its arm flatter than this binds instead of driving it
@@ -378,6 +473,30 @@ def _link_table(drv, m):
             if a - 1e-9 <= v <= b + 1e-9:
                 worst = min(worst, _transmission(drv, m, v, got))
     return sorted([round(v, 4) + 0.0, round(x, 4) + 0.0] for v, x in rows.items() if a - 1e-9 <= v <= b + 1e-9), jams, worst
+
+
+def _change_points(drv, m, table):
+    """Crank values (within the solved table) where a four-bar's crank lines up with its frame and the rod with the
+    arm: there the two ways the linkage can be assembled meet (a parallelogram may turn crossed). [] for a slider."""
+    if m['type'] != 'rotate' or len(table) < 2:
+        return []
+    lk, k = m['link'], AXES.index(drv['axis'])
+    i, j = _plane(k)
+    c, q, to = drv['pivot'], m['pivot'], lk['to']
+    psi = math.degrees(math.atan2(q[j] - c[j], q[i] - c[i]))            # the frame line, seen from the crank axle
+    phi = math.degrees(math.atan2(lk['from'][j] - c[j], lk['from'][i] - c[i]))
+    lo, hi = table[0][0], table[-1][0]
+    v, out = psi - phi + math.ceil((lo - (psi - phi)) / 180.0 - 1e-9) * 180.0, []
+    while v <= hi + 1e-9:
+        P = _at(_local(drv, v), lk['from'])
+        rho, D = math.hypot(to[i] - q[i], to[j] - q[j]), math.hypot(P[i] - q[i], P[j] - q[j])
+        d2 = lk['length'] ** 2 - (to[k] - P[k]) ** 2
+        if D > 1e-9 and rho > 1e-9:
+            a = (rho * rho - d2 + D * D) / (2 * D)
+            if abs(rho * rho - a * a) <= 1e-4 * rho * rho and not any(abs((v - w + 180.0) % 360.0 - 180.0) < 1e-6 for w in out):
+                out.append(round(v, 3) + 0.0)
+        v += 180.0
+    return out
 
 
 def _drive_profile(drv, m, table):
@@ -520,7 +639,8 @@ def add_axle_holes(data, motions, thickness, diags, diag):
             continue
         k = AXES.index(m['axis'])
         d = m['axle']['diameter']
-        holed = _cut_hole(by_id, thickness, m['boards'] + [m['on']], m['pivot'], k, d, f"axle-{m['id']}",
+        supports = [b for b in m['axle'].get('supports') or [] if b not in m['boards'] and b != m['on']]
+        holed = _cut_hole(by_id, thickness, m['boards'] + [m['on']] + supports, m['pivot'], k, d, f"axle-{m['id']}",
                           f"axle of motion {m['id']}: Ø{d:g} mm dowel")
         moving = [b for b in holed if b in m['boards']]
         if not moving or m['on'] not in holed:
@@ -529,11 +649,25 @@ def add_axle_holes(data, motions, thickness, diags, diag):
                               f"through '{m['on']}' (both thin along {m['axis']}, the pivot inside both with room for the "
                               f"Ø{d:g} mm hole). It passes through: {', '.join(holed) or 'none of them'}."))
             continue
+        missed = [b for b in supports if b not in holed]
+        if missed:
+            diags.append(diag('error', 'MOTION_AXLE', f"Motion '{m['id']}': its axle along {m['axis']} through "
+                              f"[{', '.join(f'{v:g}' for v in m['pivot'])}] does not pass square through the support(s) "
+                              f"{', '.join(missed)} listed in \"axle.supports\" (each must be thin along {m['axis']}, with the "
+                              f"pivot inside it and room for the Ø{d:g} mm hole). Move them onto the axle line or leave "
+                              f"them out of \"supports\"."))
         span = [by_id[b] for b in holed]
         length = max(b['position'][k] + b['size'][k] for b in span) - min(b['position'][k] for b in span)
         m['axle']['boards'] = holed
         diags.append(diag('info', 'MOTION_AXLE', f"Motion '{m['id']}': cut a Ø{d:g} mm dowel about {math.ceil(length + 4)} mm "
                           f"long as its axle; it passes through {', '.join(holed)}."))
+        if m['axle'].get('supports') is not None and not m['axle'].get('retain'):
+            diags.append(diag('warning', 'AXLE_UNRETAINED', f"Motion '{m['id']}': nothing keeps its Ø{d:g} mm axle (through "
+                              f"{', '.join(holed)}) from sliding out, or the parts on it from sliding along it. Add "
+                              f"\"retain\" to the axle: \"collar\" or \"washer\" (a small board fixed on each free end), "
+                              f"\"press\" (a press-fit hole in one support), \"cotter\" or \"wedge\" (a cross pin).",
+                              calc=[f"axle about {math.ceil(length + 4)} mm long through {len(holed)} boards; no "
+                                    f"\"retain\" given"]))
     for m in motions:
         lk, drv = m.get('link'), motion_of.get(m.get('driven_by'))
         if not lk or not drv or drv['type'] != 'rotate':
@@ -542,6 +676,7 @@ def add_axle_holes(data, motions, thickness, diags, diag):
         for end, point, side in (('crank', lk['from'], drv['boards']), ('arm', lk['to'], m['boards'])):
             holed = _cut_hole(by_id, thickness, side + [rod], point, k, d, f"pin-{m['id']}-{end}",
                               f"{end} pin of the rod of motion {m['id']}: Ø{d:g} mm dowel")
+            lk.setdefault('pins', {})[end] = holed          # the pin is a solid through these (kinematics.solids)
             if rod not in holed or not set(holed) & set(side):
                 diags.append(diag('error', 'MOTION_PIN', f"Motion '{m['id']}': the rod's {end} pin at "
                                   f"[{', '.join(f'{v:g}' for v in point)}] must pass square through the rod '{rod}' and a "
@@ -610,9 +745,79 @@ def _box_gap(a, b):
     return max(max(0.0, b[0][i] - a[1][i], a[0][i] - b[1][i]) for i in range(3))
 
 
+GUIDE_GAP = 3.0             # mm: a board this close beside a sliding part, on both sides across the slide, guides it
+HINGE_SLACK = 2.0           # mm: a motion's axis may lie this far beyond door thickness + gap from its hinge edge
+
+
+def _fmt(v):
+    return f"{round(v, 1) + 0.0:g}"
+
+
+def _hinge_gap(j):
+    from .validation import HINGE
+    return float(j.get('gap', HINGE['default_gap']))
+
+
+def _guided(plates, group, others, k, mount):
+    """Whether boards on both sides across the slide direction k (within GUIDE_GAP, beside it along the slide) hold
+    the sliding group in line, or the slide runs straight off its mount (a lid lifted off needs no guide)."""
+    boxes = [plates[b].world_aabb() for b in group]
+    lo = [min(b[0][i] for b in boxes) for i in range(3)]
+    hi = [max(b[1][i] for b in boxes) for i in range(3)]
+    ov = [min(hi[i], mount[1][i]) - max(lo[i], mount[0][i]) for i in range(3)]
+    if min(range(3), key=lambda i: ov[i]) == k:
+        return True
+    for i in (x for x in range(3) if x != k):
+        j = 3 - i - k
+        side = {-1: False, 1: False}
+        for s in others:
+            slo, shi = plates[s].world_aabb()
+            if min(shi[j], hi[j]) - max(slo[j], lo[j]) <= 0 or min(shi[k], hi[k]) - max(slo[k], lo[k]) <= 0:
+                continue
+            if lo[i] - GUIDE_GAP <= shi[i] <= lo[i] + TOUCH:
+                side[-1] = True
+            if hi[i] - TOUCH <= slo[i] <= hi[i] + GUIDE_GAP:
+                side[1] = True
+        if side[-1] and side[1]:
+            return True
+    return False
+
+
+def _hinge_mismatch(design, plates, m, j):
+    """-> (message, calc) when a rotate motion does not turn about the hinge edge of the door it moves, else None."""
+    from .model import edge_frame
+    door = plates.get(j['a'])
+    if door is None or not isinstance(j.get('a_edge'), int) or not 0 <= j['a_edge'] < len(door.outline):
+        return None
+    a, d, _n, L = edge_frame(door.outline, j['a_edge'])
+    p0, p1 = door.frame.to_world([a[0], a[1], 0.0]), door.frame.to_world([a[0] + d[0] * L, a[1] + d[1] * L, 0.0])
+    mid = [(p0[i] + p1[i]) / 2.0 for i in range(3)]
+    k = AXES.index(m['axis'])
+    along = abs(p1[k] - p0[k]) / max(math.dist(p0, p1), 1e-9)
+    dist = _axis_distance(m, mid)
+    tol = door.t + _hinge_gap(j) + HINGE_SLACK
+    if along >= math.cos(math.radians(5)) and dist <= tol:
+        return None
+    run = max(range(3), key=lambda i: abs(p1[i] - p0[i]))
+    want = [round(v, 1) + 0.0 for v in mid]
+    want[run] = m['pivot'][run] if run == k else want[run]
+    msg = (f"Motion '{m['id']}': the hinge '{j['id']}' is on the edge of '{j['a']}' that runs along {AXES[run]} through "
+           f"[{', '.join(_fmt(v) for v in mid)}], but the motion turns about {m['axis']} through "
+           f"[{', '.join(f'{v:g}' for v in m['pivot'])}]"
+           + (f", {dist:.0f} mm from that edge." if along >= math.cos(math.radians(5)) else ", across that edge.")
+           + f" A hinged door turns about its hinge edge: set \"axis\": \"{AXES[run]}\" and the pivot on that edge (about "
+             f"[{', '.join(f'{v:g}' for v in want)}]), or put the hinge on the edge it turns about.")
+    return msg, [f"hinge edge of '{j['a']}': from [{', '.join(_fmt(v) for v in p0)}] to [{', '.join(_fmt(v) for v in p1)}]",
+                 f"motion axis {m['axis']} through [{', '.join(f'{v:g}' for v in m['pivot'])}]: {dist:.1f} mm from the edge "
+                 f"(at most {tol:g} mm = door {door.t:g} + hinge gap {_hinge_gap(j):g} + {HINGE_SLACK:g})"]
+
+
 def check_motions(design, plates, motions):
-    """-> issues (validation format) for every motion: mounting, fixed joints, slide direction, travel clearance."""
-    from .validation import issue, plate_interference
+    """-> issues (validation format) for every motion: mounting, fixed joints (of its boards and its rod), pivot /
+    guide hardware and the hinge, slide direction, travel clearance (kinematics.scan: no part moves more than the
+    running clearance between two checked positions; the first contact is bisected)."""
+    from .validation import TOL, issue
+    from . import kinematics as K
     out = []
     comps = {c['id']: c for c in design['components']}
     trains = {m['id']: m['id'] for m in motions}
@@ -626,6 +831,11 @@ def check_motions(design, plates, motions):
             trains[root(m['id'])] = root(m['driven_by'])
     trains = {k: root(k) for k in trains}
     rod_of = lambda t: [t['link']['rod']] if t.get('link') else []
+    joined = [j for j in design['joints'] if j.get('status') == 'joined']
+    hinges = [j for j in joined if j['type'] == 'hinge']
+    hinged = {frozenset((j['a'], j['b'])) for j in hinges}
+    solid = K.solids(design, plates, motions)
+    grown = {}
     for m in motions:
         group = [b for b in m['boards'] if b in plates]
         if not group or m['on'] not in plates:
@@ -636,16 +846,18 @@ def check_motions(design, plates, motions):
         mount = plates[m['on']].world_aabb()
         gaps = {b: _box_gap(plates[b].world_aabb(), mount) for b in group}
         near = min(gaps, key=gaps.get)
-        if gaps[near] > TOUCH:
+        # a door hangs on its hinges up to the hinge gap off the carcass
+        allow = TOUCH + max([_hinge_gap(j) for j in hinges if m['on'] in (j['a'], j['b'])
+                             and {j['a'], j['b']} & set(group)] or [0.0])
+        if gaps[near] > allow:
             out.append(issue('MOTION_NOT_MOUNTED', 'error', 'assembly',
                              f"Motion '{m['id']}': the moving boards do not touch '{m['on']}', the board they are mounted on "
                              f"(closest: '{near}', {gaps[near]:.1f} mm away). Move them onto it or mount them on the board "
                              f"they touch.", group + [m['on']],
-                             calc=[f"gap '{near}' - '{m['on']}' = {gaps[near]:.2f} mm (must be <= {TOUCH} mm)"]))
+                             calc=[f"gap '{near}' - '{m['on']}' = {gaps[near]:.2f} mm (must be <= {allow:g} mm)"]))
             continue
         moving = set(group)
-        fixed = [j for j in design['joints'] if j.get('status') == 'joined' and j['type'] != 'hinge'
-                 and (j['a'] in moving) != (j['b'] in moving)]
+        fixed = [j for j in joined if j['type'] != 'hinge' and (j['a'] in moving) != (j['b'] in moving)]
         if fixed:
             j = fixed[0]
             out.append(issue('MOTION_LOCKED', 'error', 'joint',
@@ -655,6 +867,17 @@ def check_motions(design, plates, motions):
                              [j['a'], j['b']], joint=j['id'],
                              calc=[f"{len(fixed)} fixed joint(s) between moving and static boards: "
                                    + ', '.join(x['id'] for x in fixed[:6])]))
+            continue
+        rod = m['link']['rod'] if m.get('link') else None
+        tied = [j for j in joined if rod in (j['a'], j['b'])] if rod in plates else []
+        if tied:                                     # a connecting rod is held only by its two pins
+            j = tied[0]
+            other = j['b'] if j['a'] == rod else j['a']
+            out.append(issue('MOTION_LOCKED', 'error', 'joint',
+                             f"Motion '{m['id']}': its connecting rod '{rod}' is fixed to '{other}' by the {j['type']} joint "
+                             f"'{j['id']}', so the mechanism cannot move. Remove that connection: the rod is held only by "
+                             f"its two pins and must move freely between them.", [rod, other], joint=j['id'],
+                             calc=[f"{len(tied)} fixed joint(s) on the rod '{rod}': " + ', '.join(x['id'] for x in tied[:6])]))
             continue
         if m['type'] == 'slide':
             k = AXES.index(m['direction'])
@@ -679,7 +902,28 @@ def check_motions(design, plates, motions):
                                            f"'{near}' is on the {'+' if side > 0 else '-' if side else '?'} side of "
                                            f"'{m['on']}'; range [{m['range'][0]:g}, {m['range'][1]:g}] mm"]))
                     continue
-        hinged = {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined' and j['type'] == 'hinge'}
+            if not _guided(plates, group, [s for s in plates if s not in moving], k, mount):
+                out.append(issue('MOTION_NO_GUIDE', 'warning', 'assembly',
+                                 f"Motion '{m['id']}': nothing keeps {', '.join(repr(b) for b in group)} on its line while "
+                                 f"it slides along {m['direction']}: it rests on '{m['on']}' but no board runs beside it on "
+                                 f"both sides across the slide, so it would wander or tip. Add a guide - a rail or side "
+                                 f"board on each side (with a 1-2 mm running gap), or a slot it runs in.", group + [m['on']],
+                                 calc=[f"no boards within {GUIDE_GAP:g} mm on both sides of the group across "
+                                       f"{' or '.join(AXES[i] for i in range(3) if i != k)}"]))
+        else:
+            own = [j for j in hinges if {j['a'], j['b']} & moving]
+            if not m.get('axle') and not own:
+                out.append(issue('MOTION_NO_PIVOT', 'warning', 'assembly',
+                                 f"Motion '{m['id']}': nothing physically holds {', '.join(repr(b) for b in group)} on its "
+                                 f"turning axis ({m['axis']} through [{', '.join(f'{v:g}' for v in m['pivot'])}]), so the "
+                                 f"part would fall off or wobble. Add \"axle\": {{\"diameter\": 6}} (a dowel through the "
+                                 f"pivot, the moving board and '{m['on']}') or hang it on a hinge connection.",
+                                 group + [m['on']], calc=['no "axle" and no hinge connection on the moving boards']))
+            for j in own:
+                bad = _hinge_mismatch(design, plates, m, j) if j['a'] in moving else None
+                if bad:
+                    out.append(issue('MOTION_HINGE_MISMATCH', 'warning', 'joint', bad[0], [j['a'], j['b']], joint=j['id'],
+                                     calc=bad[1]))
         in_train = {t['id'] for t in motions if trains.get(t['id']) == trains.get(m['id'])}
         train = {b for t in motions if t['id'] in in_train for b in t['boards'] + rod_of(t)}
         # whatever rides on this motion (a jaw on a head) moves rigidly with it, unless the train drives it as well
@@ -694,88 +938,99 @@ def check_motions(design, plates, motions):
                     grew = True
         moving = moving | train | set(riders)     # a train moves together: its mesh and rods are checked separately
         group = group + riders
-        step, samples = _samples(m)
-        posed = {}
-        for v in samples:
-            check_budget()
-            posed[v] = {b: _moved(design, comps[b], m, v) for b in group}
-        env = None
-        for boards in posed.values():
-            for p in boards.values():
-                lo, hi = p.world_aabb()
-                env = (lo, hi) if env is None else ([min(env[0][i], lo[i]) for i in range(3)],
-                                                     [max(env[1][i], hi[i]) for i in range(3)])
-        others = [s for s in plates if s not in moving and env and _box_gap(plates[s].world_aabb(), env) <= 0]
-        first, tight = {}, {}                        # (static board, side of 0) -> (value, moving board, hit)
-        grown = {b: _grown(design, comps[b], CLEARANCE) for b in group}
+        nominal, _ = _samples(m)
+        grid = ROTATE_STEP if m['type'] == 'rotate' else 1.0          # round positions in the messages
+        ranges = K.sides(m['range'], 360.0 if m['type'] == 'rotate' else None)
+        speed = {b: K.reach(plates[b], m['axis'], m['pivot']) * math.pi / 180.0 if m['type'] == 'rotate' else 1.0
+                 for b in group}
+        cache = {}
+
+        def pose(b, v, base=None):
+            key = (b, base is not None, round(v, 9))
+            if key not in cache:
+                cache[key] = K.posed(base or plates[b], _local(m, v))
+            return cache[key]
+        static = [(s, plates[s], None) for s in plates if s not in moving]
+        static += [(x['id'], x['plate'], x['through']) for x in solid
+                   if x['carrier'] is None or (x['carrier'] not in in_train and x['carrier'] not in carried)]
+        first, tight, flat = {}, {}, {}              # (static board, side of 0) -> first contact
         # contact right at a hinge line is unavoidable: an edge closer to the axis than one step moves is not judged
-        near_axis = CLEARANCE / max(math.sin(math.radians(step)), 1e-3) if m['type'] == 'rotate' else 0.0
-        for v in samples:                            # outwards from 0, so the first hit is the nearest one
-            for b, p in posed[v].items():
-                big = None
-                for s in others:
-                    if (s, v > 0) in first or frozenset((b, s)) in hinged:
-                        continue
-                    if _box_gap(p.world_aabb(), plates[s].world_aabb()) > CLEARANCE:
-                        continue
-                    check_budget()
-                    hits = plate_interference(p, plates[s]) if _box_gap(p.world_aabb(), plates[s].world_aabb()) <= 0 else []
-                    if hits:
-                        first[(s, v > 0)] = (v, b, hits[0])
-                        continue
-                    if s == m['on'] or (s, v > 0) in tight:
-                        continue                     # it rests / runs on its mount by design
-                    big = big or _moved(design, grown[b], m, v)
-                    close = [h for h in plate_interference(big, plates[s])
-                             if not (near_axis and h['kind'] != 'parallel_overlap' and h.get('location')
-                                     and _axis_distance(m, h['location']) < near_axis)]
-                    if close:
-                        tight[(s, v > 0)] = (v, b, close[0])
-        for (s, _side), (v, b, hit) in sorted(first.items(), key=lambda kv: abs(kv[1][0])):
-            side = [x for x in samples if (x > 0) == (v > 0) and abs(x) < abs(v)]
-            clear = side[-1] if side else 0.0
+        near_axis = CLEARANCE / max(math.sin(math.radians(nominal)), 1e-3) if m['type'] == 'rotate' else 0.0
+        for b in group:
+            env = K.envelope(lambda v: K.posed(plates[b], _local(m, v)).world_aabb(), ranges, lambda dv: speed[b] * dv)
+            step = K.steps(nominal, CLEARANCE / speed[b]) if speed[b] > 1e-12 else nominal
+            flat[b] = K.in_plane([m], plates[b].frame.normal)
+            cyl = (m['axis'], m['pivot'], speed[b] * 180.0 / math.pi) if m['type'] == 'rotate' else None
+            for s, ps, through in static:
+                sbox = ps.world_aabb()
+                if (through and b in through) or frozenset((b, s)) in hinged or K.box_gap(env, sbox) > CLEARANCE:
+                    continue
+                cg = K.cyl_gap(cyl, sbox)                # it never leaves the circle its farthest point sweeps
+                if cg > CLEARANCE:
+                    continue
+                lg = K.layer_gap(plates[b], ps) if flat[b] else None      # in its own layer, and ps parallel to it
+                if lg is not None and lg >= CLEARANCE - TOL['contact']:
+                    continue
+                check_budget()
+                close = None
+                if s != m['on'] and through is None:
+                    if b not in grown:
+                        from .model import Plate
+                        grown[b] = Plate(design, _grown(design, comps[b], CLEARANCE))
+                    close = (lambda v, b=b, ps=ps: [
+                        h for h in K.interference(pose(b, v, grown[b]), ps)
+                        if not (near_axis and h['kind'] != 'parallel_overlap' and h.get('location')
+                                and _axis_distance(m, h['location']) < near_axis)])
+                for sign, lo, hi in ranges:
+                    hit, tt = K.scan(sign, lo, hi, step, lambda v, b=b, ps=ps, cg=cg: max(K.gap(pose(b, v), ps), cg),
+                                     speed[b], (lambda v: []) if lg is not None and lg >= -TOL['contact'] else
+                                     (lambda v, b=b, ps=ps: K.interference(pose(b, v), ps)), close, CLEARANCE, nominal)
+                    key = (s, sign > 0)
+                    if hit and (key not in first or abs(hit[2]) < abs(first[key][3])):
+                        first[key] = (hit[0], b, hit[1][0], hit[2], lo, hi, step)
+                    if tt and (key not in tight or abs(tt[0]) < abs(tight[key][0])):
+                        tight[key] = (tt[0], b, tt[1][0], step)
+        span = f"[{m['range'][0]:g}, {m['range'][1]:g}]"
+        for (s, _side), (v, b, hit, c, lo, end, step) in sorted(first.items(), key=lambda kv: abs(kv[1][3])):
+            at, clear = K.display(c, grid, lo, end)
             size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
-            limit = [m['range'][0], clear] if v > 0 else [clear, m['range'][1]]
+            limit = [m['range'][0], clear] if c > 0 else [clear, m['range'][1]]
             out.append(issue('MOTION_COLLISION', 'error', 'assembly',
-                             f"Motion '{m['id']}': {how}, '{b}' runs into '{s}' at {v:g}{unit} (shared material {size}). "
-                             f"It moves freely only to {clear:g}{unit}: limit the range to [{limit[0]:g}, {limit[1]:g}], "
-                             f"or move the pivot / cut clearance into '{s}'.", [b, s],
-                             location=hit.get('location'),
-                             calc=[f"'{b}' {how}: positions checked every {step:g}{unit} over "
-                                   f"[{m['range'][0]:g}, {m['range'][1]:g}]",
-                                   f"first contact with '{s}' at {v:g}{unit}: {hit['kind']} {size}",
-                                   f"last clear position on that side: {clear:g}{unit}"]))
-        for (s, side), (v, b, hit) in sorted(tight.items(), key=lambda kv: abs(kv[1][0])):
+                             f"Motion '{m['id']}': {how}, '{b}' runs into '{s}' at {at:g}{unit} (first contact at "
+                             f"{_fmt(c)}{unit}, shared material {size}). It moves freely only to {clear:g}{unit}: limit "
+                             f"the range to [{limit[0]:g}, {limit[1]:g}], or move the pivot / cut clearance into '{s}'.",
+                             [b, s], location=hit.get('location'),
+                             calc=[f"'{b}' {how}: checked over {span} in steps of at most {step:.3g}{unit} (no point of it "
+                                   f"moves more than {CLEARANCE:g} mm per step; positions its distance proves clear are "
+                                   f"skipped), the first contact bisected to {K.BISECT:g}{unit}; round positions every "
+                                   f"{grid:g}{unit}",
+                                   f"first contact with '{s}' at {_fmt(c)}{unit}: {hit['kind']} {size}",
+                                   f"last clear round position on that side: {clear:g}{unit}"]))
+        for (s, side), (v, b, hit, step) in sorted(tight.items(), key=lambda kv: abs(kv[1][0])):
             if (s, side) in first:
                 continue                             # it collides there anyway
             out.append(issue('MOTION_CLEARANCE', 'error', 'assembly',
                              f"Motion '{m['id']}': {how}, '{b}' passes '{s}' with less than {CLEARANCE:g} mm to spare at "
-                             f"{v:g}{unit}, so it would rub and bind. Leave a running gap of at least {CLEARANCE:g} mm "
+                             f"{_fmt(v)}{unit}, so it would rub and bind. Leave a running gap of at least {CLEARANCE:g} mm "
                              f"(about 2 mm is safer): move or shrink '{b}' or '{s}' there.", [b, s],
                              location=hit.get('location'),
-                             calc=[f"'{b}' grown by {CLEARANCE:g} mm on every side touches '{s}' at {v:g}{unit} "
+                             calc=[f"'{b}' grown by {CLEARANCE:g} mm on every side touches '{s}' at {_fmt(v)}{unit} "
                                    f"({hit['kind']}); the real parts do not touch, so the gap is under {CLEARANCE:g} mm",
-                                   f"positions checked every {step:g}{unit} over [{m['range'][0]:g}, {m['range'][1]:g}]"
+                                   f"positions checked over {span} in steps of at most {step:.3g}{unit}"
                                    + (f"; edges within {near_axis:.0f} mm of the turning axis (the hinge line) are not "
                                       f"judged" if near_axis else '')]))
     return out
 
 
-def check_cycles(design, plates, motions, reported=()):
-    """-> issues for every mechanism (a crank or gear with everything it drives, and all that rides on them): the
-    whole cycle is stepped through with every part posed where the mechanism puts it - rods, rockers, sliders and
-    nested parts at once - and any two parts that run into each other are reported (pairs in `reported` excepted)."""
-    from .validation import issue, plate_interference
-    by_id = {m['id']: m for m in motions}
-    comps = {c['id']: c for c in design['components']}
-    hinged = {frozenset((j['a'], j['b'])) for j in design['joints'] if j.get('status') == 'joined' and j['type'] == 'hinge'}
-    meshing = {frozenset(m['gears']) for m in motions if m.get('gears')}
-    seen, out = set(map(frozenset, reported)), []
-    for root in motions:
-        if root.get('driven_by') or root['range'] is None:
-            continue
-        vals0 = train_values(motions, root['id'], 0.0)
-        family = set(vals0)
+class _Train:
+    """A root motion with everything it drives (gears, belts, rods) and everything riding on those, posed at any
+    value of the root: its bodies (boards, rods, and the axles / pins they carry) with the speed of each."""
+
+    def __init__(self, design, plates, motions, root, solid):
+        from . import kinematics as K
+        self.motions, self.root = motions, root
+        self.by_id = by_id = {m['id']: m for m in motions}
+        family = set(train_values(motions, root['id'], 0.0))
         grew = True
         while grew:                                       # and everything that rides on the train
             grew = False
@@ -783,56 +1038,271 @@ def check_cycles(design, plates, motions, reported=()):
                 if t['id'] not in family and t.get('parent') in family:
                     family.add(t['id'])
                     grew = True
-        if len(family) < 2:
+        self.family = family
+        own = set(family) | set(K.chain(by_id, root['id']))          # and the (resting) motions the root rides on
+        self.own = [m for m in motions if m['id'] in own]
+        spd = K.speeds(motions, root['id'])
+        self.bodies = {}                                  # id -> {key, plate, rate, rod, through}
+        for t in motions:
+            if t['id'] not in family:
+                continue
+            for b in t['boards']:
+                if b in plates:
+                    self.bodies[b] = {'key': t['id'], 'plate': plates[b], 'through': None, 'rod': False,
+                                      'rate': K.plate_rate(by_id, spd, K.chain(by_id, t['id']), plates[b]),
+                                      'cyl': self._cyl(t, plates[b]), 'flat': self._flat(t['id'], plates[b])}
+            if t.get('link') and t['link']['rod'] in plates:
+                r = t['link']['rod']
+                self.bodies[r] = {'key': 'rod:' + t['id'], 'plate': plates[r], 'through': None, 'rod': True,
+                                  'rate': K.rod_rate(by_id, spd, t, plates[r]), 'cyl': None,
+                                  'flat': self._flat(t['driven_by'], plates[r]) and self._flat(t['id'], plates[r])}
+        for x in solid:
+            if x['carrier'] in family:
+                self.bodies[x['id']] = {'key': x['carrier'], 'plate': x['plate'], 'through': x['through'], 'rod': False,
+                                        'rate': K.plate_rate(by_id, spd, K.chain(by_id, x['carrier']), x['plate']),
+                                        'cyl': self._cyl(by_id[x['carrier']], x['plate']),
+                                        'flat': self._flat(x['carrier'], x['plate'])}
+        self.unit = '°' if root['type'] == 'rotate' else ' mm'
+        self.nominal = _samples(root)[0]
+        self.grid = ROTATE_STEP if root['type'] == 'rotate' else 1.0
+        self.ranges = K.sides(root['range'], K.period(motions, root['id']))
+        self._frames, self._posed, self._env = {}, {}, {}
+
+    def _flat(self, mid, plate):
+        """Whether the body stays in its layer (every motion carrying it turns about its normal or slides across it).
+        A rod turns in its crank's plane, so it qualifies when both its crank and its follower do."""
+        from . import kinematics as K
+        return K.in_plane([self.by_id[x] for x in K.chain(self.by_id, mid)], plate.frame.normal)
+
+    @staticmethod
+    def _cyl(t, plate):
+        """(axis, pivot, reach) when the body turns about an axis fixed in the world (its motion rides on nothing)."""
+        from . import kinematics as K
+        if t['type'] != 'rotate' or t.get('parent') is not None:
+            return None
+        return t['axis'], t['pivot'], K.reach(plate, t['axis'], t['pivot'])
+
+    def frame(self, body, v):
+        key = round(v, 9)
+        if key not in self._frames:
+            self._frames[key] = board_poses(self.own, train_values(self.own, self.root['id'], v))
+        poses, bd = self._frames[key], self.bodies[body]
+        if body in poses:
+            return poses[body][1]
+        carrier = self.by_id[bd['key']]                   # an axle or pin: the frame of the motion carrying it
+        return poses[carrier['boards'][0]][1]
+
+    def pose(self, body, v):
+        from . import kinematics as K
+        key = (body, round(v, 9))
+        if key not in self._posed:
+            if len(self._posed) > 20000:
+                self._posed.clear()
+            self._posed[key] = K.posed(self.bodies[body]['plate'], self.frame(body, v))
+        return self._posed[key]
+
+    def env(self, body):
+        from . import kinematics as K
+        if body not in self._env:
+            r = self.bodies[body]['rate']
+            self._env[body] = K.envelope(lambda v: self.pose(body, v).world_aabb(), self.ranges, lambda dv: r * dv)
+        return self._env[body]
+
+    def step(self, rate):
+        from . import kinematics as K
+        return K.steps(self.nominal, CLEARANCE / rate) if rate > 1e-12 else self.nominal
+
+
+def _trains(design, plates, motions):
+    from . import kinematics as K
+    solid = K.solids(design, plates, motions)
+    return solid, [_Train(design, plates, motions, r, solid) for r in motions
+                   if not r.get('driven_by') and r['range'] is not None]
+
+
+def check_cycles(design, plates, motions, reported=()):
+    """-> issues for every mechanism (a crank or gear with everything it drives, and all that rides on them): the
+    whole cycle is stepped through with every part posed where the mechanism puts it - rods, rockers, sliders,
+    nested parts, axles and rod pins at once - and any two parts that run into each other are reported (pairs in
+    `reported` excepted), as is a rod passing anything static closer than the running clearance (a warning). Then
+    independent motions are checked against each other's moving poses (check_interference)."""
+    from .validation import TOL, issue
+    from . import kinematics as K
+    comps = {c['id']: c for c in design['components']}
+    joints = [j for j in design['joints'] if j.get('status') == 'joined']
+    hinged = {frozenset((j['a'], j['b'])) for j in joints if j['type'] == 'hinge'}
+    joined = {frozenset((j['a'], j['b'])) for j in joints}         # a fixed joint locks (MOTION_LOCKED), not collides
+    meshing = {frozenset(m['gears']) for m in motions if m.get('gears')}
+    seen, out = set(map(frozenset, reported)), []
+    solid, trains = _trains(design, plates, motions)
+    grown = {}
+    for tr in trains:
+        if len(tr.family) < 2:
             continue                                      # a single motion is fully checked by check_motions
-        fam = [by_id[f] for f in family]
-        boards = [b for t in fam for b in t['boards'] + ([t['link']['rod']] if t.get('link') else []) if b in plates]
-        step, samples = _samples(root)
-        unit = '°' if root['type'] == 'rotate' else ' mm'
-        poses = {}
-        for v in samples:
-            check_budget()
-            vals = train_values(motions, root['id'], v)
-            pose = board_poses(motions, vals)
-            poses[v] = {b: (pose[b][0], _placed(design, comps[b], pose[b][1])) for b in boards}
-        env = {}
-        for posed in poses.values():
-            for b, (_k, p) in posed.items():
-                lo, hi = p.world_aabb()
-                e = env.get(b)
-                env[b] = (lo, hi) if e is None else ([min(e[0][i], lo[i]) for i in range(3)], [max(e[1][i], hi[i]) for i in range(3)])
-        moving = set(boards)
-        near = {b: [s for s in plates if s not in moving and _box_gap(plates[s].world_aabb(), env[b]) <= 0] for b in boards}
-        first = {}
-        for v in samples:                                 # nearest to the modelled pose first
-            posed = poses[v]
-            for x, b in enumerate(boards):
-                kb, pb = posed[b]
-                box = pb.world_aabb()
-                pairs = [(s, plates[s]) for s in near[b]] + [(o, posed[o][1]) for o in boards[x + 1:] if posed[o][0] != kb]
-                for s, ps in pairs:
-                    key = frozenset((b, s))
-                    if key in first or key in seen or key in hinged or key in meshing:
-                        continue
-                    if _box_gap(box, ps.world_aabb()) > 0:
-                        continue
-                    check_budget()
-                    hits = plate_interference(pb, ps)
-                    if hits:
-                        first[key] = (v, b, s, hits[0])
-        for v, b, s, hit in sorted(first.values(), key=lambda r: abs(r[0])):
+        root, unit, bodies = tr.root, tr.unit, tr.bodies
+        boards = list(bodies)
+        static = [(s, plates[s], None) for s in plates if s not in bodies]
+        static += [(x['id'], x['plate'], x['through']) for x in solid if x['id'] not in bodies]
+        first, tight = {}, {}
+        for x, b in enumerate(boards):
+            bd = bodies[b]
+            env = tr.env(b)
+            pairs = [(s, ps, through, None) for s, ps, through in static if K.box_gap(env, ps.world_aabb()) <= CLEARANCE
+                     and K.cyl_gap(bd['cyl'], ps.world_aabb()) <= CLEARANCE]
+            pairs += [(o, None, bodies[o]['through'], o) for o in boards[x + 1:]
+                      if bodies[o]['key'] != bd['key'] and K.box_gap(env, tr.env(o)) <= 0
+                      and K.cyl_cyl_gap(bd['cyl'], bodies[o]['cyl']) <= 0]
+            for s, ps, through, o in pairs:
+                key = frozenset((b, s))
+                if key in seen or key in hinged or key in meshing or key in joined:
+                    continue
+                if (through and b in through) or (bd['through'] and s in bd['through']):
+                    continue                              # an axle / pin in its own holes
+                lg = K.layer_gap(bd['plate'], ps if o is None else bodies[o]['plate']) \
+                    if bd['flat'] and (o is None or bodies[o]['flat']) else None
+                apart = lg is not None and lg >= -TOL['contact']          # in separate layers for good: never meet
+                if apart and not (bd['rod'] and o is None and through is None and lg < CLEARANCE - TOL['contact']):
+                    continue
+                check_budget()
+                closing = bd['rate'] + (bodies[o]['rate'] if o else 0.0)
+                other = (lambda v, o=o: tr.pose(o, v)) if o else (lambda v, ps=ps: ps)
+                close = None
+                if bd['rod'] and o is None and through is None:
+                    if b not in grown:
+                        from .model import Plate
+                        grown[b] = Plate(design, _grown(design, comps[b], CLEARANCE))
+                    close = (lambda v, b=b, ps=ps: K.interference(K.posed(grown[b], tr.frame(b, v)), ps))
+                elif o is None and (K.box_gap(env, ps.world_aabb()) > 0 or K.cyl_gap(bd['cyl'], ps.world_aabb()) > 0):
+                    continue
+                cg = K.cyl_gap(bd['cyl'], ps.world_aabb()) if o is None else K.cyl_cyl_gap(bd['cyl'], bodies[o]['cyl'])
+                for sign, lo, hi in tr.ranges:
+                    hit, tt = K.scan(sign, lo, hi, tr.step(closing),
+                                     lambda v, b=b, cg=cg: max(K.gap(tr.pose(b, v), other(v)), cg), closing,
+                                     (lambda v: []) if apart else (lambda v, b=b: K.interference(tr.pose(b, v), other(v))),
+                                     close, CLEARANCE, tr.nominal)
+                    if hit and (key not in first or abs(hit[2]) < abs(first[key][4])):
+                        first[key] = (hit[0], b, s, hit[1][0], hit[2], lo, hi, tr.step(closing))
+                    if tt and (key not in tight or abs(tt[0]) < abs(tight[key][0])):
+                        tight[key] = (tt[0], b, s, tt[1][0], tr.step(closing))
+        label = {x['id']: x['id'].split('-', 1)[0] for x in solid}
+        what = lambda n: f"'{n}'" + (f" (the {label[n]} through {', '.join(sorted(next(x['through'] for x in solid if x['id'] == n)))})"
+                                     if n in label else '')
+        span = f"[{root['range'][0]:g}, {root['range'][1]:g}]"
+        for v, b, s, hit, c, lo, end, step in sorted(first.values(), key=lambda r: abs(r[4])):
+            at, clear = K.display(c, tr.grid, lo, end)
             size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
-            side = [x for x in samples if (x > 0) == (v > 0) and abs(x) < abs(v)]
-            clear = side[-1] if side else 0.0
             out.append(issue('MOTION_COLLISION', 'error', 'assembly',
-                             f"Mechanism driven by '{root['id']}': at {v:g}{unit} '{b}' runs into '{s}' (shared material "
-                             f"{size}) - the parts it drives or carries collide part-way through the cycle. It runs "
-                             f"freely only to {clear:g}{unit}: limit '{root['id']}' there, or move / reshape the parts "
-                             f"(put a rod in its own layer, shorten an arm).", [b, s], location=hit.get('location'),
-                             calc=[f"every part of the mechanism ({len(boards)} boards, {len(family)} motions) posed every "
-                                   f"{step:g}{unit} over [{root['range'][0]:g}, {root['range'][1]:g}] of '{root['id']}'",
-                                   f"first contact '{b}' - '{s}' at {v:g}{unit}: {hit['kind']} {size}"]))
+                             f"Mechanism driven by '{root['id']}': at {at:g}{unit} {what(b)} runs into {what(s)} (first "
+                             f"contact at {_fmt(c)}{unit}, shared material {size}) - the parts it drives or carries "
+                             f"collide part-way through the cycle. It runs freely only to {clear:g}{unit}: limit "
+                             f"'{root['id']}' there, or move / reshape the parts (put a rod in its own layer, shorten an "
+                             f"arm).", [b, s], location=hit.get('location'),
+                             calc=[f"every part of the mechanism ({len(boards)} bodies, {len(tr.family)} motions) posed "
+                                   f"over {span} of '{root['id']}' in steps of at most {step:.3g}{unit} (no point of "
+                                   f"either moves more than {CLEARANCE:g} mm per step), the first contact bisected to "
+                                   f"{K.BISECT:g}{unit}; round positions every {tr.grid:g}{unit}",
+                                   f"first contact '{b}' - '{s}' at {_fmt(c)}{unit}: {hit['kind']} {size}"]))
+        for key, (v, b, s, hit, step) in sorted(tight.items(), key=lambda kv: abs(kv[1][0])):
+            if key in first:
+                continue
+            out.append(issue('MOTION_CLEARANCE', 'warning', 'assembly',
+                             f"Mechanism driven by '{root['id']}': the rod '{b}' passes '{s}' with less than "
+                             f"{CLEARANCE:g} mm to spare at {_fmt(v)}{unit}, so it would rub and bind. Leave a running gap "
+                             f"of at least {CLEARANCE:g} mm (about 2 mm is safer): move the rod to its own layer or move "
+                             f"'{s}'.", [b, s], location=hit.get('location'),
+                             calc=[f"'{b}' grown by {CLEARANCE:g} mm on every side touches '{s}' at {_fmt(v)}{unit} "
+                                   f"({hit['kind']}); the real parts do not touch, so the gap is under {CLEARANCE:g} mm",
+                                   f"positions checked over {span} in steps of at most {step:.3g}{unit}"]))
+    reported = seen | {frozenset(i['components']) for i in out if i['code'] == 'MOTION_COLLISION'}
+    return out + check_interference(design, plates, motions, reported, trains)
+
+
+INTERFERENCE_TESTS = 20000      # narrow-phase tests per pair of independent motions before giving up
+
+
+def check_interference(design, plates, motions, reported=(), trains=None):
+    """M-02: two independent motions (no driver in common, neither riding on the other) whose parts sweep through
+    the same space: the joint travel is searched - each position of one against the other's positions, skipping
+    where the boxes are apart - and the first pose where they meet is a MOTION_INTERFERENCE warning (each motion is
+    clear on its own; they collide only when both are moved)."""
+    from .validation import TOL, issue
+    from . import kinematics as K
+    if trains is None:
+        trains = _trains(design, plates, motions)[1]
+    joints = [j for j in design['joints'] if j.get('status') == 'joined']
+    skip = set(map(frozenset, reported)) | {frozenset((j['a'], j['b'])) for j in joints}
+    skip |= {frozenset(m['gears']) for m in motions if m.get('gears')}
+    out = []
+    for x, A in enumerate(trains):
+        for B in trains[x + 1:]:
+            if A.family & B.family:
+                continue
+            pairs = [(a, b) for a in A.bodies if A.bodies[a]['through'] is None
+                     for b in B.bodies if B.bodies[b]['through'] is None
+                     and frozenset((a, b)) not in skip and K.box_gap(A.env(a), B.env(b)) <= 0
+                     and K.cyl_cyl_gap(A.bodies[a]['cyl'], B.bodies[b]['cyl']) <= 0
+                     and not (A.bodies[a]['flat'] and B.bodies[b]['flat']
+                              and _apart(K.layer_gap(A.bodies[a]['plate'], B.bodies[b]['plate']), TOL['contact']))]
+            found = None
+            for a, b in pairs:
+                found = _joint_hit(A, B, a, b)
+                if found:
+                    break
+            if not found:
+                continue
+            va, vb, hit = found
+            size = f"{hit['length']} mm" if 'length' in hit else f"{hit['area']} mm²"
+            ia, ib = A.root['id'], B.root['id']
+            out.append(issue('MOTION_INTERFERENCE', 'warning', 'assembly',
+                             f"Motions '{ia}' and '{ib}' move independently, but with '{ia}' at {_fmt(va)}{A.unit} and "
+                             f"'{ib}' at {_fmt(vb)}{B.unit} '{a}' runs into '{b}' (shared material {size}). Each is clear "
+                             f"on its own; they collide when both are moved. Limit one range, move the parts apart, or "
+                             f"drive one from the other so they cannot meet.", [a, b], location=hit.get('location'),
+                             calc=[f"'{ia}' over [{A.root['range'][0]:g}, {A.root['range'][1]:g}] against '{ib}' over "
+                                   f"[{B.root['range'][0]:g}, {B.root['range'][1]:g}]: their swept boxes overlap",
+                                   f"first meeting found at '{ia}' = {_fmt(va)}{A.unit}, '{ib}' = {_fmt(vb)}{B.unit}: "
+                                   f"{hit['kind']} {size}"]))
     return out
+
+
+def _apart(layer_gap, contact):
+    return layer_gap is not None and layer_gap >= -contact
+
+
+def _joint_hit(A, B, a, b):
+    """First (va, vb, hit) where body a of train A meets body b of train B, both moved off rest; nearest va first.
+    Each va is skipped ahead while a's box is clear of b's whole swept box."""
+    from . import kinematics as K
+    ra, rb = A.bodies[a]['rate'], B.bodies[b]['rate']
+    ca, cb = A.bodies[a]['cyl'], B.bodies[b]['cyl']
+    env_b, tests = B.env(b), [0]
+    sa, sb = A.step(ra + rb), B.step(ra + rb)
+    for sign, lo, hi in A.ranges:
+        xa = max(lo, sa)
+        while True:
+            check_budget()
+            va = sign * min(xa, hi)
+            pa = A.pose(a, va)
+            box = pa.world_aabb()
+            g = max(K.box_gap(box, env_b), K.cyl_gap(cb, box))
+            if g <= 0:
+                for sgn, blo, bhi in B.ranges:
+                    hit, _t = K.scan(sgn, blo, bhi, sb, lambda v: max(K.gap(pa, B.pose(b, v)),
+                                                                      K.cyl_gap(ca, B.pose(b, v).world_aabb())), rb,
+                                     lambda v: _counted(tests, K.interference(A.pose(a, va), B.pose(b, v))))
+                    if hit:
+                        return va, hit[0], hit[1][0]
+                    if tests[0] > INTERFERENCE_TESTS:
+                        return None
+            if xa >= hi:
+                break
+            xa = min(hi, max(xa + sa, xa + (g / ra if ra > 1e-12 and g > 0 else 0.0)))
+    return None
+
+
+def _counted(tests, hits):
+    tests[0] += 1
+    return hits
 
 
 GEAR_DISTANCE_TOL = 0.1     # mm: centre distance against module x (z1 + z2) / 2
@@ -855,6 +1325,16 @@ def check_gears(motions):
                              f"Gears '{a['id']}' and '{b['id']}' cannot mesh: their modules differ ({a['module']:g} and "
                              f"{b['module']:g} mm). Meshing gears need the same module (tooth size).", pair,
                              calc=[f"module '{a['id']}' = {a['module']:g} mm, '{b['id']}' = {b['module']:g} mm"]))
+            continue
+        if abs(a['pressure_angle'] - b['pressure_angle']) > 1e-6:
+            out.append(issue('GEAR_MESH', 'error', 'assembly',
+                             f"Gears '{a['id']}' and '{b['id']}' cannot mesh smoothly: their pressure angles differ "
+                             f"({a['pressure_angle']:g}° and {b['pressure_angle']:g}°), so their teeth are not conjugate - "
+                             f"the drive would vary, rattle and bind. Give both the same \"pressure_angle\" (20 is "
+                             f"standard).", pair,
+                             calc=[f"base pitch = pi x module x cos(pressure angle): {math.pi * a['module'] * math.cos(math.radians(a['pressure_angle'])):.3f} "
+                                   f"mm for '{a['id']}', {math.pi * b['module'] * math.cos(math.radians(b['pressure_angle'])):.3f} "
+                                   f"mm for '{b['id']}' (must be equal)"]))
             continue
         k = a['thin']
         if b['thin'] != k or min(a['span'][1], b['span'][1]) - max(a['span'][0], b['span'][0]) <= 0:
@@ -921,8 +1401,24 @@ def check_gears(motions):
     return out
 
 
+def _reachable(motions, m):
+    """The part of a crank's range its connecting rods can follow (their tables stop where the linkage jams), or
+    None when they follow all of it."""
+    lo, hi = m['range']
+    for t in motions:
+        table = (t.get('link') or {}).get('table') if t.get('driven_by') == m['id'] else None
+        if not table:
+            continue
+        step = max(2.0, (m['range'][1] - m['range'][0]) / 360.0) + 1e-6       # the table's own step (_link_table)
+        a, b = table[0][0], table[-1][0]
+        lo = max(lo, a) if a > m['range'][0] + step else lo
+        hi = min(hi, b) if b < m['range'][1] - step else hi
+    return None if [lo, hi] == list(m['range']) else [lo, hi]
+
+
 def model_motions(motions):
-    """Motions for the 3D view (world vectors; the view animates each over its range)."""
+    """Motions for the 3D view (world vectors; the view animates each over its range - a crank whose rod jams only
+    over "jam_range", the part it can really turn)."""
     out = []
     for m in motions:
         e = {'id': m['id'], 'type': m['type'], 'boards': m['boards'], 'on': m['on'], 'range': m['range'],
@@ -936,5 +1432,8 @@ def model_motions(motions):
             e.update(axis=[1.0 if a == m['axis'] else 0.0 for a in AXES], pivot=m['pivot'])
         else:
             e['direction'] = [1.0 if a == m['direction'] else 0.0 for a in AXES]
+        reach = _reachable(motions, m) if m.get('range') else None
+        if reach:
+            e['jam_range'] = reach
         out.append(e)
     return out

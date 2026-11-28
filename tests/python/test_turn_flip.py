@@ -148,6 +148,6 @@ def test_turning_or_flipping_a_board_by_every_combination_is_exact():
 
 def test_the_prompt_teaches_turning_flipping_and_motions_in_assemblies():
     from board_engine.canvas_prompt import build_prompt
-    p = build_prompt('Stadium', '', None, 3, 'interlocking')
+    p = build_prompt('Stadium', '', None, 3, 'interlocking', style='full')
     assert '"flip"' in p and 'multiples of 90° are exact' in p and 'copied into every instance' in p
     assert 'moved, not turned' not in p

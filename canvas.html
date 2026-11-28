@@ -80,6 +80,10 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
           <label class="bed-custom" hidden>Bed height<input class="input" id="in-bed-h" type="number" min="50" max="5000" step="1" /></label>
           <label class="laser-only" title="Width of material the laser burns away; the cut files are compensated for it">Kerf (mm)
             <input class="input" id="in-kerf" type="number" min="0.01" max="1" step="0.01" /></label>
+          <label title="How the parts are cut: the cut files use its kerf (laser 0.15 mm, router = bit diameter); a router also gets dog-bone reliefs at inside corners and wider part spacing. Material default = the material's own kerf">Process
+            <select class="input" id="in-process"><option value="">Material default</option><option value="laser">Laser</option><option value="router">CNC router</option><option value="saw">Saw</option></select></label>
+          <label id="row-tool" hidden title="Diameter of the router bit (end mill): kerf, inside-corner reliefs and part spacing follow it">Bit diameter (mm)
+            <input class="input" id="in-tool" type="number" min="0.5" max="25" step="0.05" /></label>
           <label class="check laser-only" style="flex-direction:row;align-items:center;align-self:end;gap:8px"><input type="checkbox" id="in-labels" /> Engrave part labels</label>
           <label class="laser-only" title="Measure your sheet with calipers; slots are cut for this thickness. Empty = the nominal thickness">Measured thickness (mm)
             <input class="input" id="in-measured" type="number" min="0.5" max="50" step="0.01" placeholder="nominal" /></label>
@@ -97,6 +101,7 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
           <label class="check full" style="flex-direction:row;align-items:center;gap:8px" title="On: the prompt asks the AI to build the design with a script and give you a downloadable .json file (no size limit, checked before saving). Open it here with “Open .json” or drag it onto the editor. Off: the AI writes the code in the chat."><input type="checkbox" id="in-file" /> AI delivers a downloadable .json file</label>
           <label class="check full laser-only" id="row-color-sheets" hidden style="flex-direction:row;align-items:center;gap:8px" title="For pre-coloured / dyed sheets: parts of different colours never share a sheet"><input type="checkbox" id="in-color-sheets" /> Cut each colour from its own sheets</label>
           <button class="btn full laser-only" id="btn-testfit" type="button" title="A small comb with slots from −0.1 to +0.3 mm plus a tab: cut it first to find the right slot fit">Download test-fit piece (.svg)</button>
+          <label class="check full" id="row-plan-first" hidden style="flex-direction:row;align-items:center;gap:8px" title="On: “Generate with AI” first asks the AI for a design brief (the product's components, what must be closed, what moves), shows it for you to approve, then builds the design from it - and the compiler checks the design against it (missing parts, open sides)."><input type="checkbox" id="in-plan-first" checked /> Plan first (design brief, checked against the result)</label>
           <button class="btn primary full" id="btn-ai-generate" hidden title="Ask the AI configured on the server for the design, compile it, and let the AI fix any errors (up to 2 rounds)">Generate with AI</button>
           <button class="btn primary full" id="btn-gen-prompt">Generate AI prompt</button>
           <button class="btn full" id="btn-change-prompt" title="Uses the code in the editor as the current design and the requirements text above as the change request">Prompt for a change to the current design</button>
@@ -138,6 +143,7 @@ e.g. Width 300 mm, depth 200 mm, height 150 mm. Two compartments, a pen slot in 
           <span id="diag-title">Problems</span><span class="badge" id="diag-count">0</span>
           <span class="spacer"></span>
           <button class="btn small" id="btn-ai-fix" hidden title="Send these problems to the AI configured on the server and compile its corrected design"><svg><use href="#i-wand"/></svg><span>Fix with AI</span></button>
+          <button class="btn small" id="btn-ai-visual" hidden title="Show the AI four views of the compiled model (one paid call): it lists what looks missing or wrong, and you can let it fix those in one round"><span>Visual check</span></button>
           <button class="btn small" id="btn-repair-prompt" title="Copy one follow-up prompt with every current problem (errors, warnings, non-integer sizes) for your AI"><svg><use href="#i-copy"/></svg><span>Copy fix prompt</span></button>
           <button class="btn small" id="btn-autofix" disabled title="Apply only corrections that cannot change the intended design"><svg><use href="#i-wand"/></svg>Auto-fix safe issues</button>
         </div>

@@ -130,14 +130,16 @@ def test_server_prompts_ask_for_one_complete_reply(i):
     assert 'exactly ONE reply' in p
 
 
-def test_chat_prompts_are_unchanged():
-    """The copy-paste prompts keep their multi-part / file contracts byte for byte."""
-    h = lambda s: hashlib.sha256(s.encode()).hexdigest()[:16]
+@pytest.mark.parametrize('style', ['lean', 'full'])
+def test_chat_prompts_keep_their_multi_part_and_file_contracts(style):
+    """The copy-paste prompts still tell an AI chat how to split a large design or deliver a file (the server's do not;
+    see above). Phase 6 changed the default prompt to the lean one, so these are checked by content, not by hash."""
+    p = build_prompt('Castle', 'tall', None, None, 'interlocking', LASER, False, style=style)
+    assert 'MULTI-PART REPLIES' in p and '"continue"' in p
+    assert 'file tool' in build_prompt('Castle', 'tall', None, None, None, dict(LASER, file=True), True, style=style)
     d = [{'severity': 'error', 'code': 'X', 'message': 'boom'}]
-    assert h(build_prompt('Castle', 'tall', None, None, 'interlocking', LASER, False)) == '4446f5eda70873fe'
-    assert h(build_prompt('Castle', 'tall', None, None, None, dict(LASER, file=True), True)) == '215f247520ec6812'
-    assert h(build_repair_prompt(SRC, d, (), LASER)) == 'bdc1e7d2e158c47d'
-    assert h(build_update_prompt(SRC, 'wider', d, LASER)) == '0fcbdb354d737287'
+    assert 'MULTI-PART REPLIES' in build_repair_prompt(SRC, d, (), LASER)
+    assert 'MULTI-PART REPLIES' in build_update_prompt(SRC, 'wider', d, LASER)
 
 
 # F-03: an AI fix is compiled and accepted only when it is better and keeps the design's boards --------------------
@@ -246,6 +248,8 @@ def test_hard_constraints_read_a_size_triple_and_a_thickness():
 def test_hard_constraints_label_from_the_word_after_the_number():
     h = hard_constraints('A 200 mm long toy car')
     assert 'length (X): 200 mm' in h and '- A:' not in h
+    h = hard_constraints('1:72 scale model, 400 mm long')          # nothing before the number after the comma
+    assert 'length (X): 400 mm' in h and '- : ' not in h
 
 
 @pytest.mark.parametrize('text,level', [('a simple stool', 2), ('basic shelf', 2), ('standard bookcase', 3),

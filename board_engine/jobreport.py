@@ -46,6 +46,8 @@ def job_report(nesting, cut, machine=None):
               'note': 'Estimate: constant cut / engrave speed plus a pierce time per path; travel moves not included.'}
     if m.get('sheet_price') is not None:
         report['totals']['material_cost'] = round(len(sheets) * m['sheet_price'], 2)
+    if cut.get('process'):
+        report['process'] = cut['process']
     return report
 
 
@@ -56,6 +58,12 @@ def job_lines(report):
            f"{t['pierces']} pierces, about {t['minutes']:g} min at {report['cut_speed']:g} mm/s cutting / "
            f"{report['engrave_speed']:g} mm/s engraving"
            + (f", material {t['material_cost']:g}" if 'material_cost' in t else '') + f" ({report['note']})"]
+    proc = report.get('process')
+    if proc:
+        out.insert(0, f"Process    : {proc['process']}"
+                   + (f", {proc['tool_diameter']:g} mm bit" if proc.get('tool_diameter') else '')
+                   + (f", dog-bone relief (r {proc['relief_radius']:g} mm) at {proc['reliefs']} inside corner(s)"
+                      if proc.get('reliefs') else ', no inside-corner relief'))
     out += [f"  sheet {s['sheet']}: cut {s['cut_length_m']:g} m, engrave {s['engrave_length_m']:g} m, {s['pierces']} pierces, "
             f"~{s['minutes']:g} min, offcut {s['offcut_m2']:g} m2" for s in report['sheets']]
     return out

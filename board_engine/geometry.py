@@ -170,17 +170,38 @@ def segments_intersect(p1, p2, p3, p4):
     return False
 
 
+_SELF_X = {}                    # outline -> its crossings, for big outlines (gears, splines) repeated across a design
+
+
 def self_intersections(poly):
-    """Return list of (i, j) edge index pairs that intersect (non-adjacent edges)."""
+    """Return list of (i, j) edge index pairs that intersect (non-adjacent edges), sorted. Only edges whose x ranges
+    overlap are tested (a sweep), and big outlines are remembered: a gear repeated 20 times is checked once."""
     n = len(poly)
-    hits = []
+    key = tuple(map(tuple, poly)) if n > 64 else None
+    if key is not None and key in _SELF_X:
+        return list(_SELF_X[key])
+    boxes = []
     for i in range(n):
-        a1, a2 = poly[i], poly[(i + 1) % n]
-        for j in range(i + 1, n):
-            if j == i or (j + 1) % n == i or (i + 1) % n == j:
+        (x1, y1), (x2, y2) = poly[i][:2], poly[(i + 1) % n][:2]
+        boxes.append((min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2), i))
+    boxes.sort()
+    hits = []
+    for k, (ax0, ax1, ay0, ay1, i) in enumerate(boxes):
+        for bx0, _bx1, by0, by1, j in boxes[k + 1:]:
+            if bx0 > ax1:
+                break
+            if by0 > ay1 or ay0 > by1:
                 continue
-            if segments_intersect(a1, a2, poly[j], poly[(j + 1) % n]):
-                hits.append((i, j))
+            lo, hi = (i, j) if i < j else (j, i)
+            if (lo + 1) % n == hi or (hi + 1) % n == lo:
+                continue
+            if segments_intersect(poly[lo], poly[(lo + 1) % n], poly[hi], poly[(hi + 1) % n]):
+                hits.append((lo, hi))
+    hits.sort()
+    if key is not None:
+        if len(_SELF_X) > 20_000:
+            _SELF_X.clear()
+        _SELF_X[key] = tuple(hits)
     return hits
 
 

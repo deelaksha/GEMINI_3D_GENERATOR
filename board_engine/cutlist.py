@@ -19,7 +19,7 @@ end for end) are grouped into one cut-list line with a quantity.
 import math
 
 from . import geometry as G
-from .manufacturing import manufacturing_report
+from .manufacturing import manufacturing_report, process_label
 from .model import build_plates, edge_frame, material_of
 from .validation import _r, evaluate_joint, indexed_slots
 
@@ -150,6 +150,8 @@ def board_entry(design, plate, joint_results, drills):
                     for m in comp.get('marks', [])],
     }
     process = 'saw' if rectangular and not ops['through_cuts'] and not ops['notches'] and not ops['surface'] else 'cnc'
+    if design.get('process', {}).get('process') in ('laser', 'router'):   # the machine the job was set up for cuts it all
+        process = design['process']['process']
     grain = comp.get('grain')
     m = material_of(design, comp)
     entry = {
@@ -244,6 +246,9 @@ def cut_list(design, mfg=None):
         t['boards'] += 1
         t['area_m2'] = round(t['area_m2'] + b['area_mm2'] / 1e6, 4)
         t['banding_m'] = round(t['banding_m'] + sum(e['length'] for e in b['edges'] if 'banding' in e) / 1000, 3)
-    return {'units': 'mm', 'note': 'Finished = designed part size. Blank = size to cut (banding and mitre long '
-                                   'points applied). Kerf falls on the waste side of every cut.',
-            'boards': boards, 'lines': lines, 'totals': totals}
+    out = {'units': 'mm', 'note': 'Finished = designed part size. Blank = size to cut (banding and mitre long '
+                                  'points applied). Kerf falls on the waste side of every cut.',
+           'boards': boards, 'lines': lines, 'totals': totals}
+    if design.get('process'):
+        out['process'] = dict(design['process'], label=process_label(design), kerf=design['material']['kerf'])
+    return out

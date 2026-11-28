@@ -187,10 +187,14 @@
         item.innerHTML = `
           <div class="flex items-center space-x-1.5 truncate max-w-[190px]">
             <span class="text-amber-400">📄</span>
-            <span class="truncate">${p.fileName}</span>
+            <span class="truncate"></span>
           </div>
-          <span class="text-[9px] text-slate-500">${p.fileSizeKB || '1.2 KB'}</span>
+          <span class="text-[9px] text-slate-500"></span>
         `;
+        // part names come from the loaded design: set them as text, never as HTML
+        const [, nameEl, sizeEl] = item.querySelectorAll('span');
+        nameEl.textContent = p.fileName;
+        sizeEl.textContent = p.fileSizeKB || '1.2 KB';
         tree.appendChild(item);
       });
 
@@ -204,8 +208,13 @@
       currentSvgData = GeometryEngine.generateStandalonePartSVG(part, state.materialThickness, kerf, clearance);
 
       // Render Visual SVG
+      // shown as an image: an SVG in an <img> cannot run scripts or event handlers, whatever the part data holds
       const wrapper = document.getElementById('svg-display-wrapper');
-      wrapper.innerHTML = currentSvgData.source;
+      const svgImg = new Image();
+      svgImg.className = 'max-w-full h-auto';
+      svgImg.alt = part.fileName || 'part';
+      svgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(currentSvgData.source);
+      wrapper.replaceChildren(svgImg);
 
       // Render Raw Code Block
       document.getElementById('raw-code-display').textContent = currentSvgData.source;

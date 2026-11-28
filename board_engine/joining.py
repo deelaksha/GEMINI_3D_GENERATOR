@@ -21,7 +21,7 @@ import logging
 import time
 
 from .deadline import check as check_budget
-from .model import Plate, build_plates, component_index, find_component, normalize_joint
+from .model import Plate, build_plates, component_index, find_component, normalize_joint, plate_for
 from .validation import GROWING_JOINTS, TOL, evaluate_joint, validate_component, validate_design
 
 log = logging.getLogger('board_engine.joining')
@@ -56,7 +56,7 @@ def _pair_plates(design, spec):
     for cid in (spec['a'], spec['b']):
         comp = find_component(design, cid)
         if comp is not None:
-            out[cid] = Plate(design, comp)
+            out[cid] = plate_for(design, comp)
     return out
 
 

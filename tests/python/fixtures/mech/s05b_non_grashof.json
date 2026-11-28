@@ -1,0 +1,149 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    420,
+    320,
+    6
+   ]
+  },
+  {
+   "id": "CRANK",
+   "position": [
+    30.0,
+    80.0,
+    6
+   ],
+   "size": [
+    140,
+    140,
+    6
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     70.0,
+     70.0
+    ],
+    "diameter": 140
+   }
+  },
+  {
+   "id": "ARM",
+   "position": [
+    290,
+    140,
+    6
+   ],
+   "size": [
+    20,
+    90,
+    6
+   ]
+  },
+  {
+   "id": "ROD",
+   "position": [
+    146,
+    137,
+    12
+   ],
+   "size": [
+    168,
+    96,
+    6.0
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      8.633436854000507,
+      1.3724465170010944
+     ],
+     [
+      166.52198067399883,
+      80.31671842700024
+     ],
+     [
+      159.36656314599946,
+      94.6275534829989
+     ],
+     [
+      1.4780193260012027,
+      15.68328157299976
+     ]
+    ]
+   }
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "crank",
+   "type": "rotate",
+   "boards": [
+    "CRANK"
+   ],
+   "on": "BASE",
+   "axis": "z",
+   "pivot": [
+    100,
+    150,
+    6
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  },
+  {
+   "id": "rocker",
+   "type": "rotate",
+   "boards": [
+    "ARM"
+   ],
+   "on": "BASE",
+   "axis": "z",
+   "pivot": [
+    300,
+    150,
+    6
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "crank",
+   "link": {
+    "rod": "ROD",
+    "from": [
+     160,
+     150,
+     12
+    ],
+    "to": [
+     300,
+     220,
+     12
+    ]
+   }
+  }
+ ]
+}

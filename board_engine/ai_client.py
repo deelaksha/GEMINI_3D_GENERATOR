@@ -32,20 +32,22 @@ def provider():
     return None, None
 
 
-def complete(prompt):
-    """The provider's reply text for `prompt`. Raises AIError with a message safe to show the user."""
+def complete(prompt, images=None):
+    """The provider's reply text for `prompt` (with `images`: [(mime type, base64 data)] shown before it, for a
+    vision-capable model). Raises AIError with a message safe to show the user."""
     name, model = provider()
     if name is None:
         raise AIError('no AI provider is configured on the server (set GEMINI_API_KEY or ANTHROPIC_API_KEY)')
-    return _gemini(prompt, model) if name == 'gemini' else _claude(prompt, model)
+    return _gemini(prompt, model, images or ()) if name == 'gemini' else _claude(prompt, model, images or ())
 
 
-def _gemini(prompt, model):
+def _gemini(prompt, model, images=()):
     import requests
     try:
         r = requests.post(GEMINI_URL.format(model=model), timeout=TIMEOUT_S,
                           headers={'x-goog-api-key': os.environ['GEMINI_API_KEY'], 'Content-Type': 'application/json'},
-                          json={'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+                          json={'contents': [{'role': 'user', 'parts': [{'inline_data': {'mime_type': m, 'data': d}}
+                                                                          for m, d in images] + [{'text': prompt}]}],
                                 'generationConfig': {'responseMimeType': 'application/json', 'maxOutputTokens': 65536}})
     except requests.RequestException as e:
         raise AIError(f'could not reach Gemini: {type(e).__name__}') from None
@@ -69,7 +71,7 @@ def _gemini(prompt, model):
     return text
 
 
-def _claude(prompt, model):
+def _claude(prompt, model, images=()):
     try:
         import anthropic
     except ImportError:
@@ -82,7 +84,9 @@ def _claude(prompt, model):
             betas=['server-side-fallback-2026-07-01'],
             fallbacks='default',
             output_config={'effort': 'xhigh'},      # complex structures: deeper thinking
-            messages=[{'role': 'user', 'content': prompt}],
+            messages=[{'role': 'user', 'content': prompt if not images else [
+                {'type': 'image', 'source': {'type': 'base64', 'media_type': m, 'data': d}} for m, d in images]
+                + [{'type': 'text', 'text': prompt}]}],
         ) as stream:
             message = stream.get_final_message()
     except anthropic.RateLimitError:

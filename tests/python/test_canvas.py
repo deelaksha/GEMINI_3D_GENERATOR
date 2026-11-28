@@ -234,7 +234,7 @@ def test_butt_and_hinge_connections_when_glue_allowed():
 
 def test_prompt_is_self_contained_and_project_specific():
     p = build_prompt('Modern Wooden Study Table', 'Length 1200 mm, width 600 mm, height 750 mm, 18 mm boards, one shelf.',
-                     material='plywood', thickness=18, joinery='interlocking')
+                     material='plywood', thickness=18, joinery='interlocking', style='full')
     for needle in ('Modern Wooden Study Table', 'Length 1200 mm', 'Board thickness: 18 mm', FORMAT, 'X = length',
                    'Y = height', f"{TOL['contact']:g} mm", 'tab_slot', '```json', 'Return ONLY one'):
         assert needle in p, needle

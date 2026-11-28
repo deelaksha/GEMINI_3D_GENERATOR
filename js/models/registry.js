@@ -127,13 +127,14 @@ class ModelRegistryService {
   }
 
   /**
-   * Registers a dynamic design from parsed data or raw JS code
+   * Registers a dynamic design from its model data (or a JSON model definition in jsCode). Stored JavaScript is
+   * never run here: designs come from Firestore, the local cache or a ?model= link, and anyone could have written them.
    */
   async registerDynamicDesign(design) {
     try {
       let modelData = design.modelData;
       if (!modelData && design.jsCode) {
-        const parsed = await DesignParser.parseAndValidate(design.jsCode);
+        const parsed = await DesignParser.parseAndValidate(design.jsCode, { allowCode: false });
         if (parsed.success) {
           modelData = parsed.modelData;
         }
@@ -167,7 +168,7 @@ class ModelRegistryService {
         if (item.modelData) {
           this.registerModel(new ConstructionObject(item.modelData));
         } else if (item.jsCode) {
-          DesignParser.parseAndValidate(item.jsCode).then(res => {
+          DesignParser.parseAndValidate(item.jsCode, { allowCode: false }).then(res => {
             if (res.success && res.modelData) {
               res.modelData.id = item.id || res.modelData.id;
               if (item.name) res.modelData.name = item.name;

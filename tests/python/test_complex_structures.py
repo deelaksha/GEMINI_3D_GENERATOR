@@ -229,6 +229,7 @@ JOINT_OPTIONS = {          # every option the compiler reads, per connection typ
     'butt': ['fasteners', 'kind', 'count', 'diameter', 'length'],
     'hinge': ['edge', 'count', 'gap'],
     'mitre': ['edge', 'into_edge', 'bevel', 'fasteners'],
+    'face_lap': [],
 }
 
 
@@ -249,7 +250,7 @@ def test_prompt_documents_every_option_of_every_joint():
         assert not missing, f'{jtype}: document {missing}'
         assert f'"type": "{jtype}"' in spec, f'{jtype}: add an example line'
     assert 'tab_slot only' not in spec and 'tab_slot, finger and cross_lap' in spec
-    assert spec in build_prompt('Box')
+    assert spec in build_prompt('Box', style='full')
 
 
 def _compile(d):
@@ -406,5 +407,5 @@ def test_prompt_contains_the_clarifications():
     from board_engine.canvas_prompt import spec_markdown
     spec = spec_markdown()
     for phrase in ('Along the contact A may run right up to B', 'does not matter (a reversed pair is swapped',
-                   'Three boards meeting at one', 'Profiled or tilted boards join', 'Back panels:', '**overlay** doors'):
+                   'Three boards meeting at one', 'Tilted boards join with `tab_slot`', 'Back panels:', '**overlay** doors'):
         assert phrase in spec, phrase

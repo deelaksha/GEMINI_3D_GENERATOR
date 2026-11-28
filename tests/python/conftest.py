@@ -51,3 +51,7 @@ def boat():
     design, failures = build_design()
     assert failures == []
     return design
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'slow: long benchmark-style tests (deselect with -m "not slow")')

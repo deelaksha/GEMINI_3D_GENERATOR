@@ -14,9 +14,11 @@ The main assembly is the joined group standing on the floor (most anchored board
   DISCONNECTED     (error)   a group that neither touches nor is joined to the main assembly: it hangs in the air
                              apart from it. Reported with the nearest board and the gap.
 """
+import bisect
 import math
 
 from . import geometry as G
+from .deadline import check as check_budget
 
 TOUCH = 0.5          # mm: boxes closer than this touch
 
@@ -46,6 +48,31 @@ def _calc(a, b, A, B):
 def _mid(a, b):
     (alo, ahi), (blo, bhi) = a, b
     return [round((max(alo[i], blo[i]) + min(ahi[i], bhi[i])) / 2, 1) for i in range(3)]
+
+
+def _box_exact(plate):
+    """True when the plate's world box is its solid: a rectangle turned by quarter turns only."""
+    if any(abs(r / 90.0 - round(r / 90.0)) > 1e-6 for r in plate.comp['placement']['rotation']):
+        return False
+    out = plate.comp['outline']                 # without its tabs: they sit inside the other board's slots
+    x0, y0, x1, y1 = G.bbox(out)
+    return abs(abs(G.signed_area(out)) - (x1 - x0) * (y1 - y0)) <= 1e-6 * max(1.0, (x1 - x0) * (y1 - y0))
+
+
+def _solids_touch(design, a, b):
+    """Whether two plates whose boxes touch really come within TOUCH of each other: a box is only a box, so a post in
+    the notch of an L-shaped board, two discs side by side or a tilted panel near a corner are measured from their
+    solids (one plate grown by TOUCH, tested for shared material with the other)."""
+    if _box_exact(a) and _box_exact(b):
+        return True
+    from .cutpaths import offset_polygon
+    from .model import Plate, thickness_of
+    from .validation import TOL, plate_interference
+    c = TOUCH + 2 * TOL['contact']          # plate_interference shrinks the other plate by the contact tolerance
+    outline = a.comp['outline'] if G.signed_area(a.comp['outline']) > 0 else list(reversed(a.comp['outline']))
+    big = {k: v for k, v in a.comp.items() if k not in ('arcs', 'features', 'tabs')}
+    big.update(outline=offset_polygon(outline, c), thickness=thickness_of(design, a.comp) + 2 * c, features=[])
+    return bool(plate_interference(Plate(design, big), b))
 
 
 def analyze(design, plates, support=None):
@@ -78,7 +105,7 @@ def analyze(design, plates, support=None):
     touches = {i: set() for i in ids}
     for x, y in G.near_pairs([box[i] for i in ids], TOUCH):
         a, b = ids[x], ids[y]
-        if _gap(box[a], box[b])[1] <= TOUCH:
+        if _gap(box[a], box[b])[1] <= TOUCH and _solids_touch(design, plates[a], plates[b]):
             touches[a].add(b)
             touches[b].add(a)
     status = (support or {}).get('components', {})
@@ -88,14 +115,33 @@ def analyze(design, plates, support=None):
     main = max(groups, key=lambda g: (anchored(g), len(g), volume(g)))
     main_set = set(main)
 
-    def nearest(group, others):
+    index = {i: k for k, i in enumerate(ids)}
+    xs = sorted(ids, key=lambda i: box[i][0][0] + box[i][1][0])          # by centre x, for a sweep outwards
+    cx = [(box[i][0][0] + box[i][1][0]) / 2.0 for i in xs]
+    half = max((box[i][1][0] - box[i][0][0]) / 2.0 for i in ids)
+
+    def nearest(group, others=None):
+        """(gap, a, b): the closest board b to the group (b in `others`, default any board outside the group), the
+        first such pair a full double loop over group x others would find. Sweeps outwards along x from each board
+        and stops where no closer board can be, so many loose boards cost n log n, not n²."""
+        gs = set(group)
+        rank = index if others is None else {b: k for k, b in enumerate(others)}
         best = None
-        for a in group:
-            for b in others:
-                d = _gap(box[a], box[b])[1]
-                if best is None or d < best[0]:
-                    best = (d, a, b)
-        return best
+        for gi, a in enumerate(group):
+            check_budget()
+            ca, wa = (box[a][0][0] + box[a][1][0]) / 2.0, (box[a][1][0] - box[a][0][0]) / 2.0
+            p = bisect.bisect_left(cx, ca)
+            for ks in (range(p, len(xs)), range(p - 1, -1, -1)):
+                for k in ks:
+                    if best is not None and abs(cx[k] - ca) - wa - half > best[0]:
+                        break               # every later board along this way is farther in x alone
+                    b = xs[k]
+                    if b in gs or b not in rank:
+                        continue
+                    key = (_gap(box[a], box[b])[1], gi, rank[b], b)
+                    if best is None or key < best:
+                        best = key
+        return None if best is None else (best[0], group[best[1]], best[3])
     issues, isolated, not_joined = [], [], []
     for g in groups:
         if g is main:
@@ -103,7 +149,7 @@ def analyze(design, plates, support=None):
         gs = set(g)
         if len(g) == 1 and not touches[g[0]]:
             a = g[0]
-            d, _a, b = nearest([a], [x for x in ids if x != a])
+            d, _a, b = nearest([a])
             isolated.append(a)
             issues.append({'code': 'ISOLATED_BOARD', 'severity': 'error', 'components': [a, b],
                            'message': f"'{a}' touches no other board: it floats {d:.1f} mm from '{b}', its nearest board. Move "

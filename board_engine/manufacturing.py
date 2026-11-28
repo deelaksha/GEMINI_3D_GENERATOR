@@ -76,6 +76,97 @@ DOOR_MIN_GAP = 2.0          # mm between neighbouring doors
 STAGGER_SUGGESTIONS = 20    # joints per report that get a verified re-layout suggestion
 
 
+# Cutting processes (machine.process). Without one, every rule below keeps its process-free default (catalogue kerf,
+# the sheet's own part spacing, the kerf-based laser / router guess for the minimum part size).
+#   kerf      default kerf when neither the machine nor the material states one (None = keep the catalogue kerf;
+#             a router's kerf is its bit diameter)
+#   relief    dog-bone relief at inside corners (a round bit cannot cut a square inside corner)
+PROCESSES = {
+    'laser': {'kerf': 0.15, 'relief': False, 'label': 'laser cutter'},
+    'router': {'kerf': None, 'relief': True, 'label': 'CNC router'},
+    'saw': {'kerf': None, 'relief': False, 'label': 'panel saw'},
+}
+TOOL_DIAMETER = (0.5, 25.0)  # mm: router bits accepted (machine.tool_diameter)
+ROUTER_TOOL = 6.0            # mm: router bit assumed when neither tool_diameter nor kerf is given
+ROUTER_SPACING_MARGIN = 3.0  # mm of sheet left between the two cuts of neighbouring router parts (spacing - bit)
+RELIEF_TOL = 0.05            # mm: an inside corner gets a relief when the bit would leave more material than this
+
+
+def machine_process(machine):
+    """{'process', 'tool_diameter'?} of a machine dict, or None when no process is given (today's behaviour).
+    Raises ValueError for a process or bit outside PROCESSES / TOOL_DIAMETER."""
+    p = (machine or {}).get('process')
+    if p is None:
+        return None
+    if p not in PROCESSES:
+        raise ValueError(f"machine.process must be one of {list(PROCESSES)}")
+    d = machine.get('tool_diameter')
+    if d is not None and (isinstance(d, bool) or not isinstance(d, (int, float))
+                          or not TOOL_DIAMETER[0] <= d <= TOOL_DIAMETER[1]):
+        raise ValueError(f"machine.tool_diameter must be between {TOOL_DIAMETER[0]:g} and {TOOL_DIAMETER[1]:g} mm")
+    if p != 'router':
+        return {'process': p}
+    if d is None:          # the bit is as wide as the cut it makes
+        d = min(max(machine.get('kerf') or ROUTER_TOOL, TOOL_DIAMETER[0]), TOOL_DIAMETER[1])
+    return {'process': p, 'tool_diameter': float(d)}
+
+
+def apply_process(design, machine):
+    """Record the machine's cutting process on a compiled design (design['process']) and, unless the machine or the
+    material states a kerf, use the process's kerf: 0.15 mm for a laser, the bit diameter for a router (a saw keeps the
+    catalogue kerf). A material kerf equal to the catalogue value counts as not stated. No process: nothing changes."""
+    proc = machine_process(machine)
+    if proc is None:
+        return design
+    design['process'] = proc
+    mat = design['material']
+    catalogue = MATERIALS.get(mat.get('type'), {}).get('kerf', 0.15)
+    if 'kerf' not in machine and mat.get('kerf') == catalogue:
+        kerf = proc.get('tool_diameter') if proc['process'] == 'router' else PROCESSES[proc['process']]['kerf']
+        if kerf is not None:
+            mat['kerf'] = float(kerf)
+    return design
+
+
+def process_of(design):
+    """The design's cutting process ({'process', 'tool_diameter'?}), or None (no process given)."""
+    return design.get('process')
+
+
+def tool_radius(design):
+    """Radius of the router bit (mm), or 0.0 when the process needs no inside-corner relief."""
+    proc = process_of(design)
+    return proc['tool_diameter'] / 2.0 if proc and PROCESSES[proc['process']]['relief'] else 0.0
+
+
+def process_limits(design, thickness=None):
+    """Process-dependent limits. No process: the process-free defaults (laser-scale validation constants).
+      min_web             narrowest bridge of material that survives cutting (relief, slot to edge)
+      min_inside_radius   tightest inside curve the tool can cut
+      part_spacing_min    least distance between two nested parts (None = the sheet's own spacing)
+    A router's limits grow with the bit and the board: the bit pushes on the material, so a web thinner than the bit
+    (or a quarter of the board) breaks where one that holds on a laser does not (R-7)."""
+    t = float(thickness if thickness is not None else design['material']['thickness'])
+    base = TOL['min_edge_margin']
+    proc = process_of(design)
+    if not proc or proc['process'] == 'laser':
+        return {'min_web': base, 'min_inside_radius': 0.0, 'part_spacing_min': None}
+    if proc['process'] == 'saw':
+        return {'min_web': max(base, 0.25 * t), 'min_inside_radius': 0.0, 'part_spacing_min': None}
+    d = proc['tool_diameter']
+    return {'min_web': max(base, d, 0.25 * t), 'min_inside_radius': d / 2.0,
+            'part_spacing_min': d + ROUTER_SPACING_MARGIN}
+
+
+def process_label(design):
+    """'CNC router, 6 mm bit' / 'laser cutter' / None (no process), for the cut list."""
+    proc = process_of(design)
+    if not proc:
+        return None
+    label = PROCESSES[proc['process']]['label']
+    return f"{label}, {proc['tool_diameter']:g} mm bit" if proc.get('tool_diameter') else label
+
+
 def material_spec(design, comp):
     return MATERIALS.get(material_of(design, comp)['type'])
 
@@ -741,6 +832,10 @@ def plan_assembly(design, plates, contacts, bodies):
             connected = {}                      # rest -> does it stay in one piece (the same rest recurs per direction)
             whole = _connected(group, local)
             cut_points = _articulation_points(group, local) if whole else None   # boards whose removal splits the group
+            incident = {}                       # board -> indices of its connections in `local` (for each part's links)
+            for n, (x, y, _k, _a, _j) in enumerate(local):
+                incident.setdefault(x, []).append(n)
+                incident.setdefault(y, []).append(n)
             for m in dirs:
                 edges = {}
                 for x, y, kind, axis, _j in local:
@@ -758,7 +853,8 @@ def plan_assembly(design, plates, contacts, bodies):
                     # Prefer parts that are attached to the rest (so, reversed, every step connects to what
                     # is already built) and leave the rest in one piece; then the smallest part; then the
                     # direction that pulls most squarely off its contacts.
-                    links = [(x, y, axis) for x, y, _k, axis, _j in local if (x in c) != (y in c)]
+                    near = sorted({n for v in c for n in incident.get(v, ())})     # in `local` order, as a full scan
+                    links = [(local[n][0], local[n][1], local[n][3]) for n in near if (local[n][0] in c) != (local[n][1] in c)]
                     if best is not None and (not links) > best[2][0]:
                         continue                # loses on the first criterion: no need for the costly ones
                     rest = frozenset(group - c)
@@ -942,8 +1038,8 @@ def material_issues(design, plates, compensate_kerf=None):
                                     f"{', '.join(f'{t:g}' for t in spec['thicknesses'])} mm.", [pid]))
             # the catalogue minimum is a router rule (the bit throws small parts); a laser (kerf < 1 mm) cuts without
             # force, so small parts only need to be wider than the narrowest tab
-            kerf = design['material'].get('kerf')
-            laser = (kerf if kerf is not None else spec['kerf']) < LASER_KERF
+            kerf, proc = design['material'].get('kerf'), process_of(design)
+            laser = proc['process'] == 'laser' if proc else (kerf if kerf is not None else spec['kerf']) < LASER_KERF
             min_part = LASER_MIN_PART if laser else spec['min_part']
             if rect['width'] < min_part:
                 issues.append(issue('PART_BELOW_MIN_SIZE', 'error', 'material',

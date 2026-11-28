@@ -19,7 +19,7 @@ AX = 'xyz'
 EPS = 0.01                  # mm: edges this close touch
 MAX_CELLS = 250_000         # grid cells of one union (beyond this the group is left as it is, with the reason)
 SAFE_KEYS = {'id', 'name', 'group', 'position', 'size', 'thickness', 'material', 'grain', 'color', 'openings',
-             'engravings', 'decals', 'note', 'description', 'profile'}
+             'engravings', 'decals', 'note', 'description', 'profile', 'role'}
 CONTACT = 1.0               # mm: shaped pieces must share at least this much edge (not just a corner) to be one board
 BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_board')
 INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
@@ -228,7 +228,7 @@ def _merged(members, k, t, name, shapes=None):
     pos[i], pos[j], pos[k] = u0, v0, first['position'][k]
     size = [0.0, 0.0, 0.0]
     size[i], size[j], size[k] = u1 - u0, v1 - v0, first['size'][k]
-    out = {'id': name, **{key: first[key] for key in ('name', 'group', 'thickness', 'material', 'grain', 'color')
+    out = {'id': name, **{key: first[key] for key in ('name', 'group', 'thickness', 'material', 'grain', 'color', 'role')
                           if key in first}, 'position': pos, 'size': size}
     if len(outer) != 4 or {(round(p[0], 6), round(p[1], 6)) for p in outer} != {(u0, v0), (u1, v0), (u1, v1), (u0, v1)}:
         out['profile'] = {'shape': 'polygon', 'points': [[round(p[0] - u0, 4), round(p[1] - v0, 4)] for p in outer]}
@@ -257,6 +257,40 @@ def _merged(members, k, t, name, shapes=None):
     return out, None
 
 
+def _kept_apart(data):
+    """Pairs of board ids that must stay separate boards: a hinge between them (one swings on the other) or a
+    fastened joint (screws / dowels belong to two parts)."""
+    out = set()
+    for c in data.get('connections') or []:
+        if isinstance(c, dict) and (c.get('type') == 'hinge' or c.get('fasteners')):
+            a, b = c.get('board'), c.get('into')
+            if isinstance(a, str) and isinstance(b, str):
+                out.add(frozenset((a, b)))
+    return out
+
+
+def _redundant(members, i, j, shapes):
+    """[(id, inside id)] for members that lie entirely inside another member: a duplicate or leftover board that adds
+    nothing to the merged panel (the AI probably meant something else)."""
+    rect = {b['id']: (b['position'][i], b['position'][j], b['position'][i] + b['size'][i], b['position'][j] + b['size'][j])
+            for b in members}
+    out = []
+    for x in members:
+        for y in members:
+            if x is y or (x['id'], y['id']) in {(q, p) for p, q in out}:
+                continue
+            rx, ry = rect[x['id']], rect[y['id']]
+            if not (ry[0] - EPS <= rx[0] and rx[2] <= ry[2] + EPS and ry[1] - EPS <= rx[1] and rx[3] <= ry[3] + EPS):
+                continue
+            sx, sy = shapes.get(x['id']), shapes.get(y['id'])
+            if sx is not None or sy is not None:
+                if _poly(rx, sx).difference(_poly(ry, sy).buffer(EPS)).area > EPS:
+                    continue
+            out.append((x['id'], y['id']))
+            break
+    return out
+
+
 def plan(data, t_default, origin=None, limit=None):
     """-> (groups [(merged board, member ids)], skipped [(member ids, reason)]) without changing anything. limit =
     (long, short) mm a board may measure to fit the stock sheet: a merge that would exceed it is not made (pieces
@@ -269,8 +303,8 @@ def plan(data, t_default, origin=None, limit=None):
         if _why_not(b, t_default, moving):
             continue
         k = _thin(b, t_default)
-        key = (k, round(b['position'][k], 3), round(b['size'][k], 3),
-               json.dumps([b.get(x) for x in ('material', 'color', 'grain')], sort_keys=True))
+        key = (k, round(b['position'][k], 3), round(b['size'][k], 3),          # one sub-assembly ("group") only
+               json.dumps([b.get(x) for x in ('material', 'color', 'grain', 'group', 'role')], sort_keys=True))
         buckets.setdefault(key, []).append(b)
     families = {}                                      # repeated boards: "<id>-1".."<id>-n" (all copies or none)
     for b in boards:
@@ -278,6 +312,7 @@ def plan(data, t_default, origin=None, limit=None):
             m = re.match(r'^(.*)-\d+$', b['id'])
             if m:
                 families.setdefault(m.group(1), set()).add(b['id'])
+    keep_apart = _kept_apart(data)
     groups, skipped = [], []
     for (k, *_rest), bs in buckets.items():
         if len(bs) < 2:
@@ -302,7 +337,7 @@ def plan(data, t_default, origin=None, limit=None):
             for b in order[a_ix + 1:]:
                 if rect[b][0] > rect[a][2] + EPS:
                     break
-                if not _touch(rect[a], rect[b], i, j):
+                if not _touch(rect[a], rect[b], i, j) or frozenset((bs[a]['id'], bs[b]['id'])) in keep_apart:
                     continue
                 if shape[a] is not None or shape[b] is not None:   # shaped: the outlines themselves must share an edge
                     pa, pb = _poly(rect[a], shape[a]), _poly(rect[b], shape[b])
@@ -332,6 +367,7 @@ def plan(data, t_default, origin=None, limit=None):
                                                             f"the stock sheet allows ({limit[0]:g} x {limit[1]:g} mm)"))
                 continue
             taken.add(name)
+            merged['_redundant'] = _redundant(members, i, j, shape_of)
             groups.append((merged, [b['id'] for b in members]))
     return groups, skipped
 
@@ -410,11 +446,12 @@ def consolidate(data, t_default, origin=None, do=False, limit=None):
     With do=True the merge is made in `data`."""
     before = len(data.get('boards') or [])
     groups, skipped = plan(data, t_default, origin, limit)
+    redundant = {g['id']: g.pop('_redundant') for g, _m in groups}    # reported, never written into the design
     removed = apply(data, groups) if do and groups else 0
     merged = sum(len(m) for _g, m in groups)
     return {'applied': bool(do and groups), 'boards_before': before, 'boards_after': before - merged + len(groups),
             'connections_removed': removed,
-            'groups': [{'board': g['id'], 'from': m, 'openings': len([o for o in g.get('openings') or []
-                                                                      if str(o.get('id', '')).startswith('gap-')])}
+            'groups': [{'board': g['id'], 'from': m, 'redundant': redundant[g['id']],
+                        'openings': len([o for o in g.get('openings') or [] if str(o.get('id', '')).startswith('gap-')])}
                        for g, m in groups],
             'skipped': [{'boards': ids, 'reason': why} for ids, why in skipped]}

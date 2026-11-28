@@ -55,10 +55,11 @@ _file_store = DesignStore(INSTANCE_DIR / 'designs')
 _file_store.persistent = INSTANCE_DIR == BASE_DIR / 'instance' or bool(os.environ.get('BOARD_INSTANCE_DIR'))
 app.config['BOARD_STORE'] = store_from_env(_file_store)  # Firestore when FIREBASE_SERVICE_ACCOUNT is set
 app.config['BOARD_KEYRING'] = KeyRing(str(INSTANCE_DIR))
+app.config['BOARD_INSTANCE_DIR'] = str(INSTANCE_DIR)      # shared by every worker process (e.g. the AI quota ledger)
 app.config['BOARD_RATE_LIMIT'] = int(os.environ.get('BOARD_RATE_LIMIT', 600))
 app.config['BOARD_COMPILE_SLOTS'] = int(os.environ.get('BOARD_COMPILE_SLOTS', 2))   # concurrent compiles per user
-app.config['BOARD_AI_PER_HOUR'] = int(os.environ.get('BOARD_AI_PER_HOUR', 20))    # paid AI calls per user
-app.config['BOARD_AI_PER_DAY'] = int(os.environ.get('BOARD_AI_PER_DAY', 300))     # paid AI calls per process per day
+app.config['BOARD_AI_PER_HOUR'] = int(os.environ.get('BOARD_AI_PER_HOUR', 20))    # paid AI calls per API key / client address
+app.config['BOARD_AI_PER_DAY'] = int(os.environ.get('BOARD_AI_PER_DAY', 300))     # paid AI calls per day, all workers together
 app.config['BOARD_COMPILE_TOTAL'] = int(os.environ.get('BOARD_COMPILE_TOTAL', max(4, 2 * (os.cpu_count() or 2))))  # per process
 if os.environ.get('TRUST_PROXY'):
     # behind a TLS-terminating proxy: trust its X-Forwarded-* headers (set TRUST_PROXY to the number of proxies), so
@@ -97,13 +98,11 @@ if os.environ.get('BOARD_SKIP_SEED') != '1':
 
 @app.after_request
 def add_header(response):
-    """Ensure no stale caching during interactive 3D model authoring and set CORS."""
+    """Ensure no stale caching during interactive 3D model authoring. No CORS header anywhere: every page is served
+    from this origin, so no route grants cross-origin reads."""
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
-    if not request.path.startswith('/api/v1'):
-        # Legacy read-only routes stay open; the board API grants no cross-origin access.
-        response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -230,7 +229,9 @@ def api_prompt():
                 with open(p, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                 if content.strip():
-                    return jsonify({'success': True, 'content': content, 'filename': fname})
+                    return jsonify({'success': True, 'content': content, 'filename': fname, 'legacy': True,
+                                    'note': 'Legacy prompt for the JavaScript model workbench. The board designer '
+                                            '(/canvas) builds its own prompt: POST /api/v1/canvas/prompt.'})
             except Exception as e:
                 pass
     return jsonify({'success': True, 'content': '', 'filename': 'ai-prompt.txt'})
@@ -253,7 +254,6 @@ def api_status():
             'config_present': firebase_config_path.exists(),
         },
         'python_version': sys.version.split()[0],
-        'base_directory': str(BASE_DIR),
         'registered_model_files': model_files,
         'routes': [
             {'path': '/', 'name': '3D Assembly Workbench'},

@@ -5,7 +5,13 @@ import os
 
 import pytest
 
-from board_engine.canvas_prompt import FINAL_REMINDER, IMAGE_SPEC, build_prompt, build_update_prompt
+from board_engine.canvas_prompt import FINAL_REMINDER, IMAGE_SPEC, build_update_prompt
+from board_engine.canvas_prompt import build_prompt as _build_prompt
+
+
+def build_prompt(*a, **kw):
+    """These tests pin the content of the full (long) prompt; the lean default is tested in test_prompt_lean.py."""
+    return _build_prompt(*a, **dict(kw, style='full'))
 
 
 def test_off_by_default_and_unchanged():
@@ -176,7 +182,10 @@ def test_the_method_is_universal_not_tied_to_a_subject():
                  'REPEATED ELEMENTS', 'SHELLS AND SWEEPS', 'SURFACE DETAIL', 'MOVING PARTS'):
         assert form in UNIVERSAL_METHOD, form
     assert 'RECIPE - ' not in prompts[0] and 'GESTURE' in SIGNS_OF_LIFE and 'NATURAL VARIATION' in SIGNS_OF_LIFE
-    assert UNIVERSAL_METHOD in build_update_prompt('{}', 'add a balcony')
+    # a plain change keeps to precision (audit P-16: the creative blocks invited a redesign); asking for more detail
+    # or a new look brings the method back
+    assert UNIVERSAL_METHOD not in build_update_prompt('{}', 'add a balcony')
+    assert UNIVERSAL_METHOD in build_update_prompt('{}', 'make it more detailed and realistic')
 
 
 def test_the_creative_brief_and_scope_work_for_any_title():

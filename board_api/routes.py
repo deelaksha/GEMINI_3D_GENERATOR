@@ -8,10 +8,16 @@ humans and agents). Responses use one envelope:
   failure: {"ok": false, "error": {"status", "message", "issues": [...] , ...}}
 """
 import functools
+import os
 import threading
 import json
 import logging
 import time
+
+try:
+    import fcntl
+except ImportError:          # Windows: one process only (the development server)
+    fcntl = None
 
 from werkzeug.exceptions import HTTPException
 from flask import Blueprint, Response, current_app, g, jsonify, request
@@ -21,7 +27,7 @@ from board_engine.cutlist import cut_list
 from board_engine.deadline import TimeBudgetExceeded, time_budget
 from board_engine.examples.boat import build_design as build_boat
 from board_engine.examples.furniture import PRODUCTS as FURNITURE, build as build_furniture, product_params
-from board_engine.manufacturing import MATERIALS, manufacturing_report
+from board_engine.manufacturing import MATERIALS, PROCESSES, manufacturing_report
 from board_engine.joining import check_joint
 from board_engine.model import SchemaError, check_id, find_component, normalize_design
 from board_engine.nesting import NestingError, SHEET_PRESETS
@@ -30,7 +36,7 @@ from board_engine.store import Conflict, NotFound
 from board_engine.validation import TOL, validate_design
 from board_engine.views import component_view, export, model3d, production_package
 
-from .auth import require
+from .auth import may_change, require
 from .contract import CONTRACT, TOOLS
 
 log = logging.getLogger('board_api')
@@ -48,6 +54,17 @@ def fail(status, code, message, **extra):
 def budget():
     """Seconds a request may spend in geometry checks (validation, nesting, compile) before it is stopped."""
     return current_app.config.get('BOARD_TIME_BUDGET', 90)
+
+
+def board_cap():
+    """Most boards one compile may expand to for the caller: anonymous browser sessions and API keys get a cap (a
+    237-byte "repeat" can describe 20,000 boards); admins only the engine's global limit."""
+    who = getattr(g, 'principal', None) or {}
+    if who.get('role') == 'admin':
+        return None
+    if who.get('kind') == 'api_key':
+        return current_app.config.get('BOARD_MAX_BOARDS_KEY', 20000)
+    return current_app.config.get('BOARD_MAX_BOARDS_SESSION', 10000)
 
 
 _SLOTS, _SLOTS_LOCK = {}, threading.Lock()
@@ -97,32 +114,60 @@ def heavy(fn):
     return wrapper
 
 
-_AI_CALLS, _AI_LOCK = {}, threading.Lock()     # principal -> times of paid AI calls; '*' = everyone (one day)
+_AI_LOCK = threading.Lock()
+AI_LEDGER = 'ai_quota.json'      # in the instance dir: {who: [times of paid AI calls], '*': everyone's (one day)}
+
+
+def _ai_who():
+    """Whom a paid AI call is counted against: an API key by its principal; a browser by its address, because a new
+    session cookie costs nothing (behind a proxy, TRUST_PROXY makes request.remote_addr the client's address)."""
+    who = g.principal
+    return who['id'] if who['kind'] == 'api_key' else f'ip:{request.remote_addr or "unknown"}'
+
+
+def _ai_quota(charge):
+    """None when one more paid AI call is allowed - recorded at once when `charge` - else the 429 response. At most
+    BOARD_AI_PER_HOUR per user and BOARD_AI_PER_DAY in all. The counts live in one file in the instance directory,
+    read and written under an exclusive lock, so every gunicorn worker process shares them."""
+    now, who = time.time(), _ai_who()
+    per_hour = current_app.config.get('BOARD_AI_PER_HOUR', 20)
+    per_day = current_app.config.get('BOARD_AI_PER_DAY', 300)
+    folder = current_app.config.get('BOARD_INSTANCE_DIR') or current_app.instance_path
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, AI_LEDGER)
+    with _AI_LOCK, open(path + '.lock', 'a') as lock:
+        if fcntl:
+            fcntl.flock(lock, fcntl.LOCK_EX)              # released when the file closes
+        try:
+            with open(path) as f:
+                calls = json.load(f)
+        except (OSError, ValueError):
+            calls = {}
+        calls = {k: [t for t in v if t > now - (86400 if k == '*' else 3600)]
+                 for k, v in calls.items() if isinstance(v, list)}
+        if len(calls.get('*', ())) >= per_day:
+            return fail(429, 'ai_daily_limit', f'the server has made its {per_day} AI calls for today; copy the '
+                        f'prompt into your own AI instead, or try again tomorrow')
+        if len(calls.get(who, ())) >= per_hour:
+            return fail(429, 'ai_hourly_limit', f'at most {per_hour} AI calls per hour; copy the prompt into your '
+                        f'own AI instead, or try again later')
+        if charge:
+            calls.setdefault(who, []).append(now)
+            calls.setdefault('*', []).append(now)
+            tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+            with open(tmp, 'w') as f:
+                json.dump({k: v for k, v in calls.items() if v}, f)
+            os.replace(tmp, path)
+    return None
 
 
 def ai_quota(fn):
-    """Paid AI calls: at most BOARD_AI_PER_HOUR per user and BOARD_AI_PER_DAY for the whole process. Every browser
-    session may call the AI, and a new session costs nothing, so the daily total is what really caps the bill."""
+    """Paid AI routes: refused at once when the caller's AI quota is used up. Nothing is charged here - the route
+    charges `_ai_quota(charge=True)` right before it really calls the provider, so a request that is rejected as busy
+    or invalid, or that needs no AI (ai-fix of a design the safe fixes repair), costs nothing."""
     @functools.wraps(fn)
     def wrapper(*a, **kw):
-        now, who = time.time(), g.principal['id']
-        per_hour = current_app.config.get('BOARD_AI_PER_HOUR', 20)
-        per_day = current_app.config.get('BOARD_AI_PER_DAY', 300)
-        with _AI_LOCK:
-            for k in list(_AI_CALLS):
-                keep = 86400 if k == '*' else 3600
-                _AI_CALLS[k] = [t for t in _AI_CALLS[k] if t > now - keep]
-                if not _AI_CALLS[k]:
-                    del _AI_CALLS[k]
-            if len(_AI_CALLS.get('*', ())) >= per_day:
-                return fail(429, 'ai_daily_limit', f'the server has made its {per_day} AI calls for today; copy the '
-                            f'prompt into your own AI instead, or try again tomorrow')
-            if len(_AI_CALLS.get(who, ())) >= per_hour:
-                return fail(429, 'ai_hourly_limit', f'at most {per_hour} AI calls per hour; copy the prompt into your '
-                            f'own AI instead, or try again later')
-            _AI_CALLS.setdefault(who, []).append(now)
-            _AI_CALLS.setdefault('*', []).append(now)
-        return fn(*a, **kw)
+        return _ai_quota(charge=False) or fn(*a, **kw)
     return wrapper
 
 
@@ -211,6 +256,28 @@ def _nesting(e):
     return fail(400, 'invalid_request', str(e))
 
 
+class Forbidden(Exception):
+    """The principal may not change this design (auth.may_change)."""
+
+
+@bp.errorhandler(Forbidden)
+def _forbidden(e):
+    return fail(403, 'forbidden', str(e))
+
+
+def check_may_change(design, delete=False):
+    """Raise Forbidden unless the current principal may change (or delete) `design` - see auth.py Ownership."""
+    why = may_change(g.principal, design, delete)
+    if why:
+        raise Forbidden(why)
+
+
+def owned(design):
+    """A new design (or copy) belongs to the principal creating it, whatever the request body says."""
+    design['owner'] = g.principal['id']
+    return design
+
+
 @bp.errorhandler(OperationRejected)
 def _rejected(e):
     status = {'not_found': 404, 'invalid_request': 400}.get(e.status, 422)
@@ -222,7 +289,11 @@ def mutate(did, fn, op_name, detail=None):
     """Run fn(design) inside the store transaction, then validate and respond."""
     data = request.get_json(silent=True) or {}
     expected = data.get('expected_revision') if isinstance(data, dict) else None
-    new, result, saved = store().mutate(did, fn, op_name, actor=g.principal['id'],
+
+    def guarded(d):                     # checked inside the store's transaction, on the revision being changed
+        check_may_change(d)
+        return fn(d)
+    new, result, saved = store().mutate(did, guarded, op_name, actor=g.principal['id'],
                                         expected_revision=expected, detail=detail)
     report = validate_design(new)
     log.info('%s %s/%s rev=%s errors=%s', g.principal['id'], did, op_name, new['revision'],
@@ -287,10 +358,16 @@ def create_design():
     work, results = apply_batch(design, [{'op': 'add_component', 'component': c} for c in comps] +
                                 [{'op': 'join', 'joint': j, 'auto_repair': bool(data.get('auto_repair'))}
                                  for j in joints]) if comps or joints else (design, [])
-    created = store().create(work, actor=g.principal['id'])
+    created = store().create(owned(work), actor=g.principal['id'])
     report = validate_design(created)
     return jsonify({'ok': True, 'revision': created['revision'], 'design': created,
                     'validation': summarize(report)}), 201
+
+
+def _may_overwrite(did, data):
+    """Replacing an existing design (`overwrite`) is a change of that design."""
+    if data.get('overwrite') and store().exists(did):
+        check_may_change(store().get(did))
 
 
 @bp.post('/designs/examples/boat')
@@ -306,7 +383,8 @@ def create_boat():
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not (0.5 <= v <= 2000):
             raise SchemaError(f'params.{k} must be a number between 0.5 and 2000', f'params.{k}')
     design, failures = build_boat(did, params)
-    created = store().create(design, actor=g.principal['id'], overwrite=bool(data.get('overwrite')))
+    _may_overwrite(did, data)
+    created = store().create(owned(design), actor=g.principal['id'], overwrite=bool(data.get('overwrite')))
     report = validate_design(created)
     return jsonify({'ok': True, 'revision': created['revision'], 'design_id': did,
                     'join_failures': [{'joint': f['joint']['id'], 'status': f['status'], 'issues': f['issues']}
@@ -329,7 +407,8 @@ def create_furniture(name):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not (0 <= v <= 5000):
             raise SchemaError(f'params.{k} must be a number between 0 and 5000', f'params.{k}')
     design, failures = build_furniture(name, did, **params)
-    created = store().create(design, actor=g.principal['id'], overwrite=bool(data.get('overwrite')))
+    _may_overwrite(did, data)
+    created = store().create(owned(design), actor=g.principal['id'], overwrite=bool(data.get('overwrite')))
     report = validate_design(created)
     return jsonify({'ok': True, 'revision': created['revision'], 'design_id': did, 'join_failures': failures,
                     'validation': summarize(report)}), 201
@@ -392,7 +471,7 @@ def duplicate_design(did):
     src = store().get(did)
     new_id = check_id(data.get('id'), 'id')
     copy_ = dict(src, id=new_id, name=(data.get('name') or f"{src['name']} (copy)")[:200], created=None)
-    created = store().create(copy_, actor=g.principal['id'])
+    created = store().create(owned(copy_), actor=g.principal['id'])
     return jsonify({'ok': True, 'revision': created['revision'], 'design_id': new_id,
                     'validation': summarize(validate_design(created), full=False)}), 201
 
@@ -400,6 +479,8 @@ def duplicate_design(did):
 @bp.delete('/designs/<did>')
 @require('editor')
 def delete_design(did):
+    """Owner or admin only (auth.py Ownership)."""
+    check_may_change(store().get(did), delete=True)
     store().delete(did, actor=g.principal['id'])
     return jsonify({'ok': True, 'deleted': did})
 
@@ -671,18 +752,33 @@ def export_file(did, fmt):
 
 def _machine(data):
     """The cutting machine the canvas user set up ({'kerf': mm, 'sheet': {'width', 'height'}}), or None.
-    Without kerf and sheet (laser support switched off) only the switches are kept, e.g. {'coloring': True}."""
+    Without kerf and sheet (laser support switched off) only the switches are kept, e.g. {'coloring': True}.
+    Optional `process` ('laser' | 'router' | 'saw') and `tool_diameter` (router bit, mm): with a sheet but no kerf,
+    the kerf is the process's own (0.15 mm laser, the bit diameter for a router)."""
+    from board_engine.manufacturing import PROCESSES, machine_process
     m = data.get('machine')
     if m is None:
         return None
+    proc = None
+    if isinstance(m, dict) and ('process' in m or 'tool_diameter' in m):
+        if m.get('process') is None:
+            raise SchemaError(f'machine.process must be one of {list(PROCESSES)}', 'machine.process')
+        try:
+            proc = machine_process(m)
+        except ValueError as e:
+            raise SchemaError(str(e), 'machine.tool_diameter' if 'tool_diameter' in str(e) else 'machine.process')
+        if 'kerf' not in m and 'sheet' in m:
+            kerf = proc.get('tool_diameter') or PROCESSES[proc['process']]['kerf']
+            m = dict(m, **({'kerf': kerf} if kerf else {}))
     if isinstance(m, dict) and 'kerf' not in m and 'sheet' not in m:
-        return {k: True for k in ('coloring', 'file') if m.get(k)} or None
+        return {**{k: True for k in ('coloring', 'file') if m.get(k)}, **(proc or {})} or None
     sheet = m.get('sheet') if isinstance(m, dict) else None
     ok = lambda v, lo, hi: isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
-    if not (isinstance(m, dict) and ok(m.get('kerf'), 0.01, 5) and isinstance(sheet, dict)
+    kmax = 25 if proc and proc['process'] == 'router' else 5       # a router's kerf is its bit (up to 25 mm)
+    if not (isinstance(m, dict) and ok(m.get('kerf'), 0.01, kmax) and isinstance(sheet, dict)
             and ok(sheet.get('width'), 50, 5000) and ok(sheet.get('height'), 50, 5000)):
-        raise SchemaError('machine must be {"kerf": 0.01..5 mm, "sheet": {"width": 50..5000, "height": 50..5000 mm}}',
-                          'machine')
+        raise SchemaError(f'machine must be {{"kerf": 0.01..{kmax} mm, "sheet": {{"width": 50..5000, "height": '
+                          f'50..5000 mm}}}}', 'machine')
     out = {'kerf': float(m['kerf']), 'sheet': {'width': float(sheet['width']), 'height': float(sheet['height'])}}
     for k, lo, hi in (('measured', 0.5, 50), ('fit', -0.5, 1),           # optional: real board thickness, slot fit,
                       ('cut_speed', 0.1, 1000), ('engrave_speed', 0.1, 5000), ('sheet_price', 0, 1e6)):   # job report
@@ -693,7 +789,7 @@ def _machine(data):
     for k in ('shared_edges', 'coloring', 'color_sheets', 'file'):    # optional switches (file: AI delivers a .json file)
         if m.get(k):
             out[k] = True
-    return out
+    return {**out, **(proc or {})}
 
 
 def _canvas_slug(name):
@@ -746,7 +842,8 @@ def canvas_prompt():
         raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
     return jsonify({'ok': True, 'prompt': build_prompt(title[:200], str(data.get('requirements') or '')[:4000],
                                                         data.get('material') or None, th or None,
-                                                        data.get('joinery') or None, _machine(data), images)})
+                                                        data.get('joinery') or None, _machine(data), images,
+                                                        brief=_brief_of(data))})
 
 
 @bp.post('/canvas/repair-prompt')
@@ -759,7 +856,8 @@ def canvas_repair_prompt():
     data = body()
     src = data.get('source')
     machine, requirements = _machine(data), _requirements(data)
-    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine, requirements=requirements)
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine, requirements=requirements,
+                         max_boards=board_cap())
     prompt = build_repair_prompt(src, res['diagnostics'], _with_total(res.get('layout') or {}), machine,
                                  requirements=requirements)
     return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
@@ -768,13 +866,14 @@ def canvas_repair_prompt():
 
 @bp.post('/canvas/integer-fix-prompt')
 @require('viewer')
+@heavy
 def canvas_integer_fix_prompt():
     """Follow-up prompt asking the external AI to update only the floating-point dimensions to clean integers."""
     import json
     from board_engine.canvas import compile_source, find_non_integer_dimensions
     from board_engine.canvas_prompt import build_integer_fix_prompt
     src = body().get('source')
-    res = compile_source(src, run_production=False, time_budget=budget())
+    res = compile_source(src, run_production=False, time_budget=budget(), max_boards=board_cap())
     data = res.get('design') or {}
     raw_json = None
     try:
@@ -804,7 +903,8 @@ def canvas_update_prompt():
         raise SchemaError('change (the requested modification) is required', 'change')
     change = change if isinstance(change, str) else ''
     machine = _machine(data)
-    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), max_boards=board_cap(),
+                         machine=machine)
     if res.get('format') is None:
         return fail(422, 'compile_failed', 'the current code is not a design yet; generate it first', issues=res['diagnostics'])
     return jsonify({'ok': True, 'prompt': build_update_prompt(data.get('source'), change[:4000], res['diagnostics'], machine,
@@ -847,7 +947,7 @@ def canvas_compile():
     from board_engine.canvas import compile_source
     data = body()
     res = compile_source(data.get('source'), run_production=bool(data.get('production', True)), time_budget=budget(),
-                         machine=_machine(data), requirements=_requirements(data))
+                         machine=_machine(data), requirements=_requirements(data), max_boards=board_cap())
     if data.get('repair_prompt'):
         _with_repair_prompt(res, data.get('source'), _machine(data))
     if not data.get('include_design'):
@@ -874,6 +974,7 @@ def canvas_compile_stream():
     from board_engine.progress import CompileCancelled, reporting
     data = body()
     source, production, seconds = data.get('source'), bool(data.get('production', True)), budget()
+    cap = board_cap()                   # read here: the compile runs in its own thread, outside the request
     include_design, want_prompt, machine = bool(data.get('include_design')), bool(data.get('repair_prompt')), _machine(data)
     requirements = _requirements(data)
     events, cancelled = queue.Queue(), threading.Event()
@@ -900,7 +1001,7 @@ def canvas_compile_stream():
         try:
             with reporting(reporter):
                 res = compile_source(source, run_production=production, time_budget=seconds, machine=machine,
-                                     requirements=requirements)
+                                     requirements=requirements, max_boards=cap)
             if want_prompt:
                 _with_repair_prompt(res, source, machine)
             if not include_design:
@@ -952,7 +1053,8 @@ def canvas_export():
     from board_engine.painting import painting_guide, painting_lines
     data = body()
     machine = _machine(data)
-    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), machine=machine)
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), max_boards=board_cap(),
+                         machine=machine)
     design = res.get('design')
     if not design or not design['components']:
         return fail(422, 'compile_failed', 'the design does not compile yet; fix its errors first', issues=res['diagnostics'])
@@ -985,7 +1087,8 @@ def canvas_export():
             f"{design['name']} - machine files{'  (DRAFT: NOT READY FOR PRODUCTION)' if draft else ''}",
             '',
             f"Material   : {mat.get('name')} ({mat['type']}), {mat['thickness']:g} mm thick",
-            *([f"Machine    : laser cutter, {machine['sheet']['width']:g} x {machine['sheet']['height']:g} mm bed, "
+            *([f"Machine    : {PROCESSES[machine.get('process') or 'laser']['label']}, "
+               f"{machine['sheet']['width']:g} x {machine['sheet']['height']:g} mm bed, "
                f"{machine['kerf']:g} mm kerf"] if machine and 'kerf' in machine else []),
             f"Sheets     : {n['sheet_count']} x {n['sheet']['width']:g} x {n['sheet']['height']:g} mm, {parts} parts",
             f"Units      : millimetres, scale 1:1 - import / print at 100 %, never 'fit to page'",
@@ -1022,6 +1125,83 @@ def canvas_ai_status():
     return jsonify({'ok': True, 'provider': name, 'model': model})
 
 
+def _brief_of(data):
+    """The request's validated design brief (None without one); a brief that cannot be used is a 400."""
+    if data.get('brief') in (None, ''):
+        return None
+    from board_engine.brief import validate_brief
+    brief, probs = validate_brief(data['brief'])
+    if brief is None:
+        raise SchemaError('; '.join(p['message'] for p in probs if p['severity'] == 'error')[:500], 'brief')
+    return brief
+
+
+def _brief_reply(text):
+    """The brief out of an AI reply: (brief, problems) or (None, problems)."""
+    import json
+    from board_engine.brief import validate_brief
+    from board_engine.canvas import _extract, _strip_comments
+    try:
+        raw = json.loads(_strip_comments(_extract(text)[0]))
+    except (ValueError, RecursionError):
+        return None, [{'code': 'BRIEF_INVALID', 'severity': 'error', 'message': 'the AI reply is not a JSON object'}]
+    return validate_brief(raw.get('brief', raw) if isinstance(raw, dict) else raw)
+
+
+@bp.post('/canvas/brief-prompt')
+@require('viewer')
+def canvas_brief_prompt():
+    """The planning prompt (step 1): the AI writes the design brief before any board."""
+    from board_engine.canvas_prompt import build_brief_prompt
+    data = body()
+    title, images = data.get('title'), bool(data.get('images'))
+    if not images and (not isinstance(title, str) or not title.strip()):
+        raise SchemaError('title is required (or attach reference images)', 'title')
+    return jsonify({'ok': True, 'prompt': build_brief_prompt(str(title or '')[:200], str(data.get('requirements') or '')[:4000],
+                                                              images)})
+
+
+@bp.post('/canvas/brief-check')
+@require('viewer')
+def canvas_brief_check():
+    """Validate a design brief (pasted from an AI chat or edited by hand): the normalised brief and its problems."""
+    from board_engine.brief import validate_brief
+    data = body()
+    raw = data.get('brief')
+    if isinstance(raw, str):
+        brief, probs = _brief_reply(raw)
+    else:
+        brief, probs = validate_brief(raw)
+    return jsonify({'ok': True, 'valid': brief is not None, 'brief': brief, 'problems': probs})
+
+
+@bp.post('/canvas/ai-brief')
+@require('editor')
+@ai_quota
+@heavy
+def canvas_ai_brief():
+    """Ask the configured AI for the design brief (the planning step); it is validated before it is returned."""
+    from board_engine.ai_client import AIError, complete, provider
+    from board_engine.canvas_prompt import build_brief_prompt
+    data = body()
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip():
+        raise SchemaError('title is required', 'title')
+    prompt = build_brief_prompt(title[:200], str(data.get('requirements') or '')[:4000], False, transport='server')
+    over = _ai_quota(charge=True)
+    if over:
+        return over
+    try:
+        reply = complete(prompt)
+    except AIError as e:
+        return fail(502, 'ai_failed', str(e))
+    brief, probs = _brief_reply(reply)
+    if brief is None:
+        return fail(502, 'ai_failed', 'the AI did not return a usable design brief: '
+                                      + '; '.join(p['message'] for p in probs)[:300])
+    return jsonify({'ok': True, 'brief': brief, 'problems': probs, 'provider': provider()[0]})
+
+
 @bp.post('/canvas/ai-generate')
 @require('editor')
 @ai_quota
@@ -1042,13 +1222,34 @@ def canvas_ai_generate():
         raise SchemaError(f"material must be one of {', '.join(MATERIALS)}", 'material')
     if joinery not in ('interlocking', 'glue_allowed'):
         raise SchemaError('joinery must be interlocking or glue_allowed', 'joinery')
+    brief = _brief_of(data)
     prompt = build_prompt(title[:200], str(data.get('requirements') or '')[:4000], material, th or None, joinery,
-                          _machine(data), transport='server')
+                          _machine(data), transport='server', brief=brief)
+    over = _ai_quota(charge=True)
+    if over:
+        return over
     try:
         reply = complete(prompt)
     except AIError as e:
         return fail(502, 'ai_failed', str(e))
-    return jsonify({'ok': True, 'source': _ai_reply_source(reply), 'provider': provider()[0]})
+    source = _ai_reply_source(reply)
+    if brief:                                   # the approved plan travels with the design, so it is checked
+        source = _with_brief(source, brief)
+    return jsonify({'ok': True, 'source': source, 'provider': provider()[0]})
+
+
+def _with_brief(source, brief):
+    """The design source with the approved brief in it (the AI may leave it out); unchanged if it is not JSON."""
+    import json
+    from board_engine.canvas import pretty_json
+    try:
+        data = json.loads(source)
+    except ValueError:
+        return source
+    if not isinstance(data, dict) or data.get('brief'):
+        return source
+    return pretty_json({**({'format': data['format']} if 'format' in data else {}), 'brief': brief,
+                        **{k: v for k, v in data.items() if k != 'format'}})
 
 
 @bp.post('/canvas/ai-fix')
@@ -1061,13 +1262,14 @@ def canvas_ai_fix():
     boards (`repair.accept_repair`); otherwise the code is returned as it was, with the reasons."""
     from board_engine.ai_client import AIError, complete, provider
     from board_engine.canvas import CompileError, apply_code_fix, compile_source
-    from board_engine.canvas_prompt import build_repair_prompt
+    from board_engine.canvas_prompt import build_patch_repair_prompt
     from board_engine.repair import accept_repair
     data = body()
     src = data.get('source')
     machine, requirements = _machine(data), _requirements(data)
+    cap = board_cap()
     compile_ = lambda s, production: compile_source(s, run_production=production, time_budget=budget(), machine=machine,
-                                                    requirements=requirements)
+                                                    requirements=requirements, max_boards=cap)
     cur = src
     for _ in range(SAFE_FIX_ROUNDS):            # free and deterministic: never pay the AI for what the compiler can fix
         fix = next((f for d in compile_(cur, False)['diagnostics'] if d['severity'] == 'error'
@@ -1081,21 +1283,90 @@ def canvas_ai_fix():
     res = compile_(cur, True)
     errors = [d for d in res['diagnostics'] if d['severity'] == 'error']
     blocking = _with_total(res.get('layout') or {})
-    if not errors and not blocking:
+    visual = _visual_problems(data.get('visual'))          # what the AI's visual check saw (one round)
+    if not errors and not blocking and not visual:
         return jsonify({'ok': True, 'source': cur, 'problems': 0, 'changed': cur != src, 'accepted': True, 'reasons': []})
-    prompt = build_repair_prompt(cur, res['diagnostics'], blocking, machine, transport='server', requirements=requirements)
+    prompt = build_patch_repair_prompt(cur, res['diagnostics'] + visual, blocking, machine, requirements=requirements)
+    over = _ai_quota(charge=True)                # only now is the AI really called
+    if over:
+        return over
     try:
         reply = complete(prompt)
     except AIError as e:
         return fail(502, 'ai_failed', str(e))
-    candidate = _ai_reply_source(reply)
-    verdict = accept_repair(cur, res, candidate, compile_(candidate, True))
+    candidate, why = _repair_candidate(cur, reply)
+    verdict = accept_repair(cur, res, candidate, compile_(candidate, True), allow_equal=bool(visual) and not errors)
+    if why:
+        verdict['accepted'], verdict['reasons'] = False, [why] + verdict['reasons']
     out = candidate if verdict['accepted'] else cur
     return jsonify(dict(verdict, ok=True, source=out, candidate=None if verdict['accepted'] else candidate,
                         problems=prompt.count('\n- ['), changed=out != src, provider=provider()[0]))
 
 
 SAFE_FIX_ROUNDS = 10
+
+def _visual_problems(raw):
+    """Validated problems from an AI visual check (critique.critique_problems), at most 10; [] without them."""
+    if not isinstance(raw, list):
+        return []
+    return [{'code': p['code'], 'severity': 'error' if p.get('severity') == 'error' else 'warning',
+             'message': str(p['message'])[:400]} for p in raw[:10]
+            if isinstance(p, dict) and isinstance(p.get('code'), str) and p['code'].startswith('VISUAL_')
+            and isinstance(p.get('message'), str)]
+
+
+@bp.post('/canvas/ai-critique')
+@require('editor')
+@ai_quota
+@heavy
+def canvas_ai_critique():
+    """The optional visual check: views of the compiled model (data URLs captured in the browser) are shown to the
+    AI with the design brief; it lists what looks missing or wrong. One paid call; the problems it returns can be
+    sent to /canvas/ai-fix as "visual" for one targeted repair."""
+    import json
+    from board_engine.ai_client import AIError, complete, provider
+    from board_engine.critique import CritiqueError, critique_problems, critique_prompt, decode_views, parse_critique
+    data = body()
+    try:
+        views = decode_views(data.get('views'))
+    except CritiqueError as e:
+        raise SchemaError(str(e), 'views')
+    brief = None
+    try:
+        brief = (json.loads(data.get('source') or '{}') or {}).get('brief')
+    except (ValueError, AttributeError):
+        pass
+    prompt = critique_prompt(str(data.get('title') or 'the product')[:200], str(data.get('requirements') or '')[:2000],
+                             brief if isinstance(brief, dict) else None)
+    over = _ai_quota(charge=True)
+    if over:
+        return over
+    try:
+        reply = complete(prompt, images=views)
+    except AIError as e:
+        return fail(502, 'ai_failed', str(e))
+    try:
+        crit = parse_critique(reply)
+    except CritiqueError as e:
+        return fail(502, 'ai_failed', f'the AI visual check did not answer as asked: {e}')
+    return jsonify({'ok': True, 'critique': crit, 'problems': critique_problems(crit), 'provider': provider()[0]})
+
+def _repair_candidate(current, reply):
+    """(the repaired design source, a reason it cannot be used or None) from the AI's reply: a patch is applied to the
+    current design (repair.apply_patch); a complete design is taken as it is."""
+    import json
+    from board_engine.repair import PatchError, apply_patch
+    text = _ai_reply_source(reply)
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return text, None
+    if isinstance(obj, dict) and 'patch' in obj:
+        try:
+            return apply_patch(current, obj), None
+        except (PatchError, ValueError) as e:
+            return current, f'the AI patch could not be applied: {e}'
+    return text, None
 
 
 @bp.post('/canvas/resize')
@@ -1158,12 +1429,14 @@ def canvas_fix():
 
 @bp.post('/canvas/save')
 @require('editor')
+@heavy
 def canvas_save():
     """Save the compiled design as a NEW project. Updating is only allowed for a design created by the canvas."""
     from board_engine.canvas import compile_source
     data = body()
     src = data.get('source')
-    res = compile_source(src, run_production=False, time_budget=budget(), machine=_machine(data))
+    res = compile_source(src, run_production=False, time_budget=budget(), max_boards=board_cap(),
+                         machine=_machine(data))
     if res.get('design') is None or res.get('partial'):
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     design = res['design']
@@ -1177,12 +1450,16 @@ def canvas_save():
         if not existing.get('source'):
             return fail(409, 'not_a_canvas_design',
                         f"'{target}' was not created by the AI Design Canvas; save as a new project instead")
+        check_may_change(existing)
         design['id'] = target
-        saved, _r, _w = store().mutate(target, lambda d: (dict(design, created=d.get('created')), None), 'canvas_update',
-                                        actor=g.principal['id'])
+
+        def update(d):
+            check_may_change(d)                     # again inside the transaction
+            return dict(design, created=d.get('created')), None
+        saved, _r, _w = store().mutate(target, update, 'canvas_update', actor=g.principal['id'])
     else:
         design['id'] = _canvas_slug(design['name'])
-        saved = store().create(design, actor=g.principal['id'])
+        saved = store().create(owned(design), actor=g.principal['id'])
     return jsonify({'ok': True, 'design_id': saved['id'], 'revision': saved['revision'],
                     'summary': res['summary'], 'diagnostics': res['diagnostics']}), 201
 
@@ -1195,7 +1472,7 @@ def canvas_import():
     from board_engine.canvas import compile_source
     data = body()
     target = check_id(data.get('target'), 'target')
-    res = compile_source(data.get('source'), run_production=False, time_budget=budget())
+    res = compile_source(data.get('source'), run_production=False, time_budget=budget(), max_boards=board_cap())
     if res.get('design') is None or res.get('partial'):
         return fail(422, 'compile_failed', 'the code does not compile; fix the errors first', issues=res['diagnostics'])
     src_design = res['design']

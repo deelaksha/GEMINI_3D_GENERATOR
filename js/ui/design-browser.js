@@ -11,6 +11,11 @@ import { Toast } from './toast.js';
 import { ThumbnailGenerator } from '../services/thumbnail-generator.js';
 import { ExplodeEngine } from '../assembly/explode.js';
 
+// Cloud designs are written by anyone: escape every value placed in HTML, and hand only their data (never their
+// stored JavaScript) to the thumbnail / 3D preview code.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dataOnly = ({ jsCode, ...design }) => design;
+
 export class DesignBrowser {
   constructor({ onSelectDesign, onEditDesign, onCreateNew }) {
     this.onSelectDesign = onSelectDesign;
@@ -252,7 +257,7 @@ export class DesignBrowser {
 
       if (isBlackOrMissing || needsParts) {
         try {
-          const genRes = await ThumbnailGenerator.generateThumbnail(d);
+          const genRes = await ThumbnailGenerator.generateThumbnail(dataOnly(d));
           if (genRes && genRes.thumbnail) {
             d.thumbnail = genRes.thumbnail;
             d.partCount = genRes.partCount;
@@ -266,7 +271,7 @@ export class DesignBrowser {
             } else {
               const holder = document.getElementById(`thumb-holder-${d.id}`);
               if (holder) {
-                holder.innerHTML = `<img id="thumb-img-${d.id}" src="${d.thumbnail}" alt="${d.name}" class="w-full h-36 object-cover rounded-lg bg-slate-900 border border-slate-800 transition-transform duration-300 group-hover:scale-105" />`;
+                holder.innerHTML = `<img id="thumb-img-${esc(d.id)}" src="${esc(d.thumbnail)}" alt="${esc(d.name)}" class="w-full h-36 object-cover rounded-lg bg-slate-900 border border-slate-800 transition-transform duration-300 group-hover:scale-105" />`;
               }
             }
 
@@ -303,7 +308,7 @@ export class DesignBrowser {
     });
 
     catSelect.innerHTML = Array.from(cats).map(c => `
-      <option value="${c}">${c === 'all' ? 'All Categories' : c}</option>
+      <option value="${esc(c)}">${c === 'all' ? 'All Categories' : esc(c)}</option>
     `).join('');
   }
 
@@ -347,8 +352,8 @@ export class DesignBrowser {
       card.className = `group bg-slate-950/80 border ${isCurrent ? 'border-sky-500 shadow-lg shadow-sky-500/15 ring-1 ring-sky-500' : 'border-slate-800 hover:border-sky-500/50'} rounded-xl p-3 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl cursor-pointer relative`;
 
       const thumbHtml = d.thumbnail
-        ? `<img id="thumb-img-${d.id}" src="${d.thumbnail}" alt="${d.name}" class="w-full h-36 object-cover rounded-lg bg-slate-900 border border-slate-800 transition-transform duration-300 group-hover:scale-105" />`
-        : `<div id="thumb-holder-${d.id}" class="w-full h-36 rounded-lg bg-slate-900 border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-3xl gap-1">
+        ? `<img id="thumb-img-${esc(d.id)}" src="${esc(d.thumbnail)}" alt="${esc(d.name)}" class="w-full h-36 object-cover rounded-lg bg-slate-900 border border-slate-800 transition-transform duration-300 group-hover:scale-105" />`
+        : `<div id="thumb-holder-${esc(d.id)}" class="w-full h-36 rounded-lg bg-slate-900 border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-3xl gap-1">
              <span>🧩</span>
              <span class="text-[10px] font-mono text-slate-500">Generating 3D preview...</span>
            </div>`;
@@ -361,8 +366,8 @@ export class DesignBrowser {
             
             ${isCurrent ? `<span class="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-sky-500 text-slate-950 font-bold text-[10px] uppercase shadow z-10">Active</span>` : ''}
             
-            <span id="part-badge-${d.id}" class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-950/90 text-amber-300 font-mono text-[11px] font-bold border border-slate-700 backdrop-blur z-10 shadow">
-              ${d.partCount ? `${d.partCount} Parts` : 'Loading...'}
+            <span id="part-badge-${esc(d.id)}" class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-950/90 text-amber-300 font-mono text-[11px] font-bold border border-slate-700 backdrop-blur z-10 shadow">
+              ${d.partCount ? `${esc(d.partCount)} Parts` : 'Loading...'}
             </span>
 
             <!-- Hover Overlay -->
@@ -379,13 +384,13 @@ export class DesignBrowser {
           <!-- Metadata -->
           <div>
             <div class="flex items-center justify-between gap-1">
-              <h3 class="font-bold text-slate-100 text-xs truncate max-w-[190px] group-hover:text-sky-400 transition-colors">${d.name}</h3>
-              <span class="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-400">v${d.version || 1}</span>
+              <h3 class="font-bold text-slate-100 text-xs truncate max-w-[190px] group-hover:text-sky-400 transition-colors">${esc(d.name)}</h3>
+              <span class="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-400">v${esc(d.version || 1)}</span>
             </div>
             <div class="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-              <span class="truncate max-w-[120px]">${d.category || 'General'}</span>
+              <span class="truncate max-w-[120px]">${esc(d.category || 'General')}</span>
               <span>•</span>
-              <span class="font-mono text-slate-500">${this.formatDate(d.updatedAt)}</span>
+              <span class="font-mono text-slate-500">${esc(this.formatDate(d.updatedAt))}</span>
             </div>
           </div>
         </div>
@@ -558,7 +563,7 @@ export class DesignBrowser {
     scene.add(rimLight);
 
     // Resolve modelData
-    const modelData = await ThumbnailGenerator.resolveModelData(design);
+    const modelData = await ThumbnailGenerator.resolveModelData(dataOnly(design));
     if (!modelData || !Array.isArray(modelData.parts)) {
       container.innerHTML = `<div class="text-rose-400 p-8 text-center text-xs">Could not load 3D parts for this design.</div>`;
       return;

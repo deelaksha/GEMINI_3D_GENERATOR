@@ -591,8 +591,9 @@ def _instance_motion(mo, iid, M, off, origin):
         mo['on'] = f"{iid}-{mo['on']}"
     if isinstance(mo.get('driven_by'), str):
         mo['driven_by'] = f"{iid}-{mo['driven_by']}"
-    if isinstance(mo.get('axle'), dict) and isinstance(mo['axle'].get('boards'), list):
-        mo['axle']['boards'] = [f"{iid}-{b}" for b in mo['axle']['boards']]
+    for k in ('boards', 'supports'):
+        if isinstance(mo.get('axle'), dict) and isinstance(mo['axle'].get(k), list):
+            mo['axle'][k] = [f"{iid}-{b}" for b in mo['axle'][k]]
     if _vec3(mo.get('pivot')):
         mo['pivot'] = [v + off[i] for i, v in enumerate(_apply(M, mo['pivot']))]
     lk = mo.get('link')
@@ -610,6 +611,8 @@ def _instance_motion(mo, iid, M, off, origin):
         rng = mo.get('range')
         if flip < 0 and isinstance(rng, list) and len(rng) == 2 and all(isinstance(v, (int, float)) for v in rng):
             mo['range'] = [-rng[1], -rng[0]]
+        if flip < 0:
+            mo['_flip'] = -1        # a "ratio" to / from this motion changes sign unless its partner flips too (motion._link)
     return mo
 
 

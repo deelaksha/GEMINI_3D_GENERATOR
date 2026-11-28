@@ -33,6 +33,7 @@ Feature kinds have distinct meaning and are never interchangeable:
   opening - intentional design opening (cockpit, window, lightening hole); the
             engine never fills, moves or places joints inside it
 """
+import bisect
 import contextvars
 import copy
 import math
@@ -426,6 +427,10 @@ def normalize_joint(j, path='joint'):
         out['b_edge'] = e
         if j.get('bevel'):
             out['bevel'] = True   # both edges bevelled to half the corner angle (saw / CNC; not laser)
+    if jtype == 'cross_lap' and j.get('through') is not None:
+        out['through'] = check_id(j['through'], path + '.through')     # this board passes through a slot in the other
+        if out['through'] not in (out['a'], out['b']):
+            raise SchemaError(f'{path}.through must be one of the two boards', path + '.through')
     if jtype in ('edge_butt', 'edge_mitre') and j.get('fasteners') is not None:
         out['fasteners'] = normalize_fasteners(j['fasteners'], path + '.fasteners')
     if jtype == 'hinge':
@@ -594,14 +599,27 @@ def material_of(design, comp):
             'thickness': thickness_of(design, comp)}
 
 
+_POLYGONS = {}                  # (shape, numbers) -> polygon: a board's slots are rebuilt for every joint it receives
+POLYGON_CACHE_MAX = 200_000
+
+
 def feature_polygon(f):
-    if f['shape'] == 'circle':
-        return G.circle_polygon(f['center'], f['diameter'])
+    """The cut-out's outline polygon (read-only: it may be shared with other features of the same shape)."""
     if f['shape'] == 'polygon':
         return f['points']
-    if f.get('corner_radius'):
+    if f['shape'] == 'circle':
+        key = ('c', *f['center'], f['diameter'])
+    elif f.get('corner_radius'):
         return feature_shape(f)[0]
-    return G.rect_polygon(f['center'], f['width'], f['height'], f.get('angle', 0.0))
+    else:
+        key = ('r', *f['center'], f['width'], f['height'], f.get('angle', 0.0))
+    poly = _POLYGONS.get(key)
+    if poly is None:
+        if len(_POLYGONS) > POLYGON_CACHE_MAX:
+            _POLYGONS.clear()
+        poly = _POLYGONS[key] = (G.circle_polygon(f['center'], f['diameter']) if key[0] == 'c' else
+                                 G.rect_polygon(f['center'], f['width'], f['height'], f.get('angle', 0.0)))
+    return poly
 
 
 def feature_shape(f):
@@ -701,18 +719,65 @@ class Plate:
             return False
         if not G.point_in_polygon(pt, self.cut) or G.near_boundary(pt, self.cut, tol):
             return False
-        for (_f, poly), (fx0, fy0, fx1, fy1) in zip(self.feature_polys, self._feature_boxes):
+        boxes = self._feature_boxes
+        for k in self._features_near_x(x, tol):
+            fx0, fy0, fx1, fy1 = boxes[k]
             if x < fx0 - tol or x > fx1 + tol or y < fy0 - tol or y > fy1 + tol:
                 continue
+            poly = self.feature_polys[k][1]
             if G.point_in_polygon(pt, poly) or G.near_boundary(pt, poly, tol):
                 return False
         return True
+
+    def _features_near_x(self, x, tol):
+        """Indices of the cut-outs whose box spans x (± tol): all of them for a few, by bisection for a board with
+        hundreds of slots (built once per plate)."""
+        n = len(self._feature_boxes)
+        if n <= 32:
+            return range(n)
+        idx = getattr(self, '_xidx', None)
+        if idx is None or idx[0] != n:
+            order = sorted(range(n), key=lambda i: self._feature_boxes[i][0])
+            idx = self._xidx = (n, order, [self._feature_boxes[i][0] for i in order],
+                                max(b[2] - b[0] for b in self._feature_boxes))
+        _n, order, starts, widest = idx
+        return order[bisect.bisect_left(starts, x - tol - widest):bisect.bisect_right(starts, x + tol)]
 
     def feature_at(self, pt):
         for f, poly in self.feature_polys:
             if G.point_in_polygon(pt, poly):
                 return f
         return None
+
+
+PLATE_REUSE = contextvars.ContextVar('plate_reuse', default=None)   # {component id: last Plate}, inside joining loops
+
+
+def plate_for(design, comp):
+    """Plate(design, comp). Inside a joining loop (validation.joining_loop, where components are only ever given new
+    features) the last plate built for this component is extended instead when the component only ADDED features
+    to it (same outline, tabs, placement and thickness; the old features are the first ones, unchanged): joining
+    appends one slot at a time to a receiving board, and rebuilding all its slots for every joint made it quadratic."""
+    cache = PLATE_REUSE.get()
+    if cache is None:
+        return Plate(design, comp)
+    prev = cache.get(comp['id'])
+    feats = comp.get('features', [])
+    k = len(prev.features) if prev is not None else 0
+    if (prev is None or prev.comp.get('outline') is not comp.get('outline') or prev.comp.get('tabs') is not comp.get('tabs')
+            or prev.comp.get('placement') is not comp.get('placement') or prev.comp.get('arcs') is not comp.get('arcs')
+            or k > len(feats) or not all(a is b for a, b in zip(feats, prev.features))
+            or thickness_of(design, comp) != prev.t):
+        plate = Plate(design, comp)
+    else:
+        plate = copy.copy(prev)             # shared outline / frame / cut; the feature lists are new lists
+        new = [(f, feature_polygon(f)) for f in feats[k:]]
+        plate.comp, plate.features = comp, feats
+        plate.feature_polys = prev.feature_polys + new
+        plate._feature_boxes = prev._feature_boxes + [G.bbox(poly) for _f, poly in new]
+        plate._sig = plate._material = None
+    cache[comp['id']] = plate
+    return plate
 
 
 def build_plates(design):

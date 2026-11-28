@@ -1,6 +1,8 @@
 /**
  * Universal Toast & Notification Utility
  */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 export const Toast = {
   timeoutId: null,
 
@@ -13,7 +15,7 @@ export const Toast = {
       document.body.appendChild(container);
     }
 
-    container.innerHTML = `<span class="text-sm">${icon}</span><span class="font-medium">${message}</span>`;
+    container.innerHTML = `<span class="text-sm">${esc(icon)}</span><span class="font-medium">${esc(message)}</span>`;
     container.classList.remove('opacity-0', 'translate-y-2');
     container.classList.add('opacity-100', 'translate-y-0');
 

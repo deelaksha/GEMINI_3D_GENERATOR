@@ -35,20 +35,20 @@ import re
 import threading
 
 from . import geometry as G
-from .deadline import TimeBudgetExceeded, time_budget as _budget
+from .deadline import TimeBudgetExceeded, check as _check_budget, time_budget as _budget
 from .examples.furniture import DIRS, edge_facing, panel
 from .joining import join
-from .manufacturing import FASTENERS, MATERIALS
+from .manufacturing import FASTENERS, MATERIALS, apply_process
 from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
                     SchemaError, cut_outline, edge_frame, feature_polygon, normalize_design, thickness_of)
 from .nesting import SHEET_PRESETS
 from .json_repair import ENDS_EARLY, repair_json, summarize as _summarize_repair
-from .progress import active as _reporting, report as _progress
+from .progress import active as _reporting, report as _report
 from .shapes import ShapeError, arc_sweep, reverse as reverse_shape, shape_polygon
 from .validation import TOL, _edge_line_intervals, joining_loop, validate_design
 
 FORMAT = 'board-design/v1'
-CONNECTION_TYPES = ('tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre')
+CONNECTION_TYPES = ('tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre', 'face_lap')
 GLUE_FREE_TYPES = {'tab_slot', 'finger', 'cross_lap'}
 # Spellings external AIs commonly use; read as the canonical type with a warning (so the AI learns the real name)
 TYPE_ALIASES = {
@@ -61,6 +61,7 @@ TYPE_ALIASES = {
     'butt': ('butt_joint', 'screw', 'screwed', 'dowel', 'dowelled'),
     'hinge': ('hinged', 'door_hinge'),
     'mitre': ('miter', 'mitre_joint', 'miter_joint', 'mitred', 'mitered'),
+    'face_lap': ('laminate', 'laminated', 'lamination', 'face', 'face_glue', 'glued_face', 'face_to_face'),
 }
 BOARD_KEYS = ('board', 'from', 'a', 'board_a', 'source', 'part', 'child', 'tab_board')
 INTO_KEYS = ('into', 'to', 'b', 'board_b', 'target', 'receiver', 'parent', 'onto', 'slot_board')
@@ -70,6 +71,14 @@ REPAIR_MAX = 5_000_000                  # characters: larger invalid JSON is rep
 BUDGET_BOARDS = 900                     # the time budget covers this many boards; bigger designs get more, in proportion
 MAX_BUDGET = 900                        # s: never more than 15 minutes of compiling, however large the design
 SAFE_MOVE = 2.0     # mm: a placement correction this small is treated as unambiguous (auto-fixable)
+
+
+
+def _progress(stage, done=None, total=None, **info):
+    """Report progress - and stop here when the compile's time budget is spent: every long loop of the compiler
+    reports progress, so this is where a request that runs too long is ended (TimeBudgetExceeded)."""
+    _check_budget()
+    _report(stage, done, total, **info)
 
 
 class CompileError(Exception):
@@ -300,6 +309,7 @@ def parse_source(text):
 
 _ORIGIN = contextvars.ContextVar('expanded_ids', default={})   # generated id -> id written in the source
 _REQUIREMENTS = contextvars.ContextVar('requirements', default=None)   # the requirement text of this compile
+_BRIEF = contextvars.ContextVar('brief', default=None)   # the validated design brief of this compile (brief.py)
 _SNAPSHOT_KEY = contextvars.ContextVar('snapshot_key', default=None)   # identifies this compile's input
 
 # The editor compiles twice: a fast pass (3D and checks) and then the same code with production. The fast pass keeps
@@ -1211,6 +1221,28 @@ def _tabs_for(comp, bd_a, bd_b, ct, conn, cid):
     return tabs, None
 
 
+def _edge_overhang(comp_a, comp_b, edge, bd_a, bd_b, ct):
+    """-> (mm of A's joining edge that lies outside B's outline, edge length within B's box). Tabs are laid out against
+    B's box; a round or shaped B can leave part of the edge standing on nothing."""
+    m = ct['m']
+    fa, fb = _frame(comp_a), _frame(comp_b)
+    out = comp_a['outline']
+    w0, w1 = fa.to_world([*out[edge], 0.0]), fa.to_world([*out[(edge + 1) % len(out)], 0.0])
+    lo, hi = max(min(w0[m], w1[m]), bd_b.lo[m]), min(max(w0[m], w1[m]), bd_b.hi[m])
+    if hi - lo <= 0 or abs(w1[m] - w0[m]) < 1e-9:
+        return 0.0, 0.0
+    n = max(2, int(hi - lo))                  # about one sample per millimetre
+    poly = comp_b['outline']
+    outside = 0
+    for i in range(n):
+        v = lo + (i + 0.5) * (hi - lo) / n
+        t = (v - w0[m]) / (w1[m] - w0[m])
+        q = fb.to_local([w0[k] + (w1[k] - w0[k]) * t for k in range(3)])
+        if not G.point_in_polygon(q[:2], poly):
+            outside += 1
+    return outside * (hi - lo) / n, hi - lo
+
+
 def _proud(depth, t_b):
     """An explicit tab_depth beyond the receiver's thickness is intentional: mark the tab so it is not flagged."""
     return {'protrude': True} if depth > t_b + TOL['contact'] else {}
@@ -1558,7 +1590,7 @@ def _face_side(bd, axis, sign):
     return ('u' if bd.inplane[0] == axis else 'v') + ('1' if sign > 0 else '0')
 
 
-def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map):
+def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map, comps0=None, shaped=None):
     """Finger / cross-lap: compute the edge cuts on both boards (face coordinates) and record the engine joint."""
     a, b = c['board'], c['into']
     label = c.get('id') if isinstance(c.get('id'), str) and ID_RE.match(c['id']) else _fit_id(f"C{(c['_i'] or 0) + 1}-{a}-{b}")
@@ -1573,10 +1605,14 @@ def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map):
         diags.append(diag('error', code, f"Connection '{label}': {msg}", connection=label, board=a, line=cline or A.line))
     if a == b:
         return fail('SELF_CONNECTION', f"connects '{a}' to itself.")
+    profiled = any(bd.raw.get('profile') is not None for bd in (A, B))
     for bd in (A, B):
-        if bd.rot or bd.raw.get('profile') is not None:
-            return fail('JOINT_NEEDS_PLAIN_BOARD', f"{c['type']} joints are cut into plain (rectangular, unrotated) boards; "
-                        f"'{bd.id}' has a {'rotate' if bd.rot else 'profile'}. Use tab_slot for it.")
+        if bd.rot or (bd.raw.get('profile') is not None and (c['type'] != 'cross_lap' or comps0 is None)):
+            return fail('JOINT_NEEDS_PLAIN_BOARD', f"{c['type']} joints are cut into unrotated boards"
+                        f"{' (finger: plain rectangles)' if c['type'] == 'finger' else ''}; '{bd.id}' has a "
+                        f"{'rotate' if bd.rot else 'profile'}. Use tab_slot for it.")
+    if profiled:                        # shaped boards: halve them where their outlines cross, or slot one through
+        return _cut_shaped_cross_lap(c, A, B, comps0, clr, shaped, joints, label, cline, fail)
     if c['type'] == 'cross_lap':
         x = _crossing(A, B)
         if x is None:
@@ -1622,6 +1658,93 @@ def _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map):
         cuts.setdefault(a, []).append((_face_side(A, k, e), f0 - A.lo[m], f1 - A.lo[m], B.t))
         cuts.setdefault(b, []).append((_face_side(B, n, side), f0 - clr / 2 - B.lo[m], f1 + clr / 2 - B.lo[m], -A.t))
     joints.append(({'id': label, 'type': 'finger', 'a': a, 'b': b}, c, label, cline))
+
+
+def _line_intervals(bd, comp, k, other):
+    """World intervals along axis k where board bd has material, on the line through the middle of `other`'s
+    thickness (the line where the two boards cross)."""
+    to_local = _face_mapper(bd, comp)
+    iu, iv = bd.inplane
+    w = other.thin
+    at = (other.lo[w] + other.hi[w]) / 2 - bd.lo[w]
+    face = (lambda r: [r, at]) if iu == k else (lambda r: [at, r])
+    p0, p1 = to_local(face(0.0)), to_local(face(1.0))
+    ivs = _edge_line_intervals([(comp['outline'][i], comp['outline'][(i + 1) % len(comp['outline'])])
+                                for i in range(len(comp['outline']))], p0, [p1[0] - p0[0], p1[1] - p0[1]])
+    return [(bd.lo[k] + r0, bd.lo[k] + r1) for r0, r1 in ivs if r1 - r0 > 1e-6]
+
+
+def _cut_shaped_cross_lap(c, A, B, comps0, clr, shaped, joints, label, cline, fail):
+    """cross_lap where at least one board has a profile. Along the line where the boards cross, each board's material
+    is measured from its real outline. If each one ends at one end of the stretch they share, both are halved there
+    (notches from opposite ends, cut out of the outline - a tree of two crossed silhouettes). If one board's material
+    runs past the other's at both ends, it gets a closed slot of the other's cross-section and the other passes
+    through it (a wing through a fuselage)."""
+    a, b = A.id, B.id
+    if A.thin == B.thin or _crossing(A, B) is None:
+        return fail('NO_CROSSING', f"'{a}' and '{b}' do not cross each other. A cross_lap needs two perpendicular boards "
+                    f"that pass through each other.")
+    k = 3 - A.thin - B.thin
+    ia, ib = _line_intervals(A, comps0[a], k, B), _line_intervals(B, comps0[b], k, A)
+    pairs = [(x, y) for x in ia for y in ib if min(x[1], y[1]) - max(x[0], y[0]) > 2 * TOL['min_edge_margin']]
+    if len(pairs) != 1:
+        return fail('NO_CROSSING', f"the outlines of '{a}' and '{b}' do not cross in one place along {AXES[k]} "
+                    f"({len(pairs)} crossing stretches); split the joint or reshape them.")
+    (x0, x1), (y0, y1) = pairs[0]
+    c0, c1, t, m = max(x0, y0), min(x1, y1), TOL['contact'], TOL['min_edge_margin']
+    half = (c0 + c1) / 2
+
+    def rect(bd, other, k_lo, k_hi):
+        w = other.thin
+        lo, hi = other.lo[w] - clr / 2 - bd.lo[w], other.hi[w] + clr / 2 - bd.lo[w]
+        kk = (k_lo - bd.lo[k], k_hi - bd.lo[k])
+        pts = [(kk[0], lo), (kk[1], lo), (kk[1], hi), (kk[0], hi)]
+        return [list(q) if bd.inplane[0] == k else [q[1], q[0]] for q in pts]
+    through = None
+    if abs(x1 - c1) <= t and abs(y0 - c0) <= t:           # A ends at the top of the crossing, B at its bottom
+        shaped.setdefault(a, []).append(('notch', rect(A, B, half, A.hi[k] + 1)))
+        shaped.setdefault(b, []).append(('notch', rect(B, A, B.lo[k] - 1, half)))
+    elif abs(x0 - c0) <= t and abs(y1 - c1) <= t:
+        shaped.setdefault(a, []).append(('notch', rect(A, B, A.lo[k] - 1, half)))
+        shaped.setdefault(b, []).append(('notch', rect(B, A, half, B.hi[k] + 1)))
+    elif x0 < c0 - m and x1 > c1 + m and abs(y0 - c0) <= t and abs(y1 - c1) <= t:      # B passes through A
+        shaped.setdefault(a, []).append(('slot', rect(A, B, c0 - clr / 2, c1 + clr / 2), label))
+        through = b
+    elif y0 < c0 - m and y1 > c1 + m and abs(x0 - c0) <= t and abs(x1 - c1) <= t:      # A passes through B
+        shaped.setdefault(b, []).append(('slot', rect(B, A, c0 - clr / 2, c1 + clr / 2), label))
+        through = a
+    else:
+        return fail('CROSS_LAP_EDGES', f"along {AXES[k]} '{a}' has material at {x0:g}..{x1:g} mm and '{b}' at {y0:g}..{y1:g} "
+                    f"mm where they cross: to halve them each must end at one end of the shared stretch ({c0:g}..{c1:g}); "
+                    f"to slot one through the other, one must run past the other at both ends.")
+    joints.append(({'id': label, 'type': 'cross_lap', 'a': a, 'b': b, **({'through': through} if through else {})},
+                   c, label, cline))
+
+
+def _apply_shaped_cuts(bid, bd, comp0, comp, cuts, diags):
+    """Notches (cut out of the outline) and closed slots (cut-out features) from shaped cross_laps, in face
+    coordinates. The board's curve metadata is dropped: its outline is now the cut polyline."""
+    from shapely.geometry import Polygon
+    from shapely.geometry.polygon import orient
+    to_local = _face_mapper(bd, comp0)
+    notches = [Polygon([to_local(q) for q in pts]) for kind, pts, *_ in cuts if kind == 'notch']
+    if notches:
+        solid = Polygon(comp0['outline']).buffer(0)
+        for n in notches:
+            solid = solid.difference(n)
+        if solid.geom_type != 'Polygon' or solid.interiors or solid.is_empty:
+            diags.append(diag('error', 'JOINT_CUTS_INVALID', f"Board '{bid}': its cross_lap notches split it or leave a "
+                              f"hole in it - check its cross_lap connections.", board=bid, line=bd.line))
+            return
+        outline = [[round(x, 4), round(y, 4)] for x, y in orient(solid, 1.0).exterior.coords[:-1]]
+        for cp in (comp0, comp):
+            cp['outline'] = outline
+            cp.pop('arcs', None)
+    for kind, pts, *rest in cuts:
+        if kind == 'slot':
+            feat = {'id': _fit_id(f'xlap-{rest[0]}'), 'kind': 'slot', 'shape': 'polygon', 'points': [to_local(q) for q in pts]}
+            for cp in {id(comp0): comp0, id(comp): comp}.values():
+                cp.setdefault('features', []).append(feat)
 
 
 def _cut_outline(su, sv, cuts):
@@ -1699,17 +1822,19 @@ def _auto_sheet(design, mat, data):
 
 
 def compile_source(text, design_id='canvas-preview', run_production=True, time_budget=None, machine=None,
-                   requirements=None):
+                   requirements=None, max_boards=None):
     """Compile AI-generated design text. Never raises for bad input; everything is a diagnostic.
     time_budget (s): stop with a COMPILE_TIMEOUT diagnostic instead of running on (None = no limit / caller's budget).
     machine: {'kerf': mm, 'sheet': {'width', 'height'}, 'measured'?: mm, 'fit'?: mm} of the cutting machine (e.g. a
     laser's kerf and bed, the board's measured thickness and the fit found with the test-fit piece); it overrides the
     material's catalogue kerf, slot clearance and the stock sheet, so every check, the nesting and the cut files use
     the real machine and board.
-    requirements: the free-text requirements the design was made from; sizes stated there are checked against it."""
+    requirements: the free-text requirements the design was made from; sizes stated there are checked against it.
+    max_boards: the most boards this caller may compile after repeat / mirror / assemblies are expanded (a few bytes
+    of JSON can describe 100,000 boards); None = only the global limit."""
     token = _REQUIREMENTS.set(requirements)
     key = (ENGINE_VERSION, hashlib.sha256(text.encode('utf-8', 'surrogatepass')).hexdigest(), design_id,
-           json.dumps(machine, sort_keys=True, default=str), requirements) if isinstance(text, str) else None
+           json.dumps(machine, sort_keys=True, default=str), requirements, max_boards) if isinstance(text, str) else None
     key_token = _SNAPSHOT_KEY.set(key)
     try:
         snap = _recall(key) if run_production and key else None
@@ -1728,14 +1853,15 @@ def compile_source(text, design_id='canvas-preview', run_production=True, time_b
                 result['ok'] = False
                 result['diagnostics'].append(diag('error', 'COMPILER_ERROR', f'Internal compiler error: {type(e).__name__}: {e}'))
                 return result
-        return _compile_source(text, design_id, run_production, time_budget, machine)
+        return _compile_source(text, design_id, run_production, time_budget, machine, max_boards)
     finally:
         _SNAPSHOT_KEY.reset(key_token)
         _REQUIREMENTS.reset(token)
         _ORIGIN.set({})
+        _BRIEF.set(None)
 
 
-def _compile_source(text, design_id, run_production, time_budget, machine):
+def _compile_source(text, design_id, run_production, time_budget, machine, max_boards=None):
     data, src, off, diags = parse_source(text)
     result = {'ok': False, 'format': None, 'diagnostics': diags, 'design': None, 'source_map': {}}
     if data is None:
@@ -1751,6 +1877,11 @@ def _compile_source(text, design_id, run_production, time_budget, machine):
             data, origin = expand(data)
         except ExpandError as e:
             result['diagnostics'].append(diag('error', 'STRUCTURE_INVALID', str(e).capitalize() + '.'))
+            return result
+        if max_boards and len(data.get('boards') or []) > max_boards:
+            result['diagnostics'].append(diag('error', 'STRUCTURE_TOO_LARGE', f"The design expands to "
+                                              f"{len(data['boards']):,} boards; at most {max_boards:,} can be compiled in "
+                                              f"one request here. Split it into smaller designs or reduce the repeats."))
             return result
         if origin:
             _ORIGIN.set(origin)
@@ -1841,6 +1972,7 @@ def _compile_native(data, design_id, result, run_production, machine=None):
         design['material']['kerf'] = float(machine['kerf'])
         _machine_fit(design['material'], machine)
         design['sheet'] = _machine_sheet(machine)
+    apply_process(design, machine)
     pending = [j for j in design['joints'] if j.get('status') != 'joined']
     design['joints'] = [j for j in design['joints'] if j.get('status') == 'joined']
     _progress('geometry', 1, 1, **({'preview': _preview(design['components'], design)} if _reporting() else {}))
@@ -1883,6 +2015,11 @@ def _consolidation_notes(merge, diags, line):
         f"'{g['board']}' <- {len(g['from'])} pieces, {g['openings']} gap(s) kept as openings" for g in merge['groups'][:12]]
     calc += [f"left separate: {', '.join(s['boards'][:4])}{', ...' if len(s['boards']) > 4 else ''} - {s['reason']}"
              for s in merge['skipped'][:6]]
+    for g in merge['groups']:
+        for extra, inside in g['redundant']:
+            diags.append(diag('warning', 'REDUNDANT_BOARD', f"'{extra}' lies entirely inside '{inside}' in the same plane, "
+                              f"so it adds nothing to the board they make together ('{g['board']}'): remove '{extra}', or "
+                              f"move it to where it was meant to be.", board=extra, line=line))
     if merge['applied']:
         diags.append(diag('info', 'CONSOLIDATED', f"Consolidated {what}: {merge['boards_before']} boards became "
                           f"{merge['boards_after']} and {merge['connections_removed']} connection(s) between them were "
@@ -1906,6 +2043,13 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
         diags.append(diag('error', 'FORMAT_UNSUPPORTED', f"\"format\" is {fmt!r}, but this compiler reads only "
                           f"\"{FORMAT}\". Write the design in {FORMAT} (see the specification) or remove the field.",
                           line=_key_line(src, 'format', off)))
+    _BRIEF.set(None)
+    if data.get('brief') is not None:           # what the product must contain: checked once the design is built
+        from .brief import validate_brief
+        brief, probs = validate_brief(data['brief'])
+        for pr in probs:
+            diags.append(diag(pr['severity'], pr['code'], pr['message'], line=_key_line(src, 'brief', off)))
+        _BRIEF.set(brief)
     product = data.get('product') if isinstance(data.get('product'), dict) else {}
     if not product.get('name'):
         diags.append(diag('warning', 'PRODUCT_NAME', 'Add "product": {"name": ...} so the design can be identified.',
@@ -2012,10 +2156,12 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
     joints, seen = [], set()
     conn_pairs = {c['id']: (c['board'], c['into']) for c in norm if isinstance(c.get('id'), str)}
     # Pass 1: finger and cross-lap joints cut both boards' outlines (before any tab is placed on them)
-    cuts = {}
+    cuts, shaped = {}, {}
     for c in norm:
         if c['type'] in ('finger', 'cross_lap'):
-            _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map)
+            _cut_joint(c, boards, mat, cuts, joints, diags, src, off, source_map, comps0, shaped)
+    for bid, sc in shaped.items():
+        _apply_shaped_cuts(bid, boards[bid], comps0[bid], comps[bid], sc, diags)
     for bid, bc in cuts.items():
         bd = boards[bid]
         su, sv = bd.size[bd.inplane[0]], bd.size[bd.inplane[1]]
@@ -2069,6 +2215,9 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
                 if c.get(k) is not None:
                     j[k] = c[k]
             joints.append((j, c, cid, cline))
+            continue
+        if ctype == 'face_lap':        # two parallel boards glued face to face (laminations); checked by the engine
+            joints.append(({'id': cid, 'type': 'face_lap', 'a': a, 'b': b}, c, cid, cline))
             continue
         if ctype == 'mitre':
             da, db = _parse_dir(c.get('edge')), _parse_dir(c.get('into_edge'))
@@ -2134,6 +2283,13 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
             comps[a].setdefault('tabs', []).extend(tabs)
             for t in tabs:
                 joints.append(({'id': t['id'], 'type': 'tab_slot', 'a': a, 'tab': t['id'], 'b': b}, c, cid, cline))
+            over, length = _edge_overhang(comps[a], comps[b], tabs[0]['edge'], A, B, ct)
+            if over > max(2.0, 0.1 * length):
+                diags.append(diag('warning', 'TAB_EDGE_OVERHANG',
+                                  f"Connection '{cid}': {over:.0f} mm of the {length:.0f} mm joining edge of '{a}' hangs "
+                                  f"past the outline of '{b}' (its profile is narrower there than its box). That part of the "
+                                  f"edge stands on nothing: move '{a}' over solid material of '{b}', or shorten it.",
+                                  connection=cid, board=a, line=cline or A.line, overhang=round(over, 1)))
         else:  # butt
             j = {'id': cid, 'type': 'edge_butt', 'a': a, 'a_edge': edge_facing(comps0[a], _dir(k, e)), 'b': b}
             if _add_fasteners(j, c, cid, cline, diags):
@@ -2162,6 +2318,7 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
             held.add(bid)
             joints = [jt for jt in joints if jt[0]['a'] in comps and jt[0]['b'] in comps]
     design['sheet'] = _machine_sheet(machine) if _laser(machine) else _auto_sheet(design, mat, data)
+    apply_process(design, machine)       # machine.process: design['process'] and the process kerf (manufacturing.py)
     if coloring and any(c.get('colors') for c in design['components']):
         design['coloring'] = True
         design['color_sheets'] = bool(machine.get('color_sheets'))     # each colour cut from its own (pre-coloured) sheets
@@ -2274,6 +2431,8 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
             continue                    # a moving part rests and runs with clearance by design: its motion mounts it
         if _follow_on(i, held, failed_pairs):
             continue                    # a consequence of an error already reported for that board / connection
+        if i['code'] in _COPY_CHECKS and _copies_of_one_board(i.get('components')):
+            continue                    # copies made by morph / radial / grow differ on purpose (rounded or turned)
         comp = next((c for c in i.get('components', []) if c in boards), (i.get('components') or [None])[0])
         fixes = i.get('fixes')          # a check may give its own exact fix (e.g. a gear's rotation)
         sug = i.get('suggestion')
@@ -2312,6 +2471,15 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
     result['model3d'] = model3d(design, report)
     _progress('model', 2, 2)
     result['connectivity'] = {k: conn[k] for k in ('groups', 'main', 'isolated', 'not_joined')}
+    if _BRIEF.get():                            # the brief's components, counts and closed enclosures
+        from .completeness import check as check_completeness
+        roles = {bid: bd.raw.get('role') for bid, bd in boards.items() if isinstance(bd.raw.get('role'), str)}
+        found = check_completeness(_BRIEF.get(), plates, roles)
+        for i in found:
+            comp = next((c for c in i['components'] if c in boards), None)
+            diags.append(diag(i['severity'], i['code'], i['message'], board=comp, line=boards[comp].line if comp else None,
+                              components=i['components'] or None, **({'side': i['side']} if 'side' in i else {})))
+        result['completeness'] = {'brief': _BRIEF.get(), 'issues': len(found)}
     result['inspection'] = {'boards': insp['boards'], 'skipped_tilted': insp['skipped_tilted']}
     if _REQUIREMENTS.get():
         from .requirements import check_requirements
@@ -2335,7 +2503,10 @@ def _tail(result, design, diags, run_production, machine):
                                 'blocking_issues': pkg['blocking_issues'][:50], 'blocking_total': len(pkg['blocking_issues'])}
             result['cut_list'] = pkg.get('cut_list')
             mfg = pkg.get('manufacturing') or {}
-            result['manufacturing'] = {k: mfg[k] for k in ('summary', 'assembly') if k in mfg}
+            result['manufacturing'] = {k: mfg[k] for k in ('summary', 'assembly', 'assembly_plan') if k in mfg}
+            for i in mfg.get('issues') or []:       # an assembly no one can put together is a design error, not a detail
+                if i['code'].startswith('ASSEMBLY_') and i['severity'] == 'error':
+                    diags.append(diag('error', i['code'], i['message'], components=i.get('components') or None))
             from .jobreport import job_report
             result['job'] = job_report(pkg['nesting'], pkg['cut'], machine)
         except TimeBudgetExceeded:
@@ -2360,6 +2531,14 @@ def _tail(result, design, diags, run_production, machine):
 
 
 _STABILITY = ('CANTILEVER', 'TIP_OVER', 'LOW_STABILITY_MARGIN', 'RESTING_OFF_SUPPORT')
+_COPY_CHECKS = ('MISMATCHED_PAIR', 'MISALIGNED', 'UNEVEN_SPACING')
+
+
+def _copies_of_one_board(components):
+    """True when every board named is a generated copy of the same source board (repeat / morph / radial / mirror)."""
+    origin = _ORIGIN.get()
+    src = {origin.get(c) for c in components or ()}
+    return len(components or ()) >= 2 and len(src) == 1 and None not in src
 
 
 # what to do when a connection could not be made, by the code that rejected it ({a}: the board, {b}: the other one)

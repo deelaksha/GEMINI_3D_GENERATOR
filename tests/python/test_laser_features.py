@@ -326,7 +326,7 @@ def test_ai_generate_and_fix_flow(client, monkeypatch):
     assert 'Laser box' not in prompts[0] and '600 × 400 mm bed' in prompts[0]  # the strict prompt with the laser settings
     f = client.post('/api/v1/canvas/ai-fix', headers=ED, json={'source': r.json['source'], 'machine': LASER}).json
     assert f['changed'] and json.loads(f['source']) == BOX and 'CONNECTION_GAP' in prompts[1]
-    assert 'OUTPUT CONTRACT' in prompts[1]
+    assert '{"patch": {' in prompts[1]                  # the server's repair asks for a patch, not the whole design
     clean = client.post('/api/v1/canvas/ai-fix', headers=ED, json={'source': json.dumps(BOX), 'machine': LASER}).json
     assert {k: clean[k] for k in ('ok', 'source', 'problems', 'changed')} == \
         {'ok': True, 'source': json.dumps(BOX), 'problems': 0, 'changed': False} and len(prompts) == 2

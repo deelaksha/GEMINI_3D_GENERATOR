@@ -36,7 +36,7 @@ def source_board_ids(src):
             if isinstance(b, dict) and isinstance(b.get('id'), str)}
 
 
-def accept_repair(old_src, old_res, new_src, new_res):
+def accept_repair(old_src, old_res, new_src, new_res, allow_equal=False):
     before, after = _counts(old_res), _counts(new_res)
     old_ids, new_ids = source_board_ids(old_src) or set(), source_board_ids(new_src)
     verdict = {'accepted': False, 'reasons': [], 'before': before, 'after': after, 'removed': [], 'added': []}
@@ -51,8 +51,83 @@ def accept_repair(old_src, old_res, new_src, new_res):
     if unexplained:
         verdict['reasons'].append(f"the AI removed {len(unexplained)} board(s) no problem was about: "
                                   f"{', '.join(unexplained[:10])}{'…' if len(unexplained) > 10 else ''}")
-    if (after['errors'], after['blocking']) >= (before['errors'], before['blocking']):
+    worse = (after['errors'], after['blocking']) > (before['errors'], before['blocking']) if allow_equal else \
+        (after['errors'], after['blocking']) >= (before['errors'], before['blocking'])
+    if worse:            # allow_equal: a fix for what a viewer saw (no compiler problem) may keep the counts
         verdict['reasons'].append(f"it is not better: {after['errors']} error(s) and {after['blocking']} production "
                                   f"problem(s) after, {before['errors']} and {before['blocking']} before")
     verdict['accepted'] = not verdict['reasons']
     return verdict
+
+
+class PatchError(ValueError):
+    pass
+
+
+def _source_data(src):
+    data = json.loads(_strip_comments(_extract(src)[0]))
+    if not isinstance(data, dict):
+        raise PatchError('the design is not a JSON object')
+    return data
+
+
+def apply_patch(source, patch):
+    """The design with an AI repair patch applied: {"patch": {"boards": [...], "connections": [...], "motions": [...],
+    "remove": [ids]}}. Boards / connections / motions replace the one with the same id or are added; "remove" deletes
+    boards, connections and motions by id. Everything else stays as it was. Raises PatchError for a malformed patch."""
+    from .canvas import pretty_json
+    p = patch.get('patch', patch) if isinstance(patch, dict) else None
+    if not isinstance(p, dict) or not ({'boards', 'connections', 'motions', 'remove'} & set(p)):
+        raise PatchError('the reply is not a patch ({"patch": {"boards": [...], "connections": [...], "remove": [...]}})')
+    data = _source_data(source)
+    for key in ('boards', 'connections', 'motions'):
+        items = p.get(key) or []
+        if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
+            raise PatchError(f'patch.{key} must be a list of objects')
+        cur = data.setdefault(key, []) if items else data.get(key, [])
+        where = {x.get('id'): k for k, x in enumerate(cur) if isinstance(x, dict) and isinstance(x.get('id'), str)}
+        for x in items:
+            if key == 'boards' and not isinstance(x.get('id'), str):
+                raise PatchError('every patched board needs its "id"')
+            if isinstance(x.get('id'), str) and x['id'] in where:
+                cur[where[x['id']]] = x
+            else:
+                cur.append(x)
+    gone = set(p.get('remove') or [])
+    if gone:
+        for key in ('boards', 'connections', 'motions'):
+            if isinstance(data.get(key), list):
+                data[key] = [x for x in data[key] if not (isinstance(x, dict) and x.get('id') in gone)]
+    return pretty_json(data)
+
+
+def neighbourhood(source, diagnostics):
+    """(focus, neighbours): ids of the source boards the problems name (a generated copy "SHELF-2" counts as its source
+    board "SHELF") and of the boards connected to them, from the source's connections (wildcards included)."""
+    import fnmatch
+    data = _source_data(source)
+    ids = [b['id'] for b in data.get('boards') or [] if isinstance(b, dict) and isinstance(b.get('id'), str)]
+    known = set(ids)
+
+    def source_id(x):
+        while isinstance(x, str) and x not in known and '-' in x:
+            x = x.rsplit('-', 1)[0]
+        return x if x in known else None
+    focus = []
+    for d in diagnostics:
+        if d.get('severity') not in ('error', 'warning'):
+            continue
+        for x in [d.get('board')] + list(d.get('components') or []):
+            sid = source_id(x)
+            if sid and sid not in focus:
+                focus.append(sid)
+    match = lambda pat, i: isinstance(pat, str) and (pat == i or fnmatch.fnmatchcase(i, pat) or source_id(pat) == i)
+    near = []
+    for c in data.get('connections') or []:
+        if not isinstance(c, dict):
+            continue
+        ends = [c.get('board'), c.get('into')] + list(c.get('boards') or [])
+        touched = [i for i in ids if any(match(e, i) for e in ends)]
+        if set(touched) & set(focus):
+            near += [i for i in touched if i not in focus and i not in near]
+    return focus, near

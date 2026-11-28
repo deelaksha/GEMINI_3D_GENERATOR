@@ -188,7 +188,7 @@ def inspect(plates, joints=(), bodies=None):
                 continue            # across a board's thickness edges are never "flush" by intent
             for side, name in ((0, 'min'), (1, 'max')):      # one report per pair and axis
                 d = abs(B[side][k] - A[side][k])
-                if not TOUCH < d <= STEP or deliberate(d, a, b):
+                if not TOUCH < d < STEP or deliberate(d, a, b):     # >= STEP is a deliberate inset
                     continue
                 small = a if size[a][k] < size[b][k] else b
                 other = b if small == a else a
@@ -213,7 +213,7 @@ def inspect(plates, joints=(), bodies=None):
         h = next(x for x in range(3) if x not in (k, thin[door]))
         checks = [(k, off[1], off[0])] + [(h, nm, box[door][e][h] - box[side][e][h]) for e, nm in ((0, 'min'), (1, 'max'))]
         for ax, name, d in checks:
-            if TOUCH < abs(d) <= STEP:
+            if TOUCH < abs(d) < STEP:
                 add('MISALIGNED', 'warning', [door, side],
                     f"Door '{door}' is {abs(d):.1f} mm off the {name} {AX[ax]} edge of '{side}', the board it hangs on: an "
                     f"overlay door lines up with it exactly. Move or resize '{door}' by {-d:g} mm along {AX[ax]}.",
@@ -288,7 +288,7 @@ def inspect(plates, joints=(), bodies=None):
         ref_of = {at: (statistics.median(val(i, at) for i in group) if len(group) > 2 else val(group[0], at)) for at in attrs}
         for i in (group if len(group) > 2 else group[1:]):
             dev = [(at, val(i, at) - ref_of[at]) for at in attrs]
-            dev = [(at, d) for at, d in dev if TOUCH < abs(d) <= STEP and not deliberate(abs(d), i, i)]
+            dev = [(at, d) for at, d in dev if TOUCH < abs(d) < STEP and not deliberate(abs(d), i, i)]
             if not dev:
                 continue
             ref_name = 'the others' if len(group) > 2 else f"'{group[0]}'"

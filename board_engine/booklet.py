@@ -374,6 +374,19 @@ def _cutlist_pages(doc, pw, ph, ctx, cutlist):
 # Booklet
 # ---------------------------------------------------------------------------
 
+def _process_text(proc):
+    return (proc['process'] + (f", {proc['tool_diameter']:g} mm bit" if proc.get('tool_diameter') else '')
+            + (f", {proc['reliefs']} dog-bone reliefs" if proc.get('reliefs') else ''))
+
+
+def _relief_centres(path, pm):
+    """Centres of a path's dog-bone reliefs in the part's own coordinates (the sheet placement undone)."""
+    a = math.radians(pm['rotation'])
+    c, s = math.cos(a), math.sin(a)
+    back = lambda q: [(q[0] - pm['tx']) * c + (pm['ty'] - q[1]) * s, -(q[0] - pm['tx']) * s + (pm['ty'] - q[1]) * c]
+    return [back(r['center']) for r in path['reliefs']]
+
+
 def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=None):
     if paper not in PAPER:
         raise ValueError(f"paper must be one of {sorted(PAPER)}")
@@ -400,6 +413,7 @@ def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=No
             ('Material', mat['name']), ('Thickness', f"{mat['thickness']:g} mm"),
             ('Kerf / clearance', f"{mat['kerf']:g} / {mat['clearance']:g} mm"),
             ('Kerf compensation', f"{cut['kerf_compensation']:g} mm"),
+            *([('Process', _process_text(cut['process']))] if cut.get('process') else []),
             ('Components / joints', f"{s['components']} / {s['joined']} joined"),
             ('Validation', f"{s['errors']} errors, {s['warnings']} warnings"),
             ('Sheet', f"{nesting['sheet']['name']} {nesting['sheet']['width']:g} x {nesting['sheet']['height']:g} mm"),
@@ -474,6 +488,11 @@ def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=No
 
     # 3. Component drawings -----------------------------------------------------
     joints = design['joints']
+    by_part = {}
+    for sheet in cut['sheets']:
+        for p in sheet['paths']:
+            if p.get('reliefs'):
+                by_part.setdefault(p['part'], []).append(p)
     for c in comps:
         pl = Plate(design, c)
         pg = doc.page(pw, ph)
@@ -496,6 +515,11 @@ def build_booklet(design, report, nesting, cut, paper='A4', mfg=None, cutlist=No
         pg.poly([tf(p) for p in pl.cut], True, 'f')
         pg.stroke(CUT, 0.3)
         pg.poly([tf(p) for p in pl.cut])
+        for p in by_part.get(c['id'], []):         # router: dog-bone reliefs, drawn on the finished part
+            pg.stroke(CUT if p['type'] == 'outer' else INNER, 0.2)
+            for ctr in _relief_centres(p, by_id[c['id']]):
+                cx, cy = tf(ctr)
+                pg.circle(cx, cy, p['reliefs'][0]['radius'] * k)
         frows = []
         for i, (f, poly) in enumerate(pl.feature_polys, 1):
             col = {'slot': INNER, 'hole': '#7c3aed', 'opening': '#059669'}[f['kind']]

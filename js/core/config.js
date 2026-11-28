@@ -22,8 +22,11 @@ class AppStateManager {
     const savedModel = (hasStorage ? localStorage.getItem('PUZZLE_ACTIVE_MODEL') : null) || 'classic-sports-coupe';
     const savedThickness = (hasStorage ? localStorage.getItem('PUZZLE_THICKNESS') : null) || '3.0';
 
+    // A model id selects a model; it is never a path or code (anything else in ?model= is ignored)
+    const safeId = (v) => (v && /^[A-Za-z0-9_-]{1,200}$/.test(v) ? v : null);
+
     this.state = {
-      activeModelId: urlParams.get('model') || savedModel,
+      activeModelId: safeId(urlParams.get('model')) || safeId(savedModel) || 'classic-sports-coupe',
       selectedPartId: urlParams.get('part') || null,
       materialThickness: parseFloat(urlParams.get('thickness') || savedThickness),
       explodeFactor: parseFloat(urlParams.get('explode') || '0.0'),

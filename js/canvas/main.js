@@ -163,7 +163,7 @@ const MACHINE_KEY = 'board-canvas-laser';
 // now: compiles use the material's own values and the automatic sheet. Set to true to bring the laser controls back.
 const LASER = false;
 const MACHINE_DEFAULT = { bed: '600x400', w: 600, h: 400, kerf: 0.15, labels: true, shared: false, coloring: false, colorSheets: true,
-  measured: '', fit: '', cut: '', engrave: '', price: '' };
+  measured: '', fit: '', cut: '', engrave: '', price: '', process: '', tool: 6 };
 const MACHINE_FIELDS = { measured: '#in-measured', fit: '#in-fit', cut: '#in-cut-speed', engrave: '#in-engrave-speed', price: '#in-price' };
 
 function loadMachine() {
@@ -177,6 +177,8 @@ function loadMachine() {
   $('#in-shared').checked = m.shared;
   $('#in-coloring').checked = m.coloring;
   $('#in-color-sheets').checked = m.colorSheets;
+  $('#in-process').value = m.process;
+  $('#in-tool').value = m.tool;
   Object.entries(MACHINE_FIELDS).forEach(([k, id]) => { $(id).value = m[k]; });
   $$('.laser-only').forEach((el) => { if (!LASER) el.hidden = true; });
   syncBed();
@@ -184,16 +186,25 @@ function loadMachine() {
 
 function syncBed() {
   $('#row-color-sheets').hidden = !LASER || !$('#in-coloring').checked;
+  $('#row-tool').hidden = $('#in-process').value !== 'router';
   if (!LASER) return;
   const custom = $('#in-bed').value === 'custom';
   $$('.bed-custom').forEach((el) => (el.hidden = !custom));
   if (!custom) [$('#in-bed-w').value, $('#in-bed-h').value] = $('#in-bed').value.split('x');
 }
 
+/** {process, tool_diameter?} of the cutting process, or {} for the material default. */
+function processFields() {
+  const p = $('#in-process').value;
+  if (p !== 'router') return p ? { process: p } : {};
+  const d = parseFloat($('#in-tool').value);
+  return { process: p, tool_diameter: Number.isFinite(d) && d >= 0.5 && d <= 25 ? d : MACHINE_DEFAULT.tool };
+}
+
 /** {kerf, sheet: {width, height}, measured?, fit?} as the API takes it (out-of-range input falls back to defaults). */
 function machine() {
   if (!LASER) {
-    const m = {};
+    const m = processFields();
     if ($('#in-coloring').checked) m.coloring = true;
     if ($('#in-file').checked) m.file = true;           // the AI delivers a downloadable .json file
     return Object.keys(m).length ? m : null;
@@ -208,6 +219,8 @@ function machine() {
   }
   if ($('#in-shared').checked) m.shared_edges = true;
   if ($('#in-file').checked) m.file = true;
+  Object.assign(m, processFields());
+  if (m.process === 'router') delete m.kerf;          // a router's kerf is its bit diameter (set by the server)
   if ($('#in-coloring').checked) {
     m.coloring = true;
     if ($('#in-color-sheets').checked) m.color_sheets = true;
@@ -233,6 +246,7 @@ function machineChanged() {
     localStorage.setItem(MACHINE_KEY, JSON.stringify({ bed: $('#in-bed').value, w: num('#in-bed-w', MACHINE_DEFAULT.w),
       h: num('#in-bed-h', MACHINE_DEFAULT.h), kerf: num('#in-kerf', MACHINE_DEFAULT.kerf), labels: $('#in-labels').checked, shared: $('#in-shared').checked,
       coloring: $('#in-coloring').checked, colorSheets: $('#in-color-sheets').checked,
+      process: $('#in-process').value, tool: num('#in-tool', MACHINE_DEFAULT.tool),
       ...Object.fromEntries(Object.entries(MACHINE_FIELDS).map(([k, id]) => [k, $(id).value])) }));
   } catch (e) { /* ignore */ }
   S.fixPrompt = null;                         // built for the old settings
@@ -298,13 +312,45 @@ async function aiGenerate() {
   const btn = $('#btn-ai-generate');
   btn.disabled = true;
   try {
+    let brief;
+    if ($('#in-plan-first').checked) {         // step 1: the AI's design brief, approved by the user
+      toast('The AI is planning the design (components, closed sides, moving parts)…', false, 120000);
+      const b = await Api.canvasAiBrief({ title, requirements: $('#in-req').value });
+      brief = b.brief;
+      showPrompt(JSON.stringify(brief, null, 2), 'Design brief from the AI: the design is built from it and checked against it.');
+      const list = brief.components.map((c) => `${c.count} × ${c.id}`).join(', ');
+      if (!confirm(`Design brief: ${list}${brief.enclosures.length ? ` — closed: ${brief.enclosures.map((e) => e.id).join(', ')}` : ''}.\n\nBuild the design from this plan?`)) {
+        return toast('Stopped after planning: the brief is in the prompt pane');
+      }
+    }
     toast('The AI is designing — this can take a minute or two…', false, 120000);
     const r = await Api.canvasAiGenerate({ title, requirements: $('#in-req').value,
-      thickness: parseFloat($('#in-thickness').value), machine: machine() });
+      thickness: parseFloat($('#in-thickness').value), machine: machine(), brief });
     putCode(r.source);
     if (narrow.matches) setPane('code');
     await compile(true);
     await aiFixLoop(AI_FIX_ROUNDS);
+  } catch (e) { reportError(e); } finally { btn.disabled = false; }
+}
+
+/** One visual check: four views of the compiled model to the AI; its findings can be fixed in one round. */
+async function aiVisual() {
+  if (!S.result?.model3d) return toast('Compile the design first', true);
+  const btn = $('#btn-ai-visual');
+  btn.disabled = true;
+  try {
+    toast('The AI is looking at the model…', false, 120000);
+    const views = view3d.snapshots();
+    const r = await Api.canvasAiCritique({ source: cm.getValue(), views, title: $('#in-title').value, requirements: $('#in-req').value });
+    const found = r.critique.discrepancies;
+    showPrompt(JSON.stringify(r.critique, null, 2), 'AI visual check of the compiled model (four views).');
+    if (!found.length) return toast(`AI visual check: nothing missing or wrong (recognisable ${r.critique.recognisable ?? '?'}/5)`);
+    const list = found.map((d) => `- ${d.component || 'model'}: ${d.issue.replace('_', ' ')}${d.where ? ` (${d.where})` : ''}`).join('\n');
+    if (!confirm(`AI visual check (recognisable ${r.critique.recognisable ?? '?'}/5):\n${list}\n\nLet the AI fix these (one round)?`)) return;
+    toast('Asking the AI to fix what it saw…', false, 120000);
+    const f = await Api.canvasAiFix(cm.getValue(), machine(), $('#in-req').value, r.problems);
+    if (f.changed) { putCode(f.source); await compile(true); }
+    toast(f.accepted === false ? `The AI's fix was not used (${(f.reasons || []).join('; ')})` : 'Fixed what the AI saw', f.accepted === false);
   } catch (e) { reportError(e); } finally { btn.disabled = false; }
 }
 
@@ -1041,9 +1087,10 @@ $('#btn-import').onclick = () => openImport().catch(reportError);
 $('#btn-cutfiles').onclick = () => downloadCutFiles();
 $('#btn-ai-generate').onclick = aiGenerate;
 $('#btn-ai-fix').onclick = aiFix;
+$('#btn-ai-visual').onclick = aiVisual;
 $('#btn-resize').onclick = openResize;
 $('#rs-apply').onclick = applyResize;
-['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-labels', '#in-shared', '#in-coloring', '#in-color-sheets', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
+['#in-bed', '#in-bed-w', '#in-bed-h', '#in-kerf', '#in-process', '#in-tool', '#in-labels', '#in-shared', '#in-coloring', '#in-color-sheets', ...Object.values(MACHINE_FIELDS)].forEach((id) => ($(id).onchange = machineChanged));
 try { $('#in-images').checked = localStorage.getItem(IMAGES_KEY) === '1'; } catch (e) { /* storage unavailable */ }
 try { $('#in-file').checked = localStorage.getItem(FILE_KEY) !== '0'; } catch (e) { $('#in-file').checked = true; }   // on by default
 $('#in-file').onchange = () => {
@@ -1109,7 +1156,7 @@ window.addEventListener('keydown', (e) => {
     loadMachine();
     Api.canvasAiStatus().then((st) => {           // AI buttons only when the server has a provider key
       if (!st.provider) return;
-      $('#btn-ai-generate').hidden = $('#btn-ai-fix').hidden = false;
+      $('#btn-ai-generate').hidden = $('#btn-ai-fix').hidden = $('#row-plan-first').hidden = $('#btn-ai-visual').hidden = false;
       $('#btn-ai-generate').title += ` (${st.provider}: ${st.model})`;
     }).catch(() => {});
     const q = new URLSearchParams(location.search);

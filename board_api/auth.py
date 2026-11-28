@@ -12,8 +12,14 @@ Principals:
 
 Roles (cumulative): viewer < editor < admin
   viewer: read, validate, dry-run checks, exports
-  editor: + all design mutations (components, features, tabs, joins, batches)
-  admin : + delete designs
+  editor: + create designs, and change (components, features, tabs, joins, batches, rename, restore, canvas update,
+          import into) the designs it may change - see Ownership
+  admin : + change and delete any design
+
+Ownership: a design records the principal that created it (`owner`, e.g. 'session:ab12cd34' or 'key:default-agent').
+  * change: its owner; an editor/admin API key also for designs owned by a key or by nobody (keys are trusted agents);
+    an admin always. Designs without an owner (seeded examples, older designs) are read-only for browser sessions.
+  * delete: its owner or an admin.
 """
 import functools
 import hashlib
@@ -175,3 +181,18 @@ def require(role):
             return fn(*a, **kw)
         return wrapper
     return deco
+
+
+def may_change(who, design, delete=False):
+    """None when principal `who` may change (or, with `delete`, delete) `design`, else the reason it may not (see
+    Ownership in the module docstring)."""
+    owner = design.get('owner')
+    if who['role'] == 'admin' or (owner and owner == who['id']):
+        return None
+    if delete:
+        return f"only the design's creator or an admin can delete '{design['id']}'"
+    if who['kind'] == 'api_key' and ROLES[who['role']] >= ROLES['editor'] and (not owner or owner.startswith('key:')):
+        return None
+    if not owner:
+        return f"'{design['id']}' is a shared example (it has no owner) and is read-only here; duplicate it to change a copy"
+    return f"'{design['id']}' belongs to someone else; only its creator or an admin can change it (duplicate it instead)"

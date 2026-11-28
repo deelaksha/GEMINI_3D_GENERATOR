@@ -8,6 +8,11 @@ Each placed part yields:
 Curved runs carry `arcs` (vertex index ranges on a circle) so SVG and DXF get TRUE arcs.
 Kerf compensation (optional) moves outer paths outward and inner paths inward by kerf/2 so
 that the finished part keeps its design dimensions.
+Router process (design['process']): every inside corner of the material a round bit cannot reach (slot, finger and
+cross-lap notch corners, tab roots) gets a dog-bone relief - a circle of the cut radius on the corner bisector that
+passes through the corner. A compensated (tool-centre) path plunges along the bisector to the relief centre and back;
+an uncompensated (part geometry) path carries the relief as a true arc. Each path lists its `reliefs`. Laser / saw /
+no process: no relief.
 """
 import math
 
@@ -168,9 +173,135 @@ def _share_edges(sheet):
     sheet['paths'] = out
 
 
+def corner_reliefs(poly, hole, r, arcs=None):
+    """Dog-bone reliefs of one closed path (design coordinates): [(vertex, corner, centre, e_prev, e_next)] (e: unit
+    vectors from the corner along its two edges) for every inside corner of the material - a convex vertex of a hole,
+    a reflex vertex of an outline - where a bit of radius r would leave more than RELIEF_TOL of material. The relief circle (radius r) sits on the corner bisector and passes through the
+    corner. Vertices inside true-arc runs are curves, not corners."""
+    from .manufacturing import RELIEF_TOL
+    n = len(poly)
+    if r <= 0 or n < 3:
+        return []
+    curve = {(a['start'] + k) % n for a in arcs or [] for k in range(1, (a['end'] - a['start']) % n)}
+    sign = 1.0 if G.signed_area(poly) > 0 else -1.0
+    out = []
+    for i in range(n):
+        if i in curve:
+            continue
+        q, a, b = poly[i], poly[i - 1], poly[(i + 1) % n]
+        la, lb = math.dist(q, a), math.dist(q, b)
+        if la < 1e-9 or lb < 1e-9:
+            continue
+        ea, eb = ((a[0] - q[0]) / la, (a[1] - q[1]) / la), ((b[0] - q[0]) / lb, (b[1] - q[1]) / lb)
+        turn = sign * (-ea[0] * eb[1] + ea[1] * eb[0])        # > 0: convex vertex of the polygon
+        if (turn <= 1e-9) if hole else (turn >= -1e-9):
+            continue
+        half_angle = math.acos(max(-1.0, min(1.0, ea[0] * eb[0] + ea[1] * eb[1]))) / 2.0
+        if half_angle < 1e-6 or r / math.sin(half_angle) - r <= RELIEF_TOL:
+            continue
+        ux, uy = ea[0] + eb[0], ea[1] + eb[1]
+        L = math.hypot(ux, uy)
+        out.append((i, q, [q[0] + ux / L * r, q[1] + uy / L * r], ea, eb))
+    return out
+
+
+def _with_reliefs(pts, design_pts, arcs, hole, r, compensated):
+    """(points, arcs, reliefs) of a path with dog-bone reliefs inserted. Compensated tool-centre path: the bit plunges
+    from the offset corner to the relief centre and back. Part geometry: the corner becomes a true arc of radius r."""
+    rel = corner_reliefs(design_pts, hole, r, arcs)
+    if not rel:
+        return pts, arcs, []
+    at = {i: (q, c, ea, eb) for i, q, c, ea, eb in rel}
+    out, index, lobes = [], [], []
+    for i, p in enumerate(pts):
+        first = len(out)
+        if i not in at:
+            out.append(p)
+        elif compensated:
+            out += [p, at[i][1], p]
+        else:
+            q, c, ea, eb = at[i]
+            t = 2 * (ea[0] * (c[0] - q[0]) + ea[1] * (c[1] - q[1]))     # chord from the corner to the circle: 2r cos
+            A, B = [q[0] + ea[0] * t, q[1] + ea[1] * t], [q[0] + eb[0] * t, q[1] + eb[1] * t]
+            sweep = arc_sweep(A, q, B, c)
+            a0 = math.atan2(A[1] - c[1], A[0] - c[0])
+            k = max(4, math.ceil(abs(sweep) / (math.pi / 18)))
+            out += [A] + [[c[0] + r * math.cos(a0 + sweep * j / k), c[1] + r * math.sin(a0 + sweep * j / k)]
+                          for j in range(1, k)] + [B]
+            lobes.append({'start': first, 'end': len(out) - 1, 'center': c, 'radius': r, 'ccw': sweep > 0})
+        index.append((first, len(out) - 1))
+    arcs = [dict(a, start=index[a['start']][1], end=index[a['end']][0]) for a in arcs or []] + lobes
+    return out, arcs, [(q, c) for _i, q, c, _a, _b in rel]
+
+
+def _router_issues(pl, r, reliefs, inner, design):
+    """Blocking issues of a routed part (design coordinates): a cut-out or notch the bit cannot clear (narrower than
+    the bit, or an inside curve tighter than its radius), and reliefs that cut through or thin a web below the
+    process minimum."""
+    from shapely.geometry import Point, Polygon
+    from shapely.ops import unary_union
+    from .manufacturing import RELIEF_TOL, process_limits
+    count = lambda g: 0 if g.is_empty else len(getattr(g, 'geoms', [g]))
+    outline = Polygon(pl.cut).buffer(0)
+    holes = [Polygon(poly).buffer(0) for _f, poly in pl.feature_polys]
+    disks = unary_union([Point(c).buffer(r, quad_segs=32) for _q, c in reliefs]) if reliefs else Polygon()
+    material = outline.difference(unary_union(holes)) if holes else outline
+    issues = []
+    removed = unary_union([outline.buffer(2 * r + 1.0).difference(outline)] + holes + [disks])
+    e = r - RELIEF_TOL / 2
+    unreachable = removed.difference(removed.buffer(-e).buffer(e)).buffer(-RELIEF_TOL)
+    if not unreachable.is_empty:
+        tight = any(a['radius'] < r - 1e-6 for p in inner for a in p.get('arcs', [])) or \
+            any(a['radius'] < r - 1e-6 for a in pl.comp.get('arcs', []))
+        c = unreachable.representative_point()
+        issues.append(_iss('INSIDE_RADIUS_BELOW_TOOL' if tight else 'TOOL_TOO_LARGE', pl.id,
+                           f"'{pl.id}' has a cut-out, notch or inside curve the {2 * r:g} mm router bit cannot clear "
+                           f"(near {c.x:.1f}, {c.y:.1f}): make it at least {2 * r:g} mm wide with inside radii of at "
+                           f"least {r:g} mm, or use a smaller bit."))
+    if reliefs:
+        web = process_limits(design, pl.t)['min_web']
+        left = material.difference(disks)
+        thinnest = 0.0 if count(left) > count(material) else _thinnest_web(pl, r, reliefs, left, web)
+        if thinnest is not None:
+            issues.append(_iss('RELIEF_BREAKS_WEB', pl.id,
+                               f"A dog-bone relief of the {2 * r:g} mm bit would cut through a web of '{pl.id}' or "
+                               f"leave only {thinnest:.1f} mm of material there (at least {web:g} mm needed): move the "
+                               f"cut-out away from the edge or the next cut-out, or use a smaller bit."))
+    return issues
+
+
+def _thinnest_web(pl, r, reliefs, left, web):
+    """Thinnest material (mm) between a relief circle and any other edge of the part, measured straight through solid
+    material, when it is below `web`; None when every relief leaves at least `web`. The two edges that meet at the
+    relieved corner do not count (the relief is cut into them on purpose)."""
+    from shapely.geometry import LineString
+    rings = [pl.cut] + [poly for _f, poly in pl.feature_polys]
+    segs = [(ring[i], ring[(i + 1) % len(ring)]) for ring in rings for i in range(len(ring))]
+    worst = None
+    for q, c in reliefs:
+        for a, b in segs:
+            if math.dist(a, q) < 1e-6 or math.dist(b, q) < 1e-6:
+                continue
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            l2 = dx * dx + dy * dy
+            t = 0.0 if l2 < 1e-12 else max(0.0, min(1.0, ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / l2))
+            p = (a[0] + t * dx, a[1] + t * dy)
+            gap = math.dist(c, p) - r
+            if gap >= web or (worst is not None and gap >= worst):
+                continue
+            if gap > 1e-6 and left.intersection(LineString([c, p])).length < gap - 1e-6:
+                continue                        # the way to that edge crosses a cut-out, not a web
+            worst = max(gap, 0.0)
+    return worst
+
+
 def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=True, shared_edges=False):
+    from .manufacturing import tool_radius
     kerf = design['material']['kerf'] if compensate_kerf else 0.0
     half = kerf / 2.0
+    tool = tool_radius(design)
+    relief = (half or tool) if tool else 0.0      # radius the bit actually cuts: the compensation radius when compensated
+    n_reliefs = 0
     sheets = [{'index': i, 'paths': [], 'labels': [], 'images': []} for i in range(nesting['sheet_count'])]
     issues = []
     for pm in nesting['placements']:
@@ -189,14 +320,21 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             else:
                 pts, arcs = feature_shape(f)
                 off = offset_polygon(pts, -half) if half else pts
-                path.update(shape='polyline', points=[tf(p) for p in off], _local=poly,
-                            _collapsed=G.signed_area(off) * G.signed_area(pts) <= 0)
+                path['_collapsed'] = G.signed_area(off) * G.signed_area(pts) <= 0
+                if relief:
+                    off, arcs, rel = _with_reliefs(off, pts, arcs, True, relief, bool(half))
+                    if rel:
+                        path['reliefs'] = rel
+                path.update(shape='polyline', points=[tf(p) for p in off], _local=poly)
                 if arcs:
                     path['arcs'] = [dict(a, center=tf(a['center'])) for a in arcs]
             inner.append(path)
-        outer = {'id': f'{pl.id}/outer', 'part': pl.id, 'type': 'outer', 'closed': True, 'shape': 'polyline',
-                 'points': [tf(p) for p in outer_local], '_local': pl.cut}
         outer_arcs = _map_arcs(comp['outline'], comp.get('arcs'), pl.cut)
+        outer_pts, outer_rel = outer_local, []
+        if relief:
+            outer_pts, outer_arcs, outer_rel = _with_reliefs(outer_local, pl.cut, outer_arcs, False, relief, bool(half))
+        outer = {'id': f'{pl.id}/outer', 'part': pl.id, 'type': 'outer', 'closed': True, 'shape': 'polyline',
+                 'points': [tf(p) for p in outer_pts], '_local': pl.cut}
         if outer_arcs:
             outer['arcs'] = [dict(a, center=tf(a['center'])) for a in outer_arcs]
         marks = [{'id': f"{pl.id}/{m['id']}", 'part': pl.id, 'type': m['kind'], 'feature': m['id'], 'shape': 'polyline',
@@ -221,12 +359,12 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
             if G.polygon_distance(p['_local'], pl.cut) <= 0.0:
                 issues.append(_iss('INNER_PATH_CROSSES_OUTER', pl.id,
                                    f"Inner path '{p['id']}' touches or crosses the outer profile."))
-        for a in range(len(inner)):
-            for b in range(a + 1, len(inner)):
-                if not inner[a].get('_drop') and not inner[b].get('_drop') and \
-                        G.polygons_overlap(inner[a]['_local'], inner[b]['_local']):
-                    issues.append(_iss('OVERLAPPING_CUT_PATHS', pl.id,
-                                       f"Cut paths '{inner[a]['id']}' and '{inner[b]['id']}' overlap."))
+        from .validation import _close_pairs        # only paths whose boxes meet can overlap (same pair order)
+        for a, b in _close_pairs([p['_local'] for p in inner], 0.0):
+            if not inner[a].get('_drop') and not inner[b].get('_drop') and \
+                    G.polygons_overlap(inner[a]['_local'], inner[b]['_local']):
+                issues.append(_iss('OVERLAPPING_CUT_PATHS', pl.id,
+                                   f"Cut paths '{inner[a]['id']}' and '{inner[b]['id']}' overlap."))
         for p in inner:                 # a cut-out narrower than the kerf would come out inverted or with a negative radius
             if (p['shape'] == 'circle' and p['radius'] <= 0) or p.pop('_collapsed', False):
                 issues.append(_iss('CUT_PATH_DEGENERATE', pl.id, f"Cut path '{p['id']}' collapses after kerf compensation "
@@ -236,6 +374,13 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
         if drift > 0.005:
             issues.append(_iss('DIMENSION_DRIFT', pl.id, f"Cut path of '{pl.id}' deviates from design dimensions "
                                                           f"by {drift:.3f} mm."))
+        if relief:
+            kept = [p for p in inner if not p.get('_drop')]
+            issues += _router_issues(pl, relief, outer_rel + [rc for p in kept for rc in p.get('reliefs', [])], kept, design)
+            for p, rel in [(outer, outer_rel)] + [(p, p.get('reliefs', [])) for p in kept]:
+                if rel:
+                    p['reliefs'] = [{'corner': tf(q), 'center': tf(c), 'radius': round(relief, 4)} for q, c in rel]
+                    n_reliefs += len(rel)
 
         for face in sorted({d['face'] for d in comp.get('decals', [])}) if comp.get('colors') else ():
             # the face colour is printed under the artwork (white lettering on a red board must not land on white paper)
@@ -281,7 +426,11 @@ def generate_cut_paths(design, nesting, compensate_kerf=False, include_labels=Tr
     marks = sum(1 for s in sheets for p in s['paths'] if p['type'] in ('engrave', 'pocket'))
     if marks:
         counts['marks'] = marks
-    return {'kerf_compensation': kerf, 'sheets': sheets, 'issues': issues, 'counts': counts}
+    out = {'kerf_compensation': kerf, 'sheets': sheets, 'issues': issues, 'counts': counts}
+    if design.get('process'):
+        out['process'] = dict(design['process'], **({'relief_radius': round(relief, 4), 'reliefs': n_reliefs}
+                                                    if relief else {}))
+    return out
 
 
 def _offset_error(orig, off, d):

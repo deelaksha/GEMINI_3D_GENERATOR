@@ -48,6 +48,10 @@ def resolve_sheet(opts, design):
         w, h = max(w, h), min(w, h)
     margin = float(opts.get('margin', 10.0))
     spacing = float(opts.get('spacing', design['sheet'].get('spacing', 6.0)))
+    proc = design.get('process')
+    if proc and proc.get('tool_diameter') and not design['sheet'].get('shared_edges'):
+        from .manufacturing import process_limits      # a router bit needs its own width between parts, plus a margin
+        spacing = max(spacing, process_limits(design)['part_spacing_min'])
     title = float(opts.get('title_block', 0.0))  # reserved strip at the bottom (printed title block)
     for name, v, lo, hi in (('width', w, 20, 5000), ('height', h, 20, 5000), ('margin', margin, 0, 200),
                             ('spacing', spacing, 0, 100), ('title_block', title, 0, 100)):

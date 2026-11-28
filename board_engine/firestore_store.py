@@ -23,7 +23,7 @@ import time
 from urllib.parse import quote
 
 from .model import SchemaError, check_id, normalize_design
-from .store import KEEP_VERSIONS, Conflict, NotFound
+from .store import KEEP_VERSIONS, Conflict, NotFound, with_owner
 
 log = logging.getLogger('board_engine.firestore')
 SCOPES = ['https://www.googleapis.com/auth/datastore']
@@ -135,7 +135,8 @@ class FirestoreStore:
 
     def _read(self, did):
         _s, doc = self._call('GET', self._doc_path(did))
-        return normalize_design(self._design(doc['fields'])), doc['updateTime']
+        raw = self._design(doc['fields'])
+        return with_owner(normalize_design(raw), raw.get('owner')), doc['updateTime']
 
     # ------------------------------------------------------------------ interface
     def exists(self, did):
@@ -166,7 +167,7 @@ class FirestoreStore:
         return self._read(did)[0]
 
     def create(self, design, actor='system', overwrite=False):
-        design = normalize_design(design)
+        design = with_owner(normalize_design(design), design.get('owner'))
         now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         design['revision'] = 1
         design['created'] = design.get('created') or now
@@ -200,7 +201,7 @@ class FirestoreStore:
         new, result = fn(copy.deepcopy(current))
         if new is None:
             return current, result, False
-        new = normalize_design(new)
+        new = with_owner(normalize_design(new), current.get('owner'))     # a change never changes the owner
         now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         new['revision'] = current['revision'] + 1
         new['created'] = current.get('created')
@@ -235,7 +236,8 @@ class FirestoreStore:
 
     def get_version(self, did, revision):
         _s, doc = self._call('GET', self._doc_path(did) + f'/versions/{int(revision)}')
-        return normalize_design(self._design(doc['fields']))
+        raw = self._design(doc['fields'])
+        return with_owner(normalize_design(raw), raw.get('owner'))
 
     def _audit(self, did, entry):
         fields = {'seq': {'integerValue': str(time.time_ns())},  # orders entries within the same second

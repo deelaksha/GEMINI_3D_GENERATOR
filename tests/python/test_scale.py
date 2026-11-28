@@ -56,7 +56,7 @@ def test_compiles_the_same_with_and_without_parallel_checks(monkeypatch):
 
 def test_the_design_prompt_asks_for_rich_designs_and_explains_large_ones():
     from board_engine.canvas_prompt import DESIGN_QUALITY, DESIGN_TEAM, build_prompt
-    p = build_prompt('Clock tower', '', None, 3, 'interlocking')
+    p = build_prompt('Clock tower', '', None, 3, 'interlocking', style='full')
     assert DESIGN_QUALITY in p and 'DESIGNER' in DESIGN_TEAM and 'plan.concept' in p
     assert 'Very large models' in p and '"instances"' in p and 'creative AND economical' in p and 'plan.economy' in p
 

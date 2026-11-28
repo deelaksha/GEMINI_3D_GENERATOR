@@ -379,6 +379,21 @@ export class Viewport3D {
     this.controls.update();
   }
 
+  /** JPEG data URLs of the model from standard viewpoints (for the AI visual check); the camera is put back after. */
+  snapshots(kinds = ['iso', 'front', 'side', 'top'], quality = 0.8) {
+    if (!this.model) return [];
+    const pos = this.camera.position.clone(), target = this.controls.target.clone();
+    const shots = kinds.map((k) => {
+      this.view(k);
+      this.renderer.render(this.scene, this.camera);
+      return this.renderer.domElement.toDataURL('image/jpeg', quality);
+    });
+    this.camera.position.copy(pos);
+    this.controls.target.copy(target);
+    this.controls.update();
+    return shots;
+  }
+
   focus(id) {
     const it = this.items.get(id);
     if (!it) return;
@@ -421,9 +436,10 @@ export class Viewport3D {
   }
 
   _motionTick(now) {
-    // rest -> one end of the range -> the other end -> rest, about 1.5 s per 90 degrees or 100 mm
+    // rest -> one end of the range -> the other end -> rest, about 1.5 s per 90 degrees or 100 mm; a crank whose
+    // rod jams turns only as far as the linkage can follow (jam_range), so no rod is drawn in an impossible pose
     this._pose((m) => {
-      const [a, b] = m.range, path = [0, b, a, 0].filter((v, i, l) => i === 0 || v !== l[i - 1]);
+      const [a, b] = m.jam_range || m.range, path = [0, b, a, 0].filter((v, i, l) => i === 0 || v !== l[i - 1]);
       const legs = path.slice(1).map((v, i) => Math.abs(v - path[i]));
       const total = legs.reduce((s, x) => s + x, 0) || 1;
       const per = m.type === 'rotate' ? 90 : 100;

@@ -10,6 +10,7 @@ A read-only audit of the working tree at HEAD `616b135`, including its uncommitt
 | [TEST_EXECUTION_REPORT.md](TEST_EXECUTION_REPORT.md) | Baseline (671 + 5 passing), corpus, product, mechanical and negative tests, prompt sizes, scaling 50–5,000 boards, NOT TESTED items |
 | [ARCHITECTURE_IMPROVEMENT_PLAN.md](ARCHITECTURE_IMPROVEMENT_PLAN.md) | Target pipeline, mapping of the 16 suggested stages, phased roadmap, risks, acceptance criteria |
 | [CODER_AI_IMPLEMENTATION_PROMPT.md](CODER_AI_IMPLEMENTATION_PROMPT.md) | Standalone implementation brief for a coding agent: phases, files, line numbers, tests, definition of done |
+| [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | What was implemented from phases 1–10, measured results, behaviour changes, what is left |
 | `evidence/` | Specialist reports (`*/..._audit.md`), every probe design (JSON), scripts, raw outputs |
 
 The `evidence/` folder holds four specialist reports:

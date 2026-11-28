@@ -108,7 +108,7 @@ def test_the_prompt_teaches_compact_authoring():
     spec = spec_markdown()
     for word in ('"spline"', '"superellipse"', '"symmetric"', '"radial"', '"grow"', '"rows"', '"boards": [', 'SLAT-*'):
         assert word in spec, word
-    assert 'COMPACT AUTHORING' in build_prompt('Anything')
+    assert 'COMPACT AUTHORING' in build_prompt('Anything', style='full')
 
 
 def test_a_spline_never_leaves_the_bounds_of_its_points():

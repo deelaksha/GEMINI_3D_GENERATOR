@@ -1,16 +1,20 @@
 /**
- * Design Parser & Safe Evaluator
- * Safely parses, sandboxes, evaluates, and validates user-submitted JavaScript 3D models.
+ * Design Parser & Evaluator
+ * Parses and validates 3D model definitions. A JSON model definition is always accepted. JavaScript is run (as an ES
+ * module, in this page - it is NOT sandboxed) only for code the user typed into the local code editor; designs
+ * fetched from Firestore, the local cache or a URL must be JSON data: data-only is the default, and only the editor
+ * passes { allowCode: true }.
  * Never crashes the active 3D scene or page.
  */
 
 export class DesignParser {
   /**
    * Safely evaluates JavaScript code and extracts the model definition object.
-   * @param {string} rawCode - User supplied JavaScript / ES Module code
+   * @param {string} rawCode - User supplied JavaScript / ES Module code, or a JSON model definition
+   * @param {{allowCode?: boolean}} [options] - allowCode (default false): run JavaScript; only for code typed in the editor
    * @returns {Promise<{success: boolean, modelData?: Object, error?: Object, warnings?: Array<string>}>}
    */
-  static async parseAndValidate(rawCode) {
+  static async parseAndValidate(rawCode, { allowCode = false } = {}) {
     if (!rawCode || !rawCode.trim()) {
       return {
         success: false,
@@ -22,12 +26,12 @@ export class DesignParser {
       };
     }
 
-    // Step 1: Pre-execution syntax validation via Blob module or new Function
+    // Step 1: JSON model data, or (allowCode only) the editor code run as a Blob module
     let evaluatedResult = null;
     let evalError = null;
 
     try {
-      evaluatedResult = await this.evaluateCode(rawCode);
+      evaluatedResult = await this.evaluateCode(rawCode, allowCode);
     } catch (err) {
       evalError = this.normalizeError(err, rawCode);
       return {
@@ -74,8 +78,9 @@ export class DesignParser {
   /**
    * Evaluates ES module code using dynamic Blob URLs with automatic export injection.
    * Seamlessly handles both exported modules and unexported declarations (e.g. const MyModel = { ... }).
+   * Without allowCode only a JSON model definition is accepted: stored designs are data, never code.
    */
-  static async evaluateCode(rawCode) {
+  static async evaluateCode(rawCode, allowCode = false) {
     if (!rawCode || !rawCode.trim()) return null;
     const trimmed = rawCode.trim();
 
@@ -87,6 +92,9 @@ export class DesignParser {
       } catch (e) {
         // Not valid JSON, continue with JS execution
       }
+    }
+    if (!allowCode) {
+      throw new Error('This design is stored as JavaScript, which is no longer run when a design is loaded. Open it in the code editor to review and run it, or save it as a JSON model definition.');
     }
 
     // 2. Prepare code for ES Module evaluation
@@ -148,52 +156,12 @@ export class DesignParser {
       moduleCode = `export default (${trimmed.replace(/;$/, '')});`;
     }
 
-    let module = null;
-    let importErr = null;
-
-    // Try Blob URL first (standard in browser environments)
-    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      let blobUrl = null;
-      try {
-        const blob = new Blob([moduleCode], { type: 'application/javascript' });
-        blobUrl = URL.createObjectURL(blob);
-        module = await import(blobUrl);
-      } catch (err) {
-        importErr = err;
-      } finally {
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
-      }
-    }
-
-    // If Blob import succeeded, return module
-    if (module) return module;
-
-    // Fallback: Data URI import (supported in both browsers and Node.js)
+    // The user's own editor code runs as a module from a Blob URL (the only way code is run here)
+    const blobUrl = URL.createObjectURL(new Blob([moduleCode], { type: 'application/javascript' }));
     try {
-      const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(moduleCode)}`;
-      module = await import(dataUri);
-      return module;
-    } catch (dataErr) {
-      // If data URI also failed, fallback to Function evaluation if no static imports
-      if (!/\bimport\s+/.test(rawCode)) {
-        try {
-          const cleanCode = rawCode.replace(/export\s+default\s+/g, 'return ')
-                                   .replace(/export\s+(const|let|var)\s+/g, '$1 ');
-          const fn = new Function(`
-            ${cleanCode};
-            const candidates = [
-              ${unexportedVars.map(v => `(typeof ${v} !== 'undefined' ? ${v} : null)`).join(', ')},
-              ${[...exportedVars].map(v => `(typeof ${v} !== 'undefined' ? ${v} : null)`).join(', ')}
-            ];
-            return candidates.find(c => c && typeof c === 'object' && c.id && Array.isArray(c.parts)) || null;
-          `);
-          const fnResult = fn();
-          if (fnResult) return fnResult;
-        } catch (fnErr) {
-          // ignore fallback
-        }
-      }
-      throw (importErr || dataErr);
+      return await import(blobUrl);
+    } finally {
+      URL.revokeObjectURL(blobUrl);
     }
   }
 

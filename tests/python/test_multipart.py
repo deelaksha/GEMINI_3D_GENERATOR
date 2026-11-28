@@ -65,7 +65,7 @@ def test_the_prompt_allows_large_and_multi_part_replies():
 def test_every_prompt_gives_the_ai_roles_criteria_and_known_mistakes():
     from board_engine.canvas_prompt import (COMMON_MISTAKES, DESIGN_TEAM, SUCCESS_CRITERIA, build_prompt,
                                             build_repair_prompt, build_update_prompt)
-    gen = build_prompt('House', thickness=3)
+    gen = build_prompt('House', thickness=3, style='full')
     rep = build_repair_prompt('{}', [{'severity': 'error', 'code': 'X', 'message': 'm'}])
     upd = build_update_prompt('{}', 'add a shelf')
     assert DESIGN_TEAM in gen and all(r in gen for r in ('ANALYST', 'ARCHITECT', 'JOINERY ENGINEER', 'INSPECTOR'))

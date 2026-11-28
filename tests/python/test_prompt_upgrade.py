@@ -5,7 +5,13 @@ import os
 import pytest
 
 from board_engine.canvas import compile_source
-from board_engine.canvas_prompt import EXAMPLE, build_prompt, spec_markdown
+from board_engine.canvas_prompt import EXAMPLE, spec_markdown
+from board_engine.canvas_prompt import build_prompt as _build_prompt
+
+
+def build_prompt(*a, **kw):
+    """These tests pin the content of the full (long) prompt; the lean default is tested in test_prompt_lean.py."""
+    return _build_prompt(*a, **dict(kw, style='full'))
 
 P18 = {"type": "plywood", "thickness": 18}
 

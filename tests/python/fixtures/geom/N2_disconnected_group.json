@@ -1,0 +1,79 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "N2_disconnected_group"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "WALL",
+   "position": [
+    50,
+    6,
+    97
+   ],
+   "size": [
+    100,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "G1",
+   "position": [
+    500,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    6,
+    100
+   ]
+  },
+  {
+   "id": "G2",
+   "position": [
+    520,
+    6,
+    47
+   ],
+   "size": [
+    60,
+    50,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "W-F",
+   "type": "tab_slot",
+   "board": "WALL",
+   "into": "FLOOR"
+  },
+  {
+   "id": "G",
+   "type": "tab_slot",
+   "board": "G2",
+   "into": "G1"
+  }
+ ]
+}

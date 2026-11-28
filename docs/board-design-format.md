@@ -6,7 +6,7 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
 
 ## Coordinate system and units
 - Units: millimetres. World axes: **X = length (left → right)**, **Y = height (floor y = 0, up)**, **Z = depth (back → front)**.
-- **INTEGER DIMENSIONS RULE**: Because millimetres are small units (1mm, 2mm), all board sizes (`size`: [sx, sy, sz]), positions (`position`: [x, y, z]), and overall dimensions (`product.overall`) MUST be **integer numbers** (whole numbers like `30`, `38`, `150`, `60`, `12`), NEVER floating-point fractions (avoid `30.27`, `38.41`). The only numbers with decimals are material `thickness` (e.g. `1.0`, `2.0`, `3.0`) and manufacturing clearance (e.g. `0.1`).
+- **INTEGER DIMENSIONS RULE**: Because millimetres are small units (1mm, 2mm), all board sizes (`size`: [sx, sy, sz]), positions (`position`: [x, y, z]), and overall dimensions (`product.overall`) MUST be **integer numbers** (whole numbers like `30`, `38`, `150`, `60`, `12`), NEVER floating-point fractions (avoid `30.27`, `38.41`). The only numbers with decimals are material `thickness` (e.g. `1.0`, `2.0`, `3.0`), manufacturing clearance (e.g. `0.1`) and angles (`rotate`, `radial`, gear `rotation`: e.g. `28.0725`).
 - Every board is an **axis-aligned box**: `position` = its minimum corner [x, y, z], `size` = [size_x, size_y, size_z].
 - A board is a flat panel: **exactly one** of `size` equals the board thickness — that axis is the board's normal.
   (Horizontal boards: size_y = thickness. Side panels: size_x = thickness. Back/front panels: size_z = thickness.)
@@ -39,7 +39,8 @@ The design is ONE JSON object. It is data only — never JavaScript, functions o
   "openings"?: [ {"id", "kind": "opening"|"hole", "shape": "circle", "center": [x, y, z], "diameter": mm}
                | {"id", "kind": "opening"|"hole", "shape": "rect", "center": [x, y, z], "size": [a, b]} ],
   "edge_banding"?: [{"edge": "+x"|"-x"|"+y"|"-y"|"+z"|"-z", "thickness": mm, "material"?: str}],
-  "profile"?: shape, "engravings"?: [...], "rotate"?: {...}   (see "Complex cuts and tilted boards")}
+  "profile"?: shape, "engravings"?: [...], "rotate"?: {...}   (see "Complex cuts and tilted boards"),
+  "role"?: str   (the id of the "brief" component this board belongs to)}
 ```
 - `id` must match `^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$`, be unique and at most 24 characters (e.g. `TOP`, `SIDE-L`, `SHELF-2`).
 - `group` names the sub-assembly a board belongs to (product → group → board). Give every drawer, door, module or
@@ -59,7 +60,8 @@ Shapes (used by `profile`, `openings` and `engravings`):
 {"shape": "circle", "center", "diameter"}            {"shape": "ellipse", "center", "width", "height"}
 {"shape": "arch", "center", "width", "height"}       (straight sides, semicircular top; height ≥ width / 2)
 {"shape": "regular_polygon", "center", "sides": 3..64, "diameter", "rotation"?: deg}
-{"shape": "gear", "center", "teeth": 6..100, "module": mm, "rotation"?: deg}   (involute spur gear, see "Gears")
+{"shape": "gear", "center", "teeth": 6..100, "module": mm, "rotation"?: deg, "pressure_angle"?: 14..30 (default 20),
+    "backlash"?: mm}   (involute spur gear, see "Gears"; meshing gears need the same module and pressure angle)
 {"shape": "polygon", "points": [[u, v], ...], "corner_radius"?, "symmetric"?: {"u": mm} | {"v": mm}}
 {"shape": "spline", "points": [[u, v], ...], "symmetric"?, "corners"?: [point indices]}   (a smooth closed curve
     THROUGH the points: 6-12 points make any organic outline - a leaf, a hull, a body side, a cloud - instead of
@@ -75,7 +77,8 @@ Shapes (used by `profile`, `openings` and `engravings`):
 ```
 - `"profile": shape` replaces the board's rectangular outline (pitched gable, arched top, curved side, L/U shape,
   rounded corners). It must stay inside the box `[0..size_u] × [0..size_v]`; the box is still the board's bounding box.
-  A tab_slot connection needs a **straight** profile edge on the touching side of the box.
+  A tab_slot connection needs a **straight** profile edge on the touching side of the box. An outline (curves included)
+  may have at most 2,048 points.
 - Openings may use any shape: `"center"` stays a world point [x, y, z] and the shape's own coordinates are relative to
   it (`"size": [a, b]` sets width/height of rect, ellipse and arch). Rect openings also accept `"corner_radius"`.
 - `"engravings": [{"id", "kind": "engrave"|"pocket", "depth": mm, "points": [[u, v], ...], "closed"?: bool}
@@ -132,9 +135,13 @@ Shapes (used by `profile`, `openings` and `engravings`):
     every joint type works (seats facing a stage from all four sides: angles 0, 90, 180, 270 about y). Any other angle
     tilts the whole copy about its origin (a fan of seats around a circle); finger and cross_lap joints inside it cannot
     follow a tilt, so use tab_slot there. An assembly with motions can only be turned by multiples of 90°.
-- Top level `"plan": {"reference"?: [...], "datums"?: [...], "concept"?: str, "economy"?: str, "joints"?: [...], "audit"?: [...], "assemblies": [...], "steps": [...], "checks": [...],
-  "reference"?: [...]}` is your design plan, written before `"boards"` ("reference": what attached reference images
-  show); the compiler ignores it.
+- Top level `"plan": {"reference"?: [...], "datums"?: [...], "concept"?: str, "economy"?: str, "joints"?: [...], "audit"?: [...], "assemblies"?: [...], "steps"?: [...], "checks"?: [...]}`
+  is optional free-form notes; the compiler ignores it.
+- Top level `"brief": {"components": [{"id", "count", "role"?, "symmetric_pair"?, "intentional_openings"?}], "enclosures"?:
+  [{"id", "components": [ids], "closed_sides"?: ["top", "bottom", "left", "right", "front", "back"]}], ...}` is the
+  product's checked plan: every board names its component with `"role"`, and the compiler reports components with too
+  few boards (COMPONENT_MISSING / COMPONENT_COUNT) and closed sides it can see out through (ENCLOSURE_OPEN; openings
+  cut as `"kind": "opening"` are deliberate and never count).
 - `"rotate": {"axis": "x"|"y"|"z", "angle": degrees, "pivot"?: [x, y, z]}` tilts a board (roof panels, sloped backs,
   lecterns). It is applied **last**: `position`/`size`, profile, openings, engravings and `"edge"` directions all describe
   the board before rotating; `pivot` defaults to the box centre. Positive angles turn counter-clockwise looking down
@@ -150,7 +157,7 @@ Shapes (used by `profile`, `openings` and `engravings`):
 
 ## connection
 ```
-{"id": str, "type": one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'], "board": "<board A>", "into": "<board B>", ...}
+{"id": str, "type": one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre', 'face_lap'], "board": "<board A>", "into": "<board B>", ...}
 ```
 Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …) name a side of the board's (unrotated) box.
 
@@ -177,9 +184,13 @@ Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …)
   Each gets a notch half the crossing height deep and the other board's thickness + `clearance` wide, cut from opposite
   edges. One board must end at the top of the crossing and the other at its bottom (within 0.25 mm), e.g. both the
   same height; each must stick out > 1.5 mm past the other's faces. The order of the two boards does not matter.
-- `finger` and `cross_lap` boards must be plain rectangles (no `profile`, no `rotate`). Profiled or tilted boards join
-  with `tab_slot`: e.g. inset the walls from a pitched gable's edges and tab them into its face (as in the cottage
-  example), and tab the gables' sloped edges into the roof panels.
+- `finger` boards must be plain rectangles (no `profile`, no `rotate`); `cross_lap` boards must be unrotated but may be
+  shaped: where two silhouettes cross (a tree of two crossed profiles, the body and wing of a toy plane), each is
+  measured along the crossing from its real outline. If each ends at one end of the stretch they share, both are halved
+  there; if one runs past the other at both ends (a fuselage past the wing's chord), it gets a closed slot of the
+  other's cross-section and the other passes through it. Tilted boards join with `tab_slot`: e.g. inset the walls
+  from a pitched gable's edges and tab them into its face (as in the cottage example), and tab the gables' sloped edges
+  into the roof panels.
 
 **Joints that need `"joinery": "glue_allowed"`:**
 - `butt` — A's end face against B's face, glued and/or held by `"fasteners"`: `{"kind": one of ['screw', 'confirmat', 'dowel'],
@@ -197,6 +208,8 @@ Board A is `"board"`, board B is `"into"`. Edge directions (`"+x"`, `"-y"`, …)
   edges do not coincide and the joint is rejected. `"bevel"`
   defaults to **true** (both edges cut at half the corner angle, saw / CNC only); set `"bevel": false` for a plain corner.
   Optional `"fasteners"` as for butt.
+- `face_lap` — two parallel boards glued face to face (a lamination: a thicker part, a raised panel, a neck on a body):
+  their broad faces must touch (gap 0) over a real area. No options.
 
 One valid line per type:
 ```
@@ -206,6 +219,7 @@ One valid line per type:
 {"id": "SHELF-FIX", "type": "butt",      "board": "SHELF",  "into": "SIDE-L", "fasteners": {"kind": "confirmat", "count": 2}}
 {"id": "DOOR-HNG",  "type": "hinge",     "board": "DOOR",   "into": "SIDE-R", "edge": "+x", "count": 2, "gap": 2}
 {"id": "FRAME-MT",  "type": "mitre",     "board": "RAIL",   "into": "STILE", "edge": "-x", "into_edge": "+y", "bevel": true}
+{"id": "NECK-BODY", "type": "face_lap",  "board": "NECK",   "into": "BODY"}
 ```
 - Every board must be connected (directly or through others) to the rest of the product.
 - Choosing the joint: end face on a face away from the edges → `tab_slot`; at the edge (corner) → `finger`; boards
@@ -278,9 +292,13 @@ in one plane belongs in ONE board: its outline, its cut-out openings and its eng
   off (`"direction": "y"`, `"range": [0, 120]`), a plug pulled out. Never into it.
 - `"axle"`: the compiler cuts a dowel hole of that diameter through every board the pivot line passes square through
   (each must be thin along the axis, with the pivot inside it and room for the hole), and reports the dowel length:
-  a real, glue-free pivot for turntables, wheels, swing arms, flaps and rotating signs.
-- The compiler turns / slides the group every 5° (or about 1/48 of a slide) through the whole range and reports every
-  board it would run into (MOTION_COLLISION) with the last clear position: put a lid's pivot on the OUTER edge it opens
+  a real, glue-free pivot for turntables, wheels, swing arms, flaps and rotating signs. `"supports": [board ids]`
+  drills those boards too (a shaft held on both sides) and `"retain": "collar"|"press"|"cotter"|"washer"|"wedge"` says
+  what keeps the part on its axle (AXLE_UNRETAINED otherwise). A rotate motion with no axle, hinge or rod pin is
+  warned about (MOTION_NO_PIVOT), as is a slide with nothing guiding it on both sides (MOTION_NO_GUIDE).
+- The compiler turns / slides the group through the whole range in steps small enough that nothing can pass through
+  anything between two steps, and reports every board it would run into (MOTION_COLLISION) with the exact first
+  contact and the last clear position: put a lid's pivot on the OUTER edge it opens
   about and keep the range within what really clears.
 - Running gap: every moving part needs at least 1 mm (2 mm is safer) to everything it passes except the board it rests
   or runs on - a drawer between its sides, a wheel beside a wall, a flap past a frame. Less is an error
@@ -345,7 +363,7 @@ position (the follower's travel comes from that, give it no "range") and animate
 {"id": "BASE", "position": [0, 0, 0], "size": [420, 320, 6]},
 {"id": "CRANK", "position": [70, 120, 6], "size": [60, 60, 6], "profile": {"shape": "circle", "center": [30, 30], "diameter": 60}},
 {"id": "ARM", "position": [290, 140, 6], "size": [20, 90, 6]},
-{"id": "ROD", "position": [106, 137, 12], "size": [208, 96, 6], "profile": {"shape": "polygon", "points": [[7.6, 1.9], [206.2, 79.2], [200.4, 94.1], [1.8, 16.8]]}},
+{"id": "ROD", "position": [106, 137, 12], "size": [208, 96, 6], "profile": {"shape": "polygon", "points": [[8, 2], [206, 79], [200, 94], [2, 17]]}},
 "motions": [
   {"id": "crank", "type": "rotate", "boards": ["CRANK"], "on": "BASE", "axis": "z", "pivot": [100, 150, 6], "range": [0, 360], "axle": {"diameter": 6}},
   {"id": "flap", "type": "rotate", "boards": ["ARM"], "on": "BASE", "axis": "z", "pivot": [300, 150, 6], "axle": {"diameter": 6},
@@ -364,8 +382,8 @@ and record each split in "plan.joints" (the feature, why it was split, how the p
 2. CURVED IN TWO DIRECTIONS (domes, bodies, hulls, heads, organic forms): contour slicing - profiled cross-section
    ribs at equal stations standing on a plain keel / spine / base, each tabbed into it along a straight edge it keeps
    (`corners` or a flat polygon side), optionally a plain stringer or deck tabbed onto a second straight edge; one
-   `"repeat"` with `"morph"` draws every rib from 2-4 key sections. Profiled boards cannot cross_lap (it needs two
-   plain boards) and slices can never be joined face to face; skin panels only where the surface is nearly flat.
+   `"repeat"` with `"morph"` draws every rib from 2-4 key sections. Ribs can also cross_lap a profiled spine
+   standing across them (a wing slotted through a body); slices can never be joined face to face; skin panels only where the surface is nearly flat.
 3. CURVED IN ONE DIRECTION (a sweep, a cylinder wall, a rolled edge): narrow strips (facets), each a flat board tilted
    to follow the curve, carried by supports whose profiled edges trace it; or "living_hinge" for a gentle bend.
 4. MEETING AT AN ANGLE that is not 90°: tilt the board onto a support whose edge is cut to exactly that angle; for a
@@ -383,8 +401,8 @@ retention) and keeps the look of the whole: seams follow lines the real object h
 become a visible detail on purpose.
 
 ## What this generator cannot build directly (build it from smaller joined pieces as above)
-- Boards joined face to face (laminations, a guitar neck glued on a body, a tray hanging parallel under a table top):
-  no connection joins two parallel faces. Join them through perpendicular boards instead (hangers, cleats, a frame).
+- Boards joined face to face without glue: with `"joinery": "interlocking"` two parallel faces cannot be joined - use
+  perpendicular boards (hangers, cleats, a frame). With glue, `face_lap` laminates them (see the glue joints).
 - Boards meeting at an angle other than 90°, except (a) a tilted board resting on an edge cut to exactly its slope and
   (b) `mitre`. A side tilted outwards cannot stand on a flat bottom: give it a profiled support (ladder step 4).
 - Round rods and bent panels as parts: a dowel or axle is not modelled (a motion's `"axle"` cuts its holes and the
@@ -417,8 +435,8 @@ become a visible detail on purpose.
   are checked against the built design (REQUIREMENT_MISMATCH).
 - Every board must be ATTACHED by a connection that actually works, or it is an UNATTACHED_BOARD error (it would
   fall off). A tab_slot needs an EDGE of "board" lying on the broad FACE of "into": two boards lying flat on each other
-  (both with their thickness along the same axis) cannot be joined; stand small parts (fittings, bollards, benches,
-  funnels, hatches) upright on the face they sit on. The whole joining edge must lie inside the outline of "into". Two
+  (both with their thickness along the same axis) cannot be joined; stand small parts (fittings, posts, handles,
+  chimneys, signs) upright on the face they sit on. The whole joining edge must lie inside the outline of "into". Two
   slots in one board must be >= 2 × thickness apart: never put a part exactly above / below another part that joins
   the same board from the other side, and keep repeated parts clear of the other joints in that board.
 - The assembled model is also inspected by eye-like checks (warnings): VISIBLE_GAP (a 0.5-10 mm slit inside one

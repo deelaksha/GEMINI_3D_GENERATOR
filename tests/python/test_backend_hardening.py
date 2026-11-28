@@ -128,26 +128,25 @@ def test_the_process_wide_compile_cap_cannot_be_dodged_with_new_sessions(app_mod
         app_mod.app.config['BOARD_COMPILE_TOTAL'] = 8
 
 
-def test_paid_ai_calls_are_capped_per_user_and_per_day(app_mod, monkeypatch):
-    from board_api import routes
+def test_paid_ai_calls_are_capped_per_user_and_per_day(app_mod, monkeypatch, tmp_path):
     from board_engine import ai_client
     monkeypatch.setattr(ai_client, 'complete', lambda p: json.dumps(EXAMPLE))
     monkeypatch.setenv('GEMINI_API_KEY', 'g')
     c, ed = app_mod.app.test_client(), {'Authorization': 'Bearer ed'}
-    routes._AI_CALLS.clear()
+    ledger = tmp_path / 'ai_quota.json'                                    # shared by every worker process
     app_mod.app.config.update(BOARD_AI_PER_HOUR=2, BOARD_AI_PER_DAY=3)
-    try:
-        codes = [c.post('/api/v1/canvas/ai-generate', headers=ed, json={'title': 'Box'}).status_code for _ in range(3)]
-        assert codes == [200, 200, 429]                                    # hourly cap for this user
-        routes._AI_CALLS['session:other'] = [__import__('time').time()]     # someone else's call
-        routes._AI_CALLS['*'].append(routes._AI_CALLS['session:other'][0])
-        r = c.post('/api/v1/canvas/ai-generate', headers={'Authorization': 'Bearer vw'}, json={'title': 'Box'})
-        assert r.status_code in (403, 429)                                 # viewers may not; and the day is used up
-        routes._AI_CALLS.pop('key:env:ed…', None)
-        r = c.post('/api/v1/canvas/ai-generate', headers=ed, json={'title': 'Box'})
-        assert r.status_code == 429 and r.json['error']['status'] == 'ai_daily_limit'
-    finally:
-        routes._AI_CALLS.clear()
+    codes = [c.post('/api/v1/canvas/ai-generate', headers=ed, json={'title': 'Box'}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]                                        # hourly cap for this user
+    calls = json.loads(ledger.read_text())
+    now = __import__('time').time()
+    calls['ip:10.0.0.9'] = [now]                                           # someone else's call
+    calls['*'].append(now)
+    r = c.post('/api/v1/canvas/ai-generate', headers={'Authorization': 'Bearer vw'}, json={'title': 'Box'})
+    assert r.status_code in (403, 429)                                     # viewers may not; and the day is used up
+    calls.pop('key:env:ed…', None)
+    ledger.write_text(json.dumps(calls))
+    r = c.post('/api/v1/canvas/ai-generate', headers=ed, json={'title': 'Box'})
+    assert r.status_code == 429 and r.json['error']['status'] == 'ai_daily_limit'
 
 
 def _start_keyring(folder, q):

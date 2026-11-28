@@ -35,6 +35,14 @@ class Conflict(RuntimeError):
 KEEP_VERSIONS = 100     # full snapshots kept per design (older ones are pruned; the audit history stays)
 
 
+def with_owner(design, owner):
+    """`design` with its creator's principal id kept as `owner` (normalize_design does not carry it; see auth.may_change).
+    Without one the design is unowned."""
+    if owner:
+        design['owner'] = owner
+    return design
+
+
 class DesignStore:
     backend = 'file'
     persistent = True      # False when the server had to fall back to a temp directory
@@ -92,7 +100,8 @@ class DesignStore:
         p = self._path(did)
         if not p.exists():
             raise NotFound(did)
-        return normalize_design(json.loads(p.read_text()))
+        raw = json.loads(p.read_text())
+        return with_owner(normalize_design(raw), raw.get('owner'))
 
     def _write(self, design):
         p = self._path(design['id'])
@@ -116,14 +125,15 @@ class DesignStore:
         p = self.root / 'versions' / check_id(did, 'design id') / f'{int(revision)}.json'
         if not p.exists():
             raise NotFound(f'{did}@{revision}')
-        return normalize_design(json.loads(p.read_text()))
+        raw = json.loads(p.read_text())
+        return with_owner(normalize_design(raw), raw.get('owner'))
 
     def _audit(self, did, entry):
         with open(self.root / f'{did}.history.jsonl', 'a') as f:
             f.write(json.dumps(entry) + '\n')
 
     def create(self, design, actor='system', overwrite=False):
-        design = normalize_design(design)
+        design = with_owner(normalize_design(design), design.get('owner'))
         with self._lock(design['id']):
             if self.exists(design['id']) and not overwrite:
                 raise Conflict(f"design '{design['id']}' already exists")
@@ -156,7 +166,7 @@ class DesignStore:
             new, result = fn(copy.deepcopy(current))
             if new is None:
                 return current, result, False
-            new = normalize_design(new)
+            new = with_owner(normalize_design(new), current.get('owner'))     # a change never changes the owner
             now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             new['revision'] = current['revision'] + 1
             new['created'] = current.get('created')

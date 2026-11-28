@@ -1,0 +1,49 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "C6d_tilt_30deg_3mm_penetration"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "A",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    100
+   ]
+  },
+  {
+   "id": "B",
+   "position": [
+    0,
+    3,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    100
+   ],
+   "rotate": {
+    "axis": "z",
+    "angle": 30,
+    "pivot": [
+     0,
+     3,
+     0
+    ]
+   }
+  }
+ ],
+ "connections": []
+}

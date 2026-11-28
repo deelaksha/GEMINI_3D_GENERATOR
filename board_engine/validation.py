@@ -21,6 +21,7 @@ Issue shape:
 """
 import contextlib
 import contextvars
+import bisect
 import copy
 import math
 import os
@@ -28,8 +29,8 @@ import os
 from . import geometry as G
 from .deadline import check as check_budget
 from .progress import report as progress
-from .model import (COMPONENT_POSITIONS, INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry,
-                    edge_frame, find_component, material_of, thickness_of)
+from .model import (PLATE_REUSE, COMPONENT_POSITIONS, INTERLOCKING_JOINTS, Plate, build_plates, feature_polygon, tab_geometry,
+                    edge_frame, find_component, material_of, plate_for, thickness_of)
 
 TOL = {
     'contact': 0.25,          # mm: allowed gap/penetration at a mating surface
@@ -144,7 +145,8 @@ def validate_component(design, comp, tol=TOL, only_features=None):
                                  f"Tabs '{a['id']}' and '{b['id']}' on '{cid}' overlap on edge {a['edge']}.",
                                  [cid], feature=a['id']))
 
-    cut = Plate(design, comp).cut
+    plate = plate_for(design, comp)
+    cut = plate.cut
     if G.self_intersections(cut):
         out.append(issue('CUT_PROFILE_SELF_INTERSECTION', 'error', '2d',
                          f"'{cid}' cut profile (outline + tabs) crosses itself.", [cid]))
@@ -194,7 +196,20 @@ def validate_component(design, comp, tol=TOL, only_features=None):
             out.append(issue('NARROW_EDGE_MARGIN', 'warning', 'manufacturing',
                              f"Slot '{f['id']}' on '{cid}' is {m:.2f} mm from the edge "
                              f"(recommended {tol['rec_edge_margin']} mm).", [cid], feature=f['id'], margin=_r(m)))
-    for i, j in _close_pairs([p for _f, p in polys], tol['min_feature_spacing']):
+    gap = tol['min_feature_spacing']
+    if only_features is not None and len(plate.feature_polys) == len(polys):
+        # only the new cut-outs: their neighbours come from the plate's index, not from sorting every slot again
+        pairs = set()
+        for k, (f, _p) in enumerate(polys):
+            if f['id'] in only_features:
+                x0, y0, x1, y1 = plate._feature_boxes[k]
+                for i in _features_in(plate, 0, x0 - gap, x1 + gap):
+                    if i != k and plate._feature_boxes[i][1] <= y1 + gap and plate._feature_boxes[i][3] >= y0 - gap:
+                        pairs.add((min(i, k), max(i, k)))
+        pairs = sorted(pairs)
+    else:
+        pairs = _close_pairs([p for _f, p in polys], gap)
+    for i, j in pairs:
         (fa, pa), (fb, pb) = polys[i], polys[j]
         if only_features is not None and fa['id'] not in only_features and fb['id'] not in only_features:
             continue
@@ -316,9 +331,11 @@ def joining_loop(design):
         pos.setdefault(c['id'], k)
     t1 = GROWING_JOINTS.set(GrowingJoints())
     t2 = COMPONENT_POSITIONS.set((len(design['components']), pos))
+    t3 = PLATE_REUSE.set({})                    # receiving boards' plates are extended, not rebuilt, per joint
     try:
         yield
     finally:
+        PLATE_REUSE.reset(t3)
         COMPONENT_POSITIONS.reset(t2)
         GROWING_JOINTS.reset(t1)
 
@@ -496,7 +513,10 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
                             f"receive it.", comps, joint=jid, location=location))
         return dict(measured, matched_slot=None, location=location)
 
-    for f, poly in b.feature_polys:
+    fx0, fy0, fx1, fy1 = G.bbox(footprint)
+    near = [b.feature_polys[i] for i in _features_in(b, 0, fx0, fx1)
+            if b._feature_boxes[i][1] <= fy1 and b._feature_boxes[i][3] >= fy0]     # the rest cannot overlap it
+    for f, poly in near:
         if f['kind'] == 'slot' or not G.polygons_overlap(footprint, poly):
             continue
         code = 'TAB_IN_OPENING' if f['kind'] == 'opening' else 'TAB_IN_HOLE'
@@ -516,7 +536,7 @@ def _eval_tab_slot(design, a, b, joint, tol, issues):
             return dict(measured, matched_slot=None, location=location)
     else:
         best = None
-        for f, poly in b.feature_polys:
+        for f, poly in near:
             if f['kind'] != 'slot' or f['shape'] != 'rect':
                 continue
             # Only a slot that actually overlaps the tab footprint is "the" slot for this tab;
@@ -705,6 +725,8 @@ def _eval_cross_lap(design, a, b, joint, tol, issues):
         return {'matched_slot': None, 'location': loc}
     meet = meets[0][0]
     for holder, other, side in ((a, b, ib), (b, a, ia)):
+        if joint.get('through') == holder.id:
+            continue                    # it passes whole through a slot in the other board: it has no notch
         # a few mm into the other board's half of the crossing, holder must leave a notch the other fits into
         seg = next(((y0, y1) for y0, y1 in side if y0 - tol['contact'] <= meet <= y1 + tol['contact']), None)
         if not seg:
@@ -1192,6 +1214,36 @@ def parallel_interference(plates, pairs, tol=TOL, label='collisions'):
     return out
 
 
+def _material_polygon(plate):
+    """The plate's material (its cut outline minus every cut-out, as `is_material` sees it) as a shapely geometry in
+    plate-local coordinates; cached on the plate. None without shapely."""
+    if getattr(plate, '_material', None) is None:
+        try:
+            from shapely.geometry import Polygon
+            from shapely.ops import unary_union
+        except ImportError:
+            return None
+        solid = Polygon(plate.cut).buffer(0)
+        holes = [Polygon(poly).buffer(0) for _f, poly in plate.feature_polys if len(poly) >= 3]
+        plate._material = solid.difference(unary_union(holes)) if holes else solid
+    return plate._material
+
+
+def _parallel_overlap(a, b):
+    """Exact area (mm²) and world centroid of the material two parallel plates share, seen along a's normal: b's
+    material polygon mapped into a's plane and intersected with a's. Falls back to grid sampling without shapely."""
+    pa, pb = _material_polygon(a), _material_polygon(b)
+    if pa is None or pb is None:
+        return _projected_overlap(a, b)
+    from shapely.affinity import affine_transform
+    o, ex, ey = (a.frame.to_local(b.frame.to_world(p))[:2] for p in ([0, 0, 0], [1, 0, 0], [0, 1, 0]))
+    shared = pa.intersection(affine_transform(pb, [ex[0] - o[0], ey[0] - o[0], ex[1] - o[1], ey[1] - o[1], o[0], o[1]]))
+    if shared.is_empty or shared.area <= 0:
+        return 0.0, None
+    c = shared.centroid
+    return shared.area, a.frame.to_world([c.x, c.y, 0.0])
+
+
 def _plate_interference(a, b, tol):
     na, nb = a.frame.normal, b.frame.normal
     cr = G.v_cross(na, nb)
@@ -1199,7 +1251,7 @@ def _plate_interference(a, b, tol):
         sep = abs(G.v_dot(G.v_sub(b.frame.p, a.frame.p), na))
         if sep >= (a.t + b.t) / 2.0 - tol['contact']:
             return []
-        area, centroid = _projected_overlap(a, b)
+        area, centroid = _parallel_overlap(a, b)        # exact: a narrow strip is not lost between grid points
         if area < 1.0:
             return []
         return [{'kind': 'parallel_overlap', 'area': _r(area, 1), 'location': _r(centroid)}]
@@ -1211,13 +1263,19 @@ def _plate_interference(a, b, tol):
     denom = G.v_dot(u, cr)
     p0 = G.v_scale(G.v_add(G.v_scale(G.v_cross(nb, u), da), G.v_scale(G.v_cross(u, na), db)), 1.0 / denom)
     pad = 2.0 * max(a.t, b.t) + 1.0
+    # Two boards at a shallow angle overlap up to (t_a + t_b) / (2 sin angle) from the line where their mid-planes
+    # meet, so that line may pass well outside both boards: look that far for it.
+    reach = max(pad, (a.t + b.t) / (2.0 * G.v_len(cr)) + 1.0)
     ranges = []
     for pl in (a, b):
         x0, y0, x1, y1 = pl.bbox2d
-        rr = _line_range_2d(pl.frame.to_local(p0), pl.frame.dir_to_local(u), (x0 - pad, y0 - pad, x1 + pad, y1 + pad))
+        rr = _line_range_2d(pl.frame.to_local(p0), pl.frame.dir_to_local(u),
+                            (x0 - reach, y0 - reach, x1 + reach, y1 + reach))
         if not rr:
             return []
-        ranges.append(rr)
+        # ... but sample only along the board's own extent in the line's direction
+        ss = [G.v_dot(G.v_sub(pl.frame.to_world([x, y, 0.0]), p0), u) for x in (x0, x1) for y in (y0, y1)]
+        ranges.append((max(rr[0], min(ss) - pad), min(rr[1], max(ss) + pad)))
     lo, hi = max(ranges[0][0], ranges[1][0]), min(ranges[0][1], ranges[1][1])
     if hi <= lo:
         return []
@@ -1299,6 +1357,43 @@ def _edge_line_intervals(edges, p, v):
     return [(rs[i], rs[i + 1]) for i in range(0, len(rs) - 1, 2)]
 
 
+def _feature_index(plate):
+    """Per plate (built once, cached): each cut-out's edge list, and the cut-outs sorted by their box's x and y start,
+    so the ones in a strip / box are found by bisection instead of scanning every slot of a big board."""
+    idx = getattr(plate, '_fidx', None)
+    boxes = plate._feature_boxes
+    if idx is not None and idx['n'] < len(boxes):        # a plate extended by new cut-outs: insert just those
+        n0, polys = idx['n'], plate.feature_polys
+        new = {'n': len(boxes), 'edges': idx['edges'] + [[(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))]
+                                                         for _f, poly in polys[n0:]]}
+        for ax in (0, 1):
+            order, starts, widest = list(idx[ax][0]), list(idx[ax][1]), idx[ax][2]
+            for i in range(n0, len(boxes)):
+                pos = bisect.bisect_right(starts, boxes[i][ax])
+                starts.insert(pos, boxes[i][ax])
+                order.insert(pos, i)
+                widest = max(widest, boxes[i][ax + 2] - boxes[i][ax])
+            new[ax] = (order, starts, widest)
+        plate._fidx = idx = new
+    if idx is None or idx['n'] != len(boxes):
+        edges = [[(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))] for _f, poly in plate.feature_polys]
+        idx = {'n': len(boxes), 'edges': edges}
+        for ax in (0, 1):
+            order = sorted(range(len(boxes)), key=lambda i: boxes[i][ax])
+            idx[ax] = (order, [boxes[i][ax] for i in order],
+                       max((boxes[i][ax + 2] - boxes[i][ax] for i in order), default=0.0))
+        plate._fidx = idx
+    return idx
+
+
+def _features_in(plate, ax, lo, hi):
+    """Indices of the cut-outs whose box overlaps [lo, hi] along local axis `ax` (0 = x, 1 = y)."""
+    order, starts, widest = _feature_index(plate)[ax]
+    boxes = plate._feature_boxes
+    return [i for i in order[bisect.bisect_left(starts, lo - widest):bisect.bisect_right(starts, hi)]
+            if boxes[i][ax + 2] >= lo]
+
+
 def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
     """Per station k (line through base + u*(lo + k*step) along v, plate-local), the cut-out polygons whose
     bounding box that line can cross; None where every station must test all cut-outs (point-crossing case)."""
@@ -1327,9 +1422,20 @@ def _station_features(plate, base_w, u_w, v_loc, lo, step, n):
         k0, k1 = stations(e)
         for k in range(k0, k1 + 1):
             act[k][0].append(e)
-    for (_f, poly), (x0, y0, x1, y1) in zip(plate.feature_polys, plate._feature_boxes):
+    fidx = _feature_index(plate)
+    cand = range(len(plate.feature_polys))
+    if abs(v_loc[0]) < 1e-9 or abs(v_loc[1]) < 1e-9:
+        # axis-aligned lines: every station line is one x (or y) value, so only cut-outs in that strip can matter
+        ax = 0 if abs(v_loc[0]) < 1e-9 else 1
+        coord = lambda sv: p0[ax] + (sv * kk / -v_loc[1] if ax == 0 else sv * kk / v_loc[0])
+        ends = (coord(lo - 2 * step), coord(lo + (n + 1) * step))
+        cand = _features_in(plate, ax, min(ends), max(ends))
+    for i in cand:
+        x0, y0, x1, y1 = plate._feature_boxes[i]
         k0, k1 = stations(((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
-        edges = [(poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))]   # built once, used per station
+        if k0 > k1:
+            continue
+        edges = fidx['edges'][i]                     # built once per plate, used per station
         rs = [r_of(x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
         entry = (edges, min(rs), max(rs)) if along else (edges, -math.inf, math.inf)
         for k in range(k0, k1 + 1):

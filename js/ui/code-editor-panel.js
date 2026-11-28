@@ -595,7 +595,7 @@ export class CodeEditorPanel {
 
     if (status) status.innerText = 'Parsing & validating...';
 
-    const result = await DesignParser.parseAndValidate(code);
+    const result = await DesignParser.parseAndValidate(code, { allowCode: true });   // the user's own code, typed here
     if (!result.success) {
       this.showError(result.error);
       if (status) status.innerText = 'Syntax / Schema error';

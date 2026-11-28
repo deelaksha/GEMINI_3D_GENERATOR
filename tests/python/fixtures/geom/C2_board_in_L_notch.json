@@ -1,0 +1,69 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "C2_board_in_L_notch"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "L",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      200,
+      0
+     ],
+     [
+      200,
+      100
+     ],
+     [
+      100,
+      100
+     ],
+     [
+      100,
+      200
+     ],
+     [
+      0,
+      200
+     ]
+    ]
+   }
+  },
+  {
+   "id": "POST",
+   "position": [
+    150,
+    -40,
+    130
+   ],
+   "size": [
+    6,
+    80,
+    40
+   ]
+  }
+ ],
+ "connections": []
+}
