@@ -1,0 +1,192 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -250,
+    0,
+    -200
+   ],
+   "size": [
+    500,
+    6,
+    400
+   ]
+  },
+  {
+   "id": "GA",
+   "position": [
+    -33.0,
+    6,
+    -33.0
+   ],
+   "size": [
+    66.0,
+    6,
+    66.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     33.0,
+     33.0
+    ],
+    "teeth": 20,
+    "module": 3,
+    "rotation": 0.0
+   }
+  },
+  {
+   "id": "GB",
+   "position": [
+    27.0,
+    6,
+    -48.0
+   ],
+   "size": [
+    96.0,
+    6,
+    96.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     48.0,
+     48.0
+    ],
+    "teeth": 30,
+    "module": 3,
+    "rotation": 6.0
+   }
+  },
+  {
+   "id": "ARM",
+   "position": [
+    -160,
+    6,
+    20
+   ],
+   "size": [
+    20,
+    6,
+    90
+   ]
+  },
+  {
+   "id": "ROD",
+   "position": [
+    -163,
+    12,
+    -11
+   ],
+   "size": [
+    161,
+    6,
+    52
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      159.4973142643888,
+      16.64019190328506
+     ],
+     [
+      4.973573060709725,
+      50.97880105965818
+     ],
+     [
+      1.5026857356112373,
+      35.35980809671494
+     ],
+     [
+      156.02642693929027,
+      1.0211989403418151
+     ]
+    ]
+   }
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "A",
+   "type": "rotate",
+   "boards": [
+    "GA"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    0,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  },
+  {
+   "id": "B",
+   "type": "rotate",
+   "boards": [
+    "GB"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    75,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "A"
+  },
+  {
+   "id": "R",
+   "type": "rotate",
+   "boards": [
+    "ARM"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    -150,
+    6,
+    100
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "A",
+   "link": {
+    "rod": "ROD",
+    "from": [
+     -15,
+     12,
+     0
+    ],
+    "to": [
+     -150,
+     12,
+     30
+    ]
+   }
+  }
+ ]
+}

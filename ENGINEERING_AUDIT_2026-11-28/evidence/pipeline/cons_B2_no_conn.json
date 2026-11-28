@@ -1,0 +1,131 @@
+{
+  "format": "board-design/v1",
+  "product": {
+    "name": "Modern Study Table",
+    "description": "Glue-free plywood desk with a modesty panel and a shelf.",
+    "overall": {
+      "length": 1200,
+      "height": 750,
+      "depth": 600
+    }
+  },
+  "material": {
+    "name": "Birch plywood 18 mm",
+    "type": "plywood",
+    "thickness": 18,
+    "clearance": 0.2
+  },
+  "joinery": "interlocking",
+  "boards": [
+    {
+      "id": "TOP",
+      "name": "Table top",
+      "group": "Top",
+      "position": [0, 732, 0],
+      "size": [1200, 18, 600],
+      "grain": "x"
+    },
+    {
+      "id": "LEG-L",
+      "name": "Left leg panel",
+      "group": "Legs",
+      "position": [50, 0, 20],
+      "size": [18, 732, 560],
+      "openings": [
+        {
+          "id": "cable",
+          "kind": "hole",
+          "shape": "circle",
+          "center": [59, 600, 300],
+          "diameter": 40
+        }
+      ]
+    },
+    {
+      "id": "LEG-R",
+      "name": "Right leg panel",
+      "group": "Legs",
+      "position": [1132, 0, 20],
+      "size": [18, 732, 560]
+    },
+    {
+      "id": "SHELF",
+      "name": "Lower shelf",
+      "group": "Shelves",
+      "position": [68, 150, 60],
+      "size": [1064, 18, 400]
+    },
+    {
+      "id": "MOD-A",
+      "name": "Modesty left",
+      "group": "Frame",
+      "position": [68, 432, 480],
+      "size": [532, 300, 18]
+    },
+    {
+      "id": "MOD-B",
+      "name": "Modesty right",
+      "group": "Frame",
+      "position": [600, 432, 480],
+      "size": [532, 300, 18]
+    }
+  ],
+  "connections": [
+    {
+      "id": "LEG-L-TOP",
+      "type": "tab_slot",
+      "board": "LEG-L",
+      "into": "TOP",
+      "tabs": 2
+    },
+    {
+      "id": "LEG-R-TOP",
+      "type": "tab_slot",
+      "board": "LEG-R",
+      "into": "TOP",
+      "tabs": 2
+    },
+    {
+      "id": "SHELF-L",
+      "type": "tab_slot",
+      "board": "SHELF",
+      "into": "LEG-L",
+      "tabs": 2
+    },
+    {
+      "id": "SHELF-R",
+      "type": "tab_slot",
+      "board": "SHELF",
+      "into": "LEG-R",
+      "tabs": 2
+    },
+    {
+      "id": "MA-TOP",
+      "type": "tab_slot",
+      "board": "MOD-A",
+      "into": "TOP",
+      "tabs": 2
+    },
+    {
+      "id": "MB-TOP",
+      "type": "tab_slot",
+      "board": "MOD-B",
+      "into": "TOP",
+      "tabs": 2
+    },
+    {
+      "id": "MA-L",
+      "type": "tab_slot",
+      "board": "MOD-A",
+      "into": "LEG-L",
+      "tabs": 1
+    },
+    {
+      "id": "MB-R",
+      "type": "tab_slot",
+      "board": "MOD-B",
+      "into": "LEG-R",
+      "tabs": 1
+    }
+  ]
+}

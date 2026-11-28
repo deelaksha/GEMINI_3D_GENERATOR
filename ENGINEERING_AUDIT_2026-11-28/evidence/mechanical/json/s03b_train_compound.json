@@ -1,0 +1,192 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -200,
+    0,
+    -200
+   ],
+   "size": [
+    700,
+    6,
+    600
+   ]
+  },
+  {
+   "id": "GA",
+   "position": [
+    -21.0,
+    6,
+    -21.0
+   ],
+   "size": [
+    42.0,
+    6,
+    42.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     21.0,
+     21.0
+    ],
+    "teeth": 12,
+    "module": 3,
+    "rotation": 0.0
+   }
+  },
+  {
+   "id": "GB",
+   "position": [
+    15.0,
+    6,
+    -57.0
+   ],
+   "size": [
+    114.0,
+    6,
+    114.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     57.0,
+     57.0
+    ],
+    "teeth": 36,
+    "module": 3,
+    "rotation": 5.0
+   }
+  },
+  {
+   "id": "GBs",
+   "position": [
+    51.0,
+    12,
+    -21.0
+   ],
+   "size": [
+    42.0,
+    6,
+    42.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     21.0,
+     21.0
+    ],
+    "teeth": 12,
+    "module": 3,
+    "rotation": 0.0
+   }
+  },
+  {
+   "id": "GC",
+   "position": [
+    15.0,
+    12,
+    15.0
+   ],
+   "size": [
+    114.0,
+    6,
+    114.0
+   ],
+   "profile": {
+    "shape": "gear",
+    "center": [
+     57.0,
+     57.0
+    ],
+    "teeth": 36,
+    "module": 3,
+    "rotation": 5.0
+   }
+  },
+  {
+   "id": "SPACER",
+   "position": [
+    52,
+    6,
+    52
+   ],
+   "size": [
+    40,
+    6,
+    40
+   ]
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "A",
+   "type": "rotate",
+   "boards": [
+    "GA"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    0,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  },
+  {
+   "id": "B",
+   "type": "rotate",
+   "boards": [
+    "GB",
+    "GBs"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    72,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "A"
+  },
+  {
+   "id": "C",
+   "type": "rotate",
+   "boards": [
+    "GC"
+   ],
+   "on": "SPACER",
+   "axis": "y",
+   "pivot": [
+    72,
+    12,
+    72
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "B"
+  }
+ ]
+}

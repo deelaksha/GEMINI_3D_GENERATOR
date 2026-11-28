@@ -1,0 +1,184 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "A2_box_with_trapped_inner"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BOT",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    120,
+    6,
+    120
+   ]
+  },
+  {
+   "id": "TOP",
+   "position": [
+    0,
+    106,
+    0
+   ],
+   "size": [
+    120,
+    6,
+    120
+   ]
+  },
+  {
+   "id": "LFT",
+   "position": [
+    10,
+    6,
+    10
+   ],
+   "size": [
+    6,
+    100,
+    100
+   ]
+  },
+  {
+   "id": "RGT",
+   "position": [
+    104,
+    6,
+    10
+   ],
+   "size": [
+    6,
+    100,
+    100
+   ]
+  },
+  {
+   "id": "BCK",
+   "position": [
+    16,
+    6,
+    10
+   ],
+   "size": [
+    88,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "FRT",
+   "position": [
+    16,
+    6,
+    104
+   ],
+   "size": [
+    88,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "INNER",
+   "position": [
+    40,
+    6,
+    40
+   ],
+   "size": [
+    40,
+    40,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "LFT-BOT",
+   "type": "tab_slot",
+   "board": "LFT",
+   "into": "BOT"
+  },
+  {
+   "id": "LFT-TOP",
+   "type": "tab_slot",
+   "board": "LFT",
+   "into": "TOP"
+  },
+  {
+   "id": "RGT-BOT",
+   "type": "tab_slot",
+   "board": "RGT",
+   "into": "BOT"
+  },
+  {
+   "id": "RGT-TOP",
+   "type": "tab_slot",
+   "board": "RGT",
+   "into": "TOP"
+  },
+  {
+   "id": "BCK-BOT",
+   "type": "tab_slot",
+   "board": "BCK",
+   "into": "BOT"
+  },
+  {
+   "id": "BCK-TOP",
+   "type": "tab_slot",
+   "board": "BCK",
+   "into": "TOP"
+  },
+  {
+   "id": "FRT-BOT",
+   "type": "tab_slot",
+   "board": "FRT",
+   "into": "BOT"
+  },
+  {
+   "id": "FRT-TOP",
+   "type": "tab_slot",
+   "board": "FRT",
+   "into": "TOP"
+  },
+  {
+   "id": "BCK-LFT",
+   "type": "tab_slot",
+   "board": "BCK",
+   "into": "LFT"
+  },
+  {
+   "id": "BCK-RGT",
+   "type": "tab_slot",
+   "board": "BCK",
+   "into": "RGT"
+  },
+  {
+   "id": "FRT-LFT",
+   "type": "tab_slot",
+   "board": "FRT",
+   "into": "LFT"
+  },
+  {
+   "id": "FRT-RGT",
+   "type": "tab_slot",
+   "board": "FRT",
+   "into": "RGT"
+  },
+  {
+   "id": "IN-B",
+   "type": "tab_slot",
+   "board": "INNER",
+   "into": "BOT"
+  }
+ ]
+}

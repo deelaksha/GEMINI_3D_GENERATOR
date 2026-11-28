@@ -1,0 +1,92 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "A3_six_sided_finger_box"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BOT",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    120,
+    6,
+    120
+   ]
+  },
+  {
+   "id": "TOP",
+   "position": [
+    0,
+    106,
+    0
+   ],
+   "size": [
+    120,
+    6,
+    120
+   ]
+  },
+  {
+   "id": "LFT",
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "size": [
+    6,
+    100,
+    120
+   ]
+  },
+  {
+   "id": "RGT",
+   "position": [
+    114,
+    6,
+    0
+   ],
+   "size": [
+    6,
+    100,
+    120
+   ]
+  },
+  {
+   "id": "BCK",
+   "position": [
+    6,
+    6,
+    0
+   ],
+   "size": [
+    108,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "FRT",
+   "position": [
+    6,
+    6,
+    114
+   ],
+   "size": [
+    108,
+    100,
+    6
+   ]
+  }
+ ],
+ "connections": "auto"
+}

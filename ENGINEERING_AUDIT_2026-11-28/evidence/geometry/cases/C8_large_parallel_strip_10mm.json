@@ -1,0 +1,41 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "C8_large_parallel_strip_10mm"
+ },
+ "material": {
+  "name": "Ply 18",
+  "type": "plywood",
+  "thickness": 18
+ },
+ "boards": [
+  {
+   "id": "A",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    2400,
+    18,
+    1200
+   ]
+  },
+  {
+   "id": "B",
+   "position": [
+    0,
+    9,
+    1190
+   ],
+   "size": [
+    2400,
+    18,
+    300
+   ]
+  }
+ ],
+ "connections": [],
+ "consolidate": false
+}

@@ -12,6 +12,9 @@ import os
 
 GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
 TIMEOUT_S = 300
+TRUNCATED = ('the AI reply was cut off at its output limit, so the design is incomplete; describe a smaller product, '
+             'or ask for fewer, larger parts (repeat / mirror / assemblies keep the JSON short)')
+STOPPED_EARLY = ('SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'OTHER')
 
 
 class AIError(RuntimeError):
@@ -56,8 +59,13 @@ def _gemini(prompt, model):
     data = r.json()
     cand = (data.get('candidates') or [{}])[0]
     text = ''.join(p.get('text', '') for p in (cand.get('content') or {}).get('parts', []))
+    finish = cand.get('finishReason')
+    if finish == 'MAX_TOKENS':          # a partial design must never be compiled as if it were the whole one
+        raise AIError(TRUNCATED)
+    if finish in STOPPED_EARLY:
+        raise AIError(f'Gemini stopped before finishing the design (finish reason: {finish}); try again')
     if not text.strip():
-        raise AIError(f"Gemini returned no design (finish reason: {cand.get('finishReason') or 'unknown'})")
+        raise AIError(f"Gemini returned no design (finish reason: {finish or 'unknown'})")
     return text
 
 
@@ -85,6 +93,8 @@ def _claude(prompt, model):
         raise AIError('could not reach Claude') from None
     if message.stop_reason == 'refusal':
         raise AIError('Claude declined this request; rephrase the product description and try again')
+    if message.stop_reason == 'max_tokens':
+        raise AIError(TRUNCATED)
     text = ''.join(b.text for b in message.content if b.type == 'text')
     if not text.strip():
         raise AIError(f'Claude returned no design (stop reason: {message.stop_reason})')

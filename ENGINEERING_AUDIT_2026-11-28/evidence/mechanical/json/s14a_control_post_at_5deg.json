@@ -1,0 +1,77 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -320,
+    0,
+    -320
+   ],
+   "size": [
+    640,
+    6,
+    640
+   ]
+  },
+  {
+   "id": "ARM",
+   "position": [
+    -10,
+    6,
+    -5
+   ],
+   "size": [
+    310,
+    6,
+    10
+   ]
+  },
+  {
+   "id": "POST",
+   "position": [
+    286,
+    6,
+    -28
+   ],
+   "size": [
+    6,
+    20,
+    6
+   ],
+   "normal": "x"
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "sw",
+   "type": "rotate",
+   "boards": [
+    "ARM"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    0,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    90
+   ]
+  }
+ ]
+}

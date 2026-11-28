@@ -1,0 +1,49 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "E1_radial_spokes_hub_overlap"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -150,
+    0,
+    -150
+   ],
+   "size": [
+    300,
+    6,
+    300
+   ]
+  },
+  {
+   "id": "SPOKE",
+   "position": [
+    -3,
+    6,
+    -100
+   ],
+   "size": [
+    6,
+    80,
+    200
+   ],
+   "radial": {
+    "count": 3,
+    "axis": "y",
+    "center": [
+     0,
+     6,
+     0
+    ]
+   }
+  }
+ ],
+ "connections": "auto"
+}

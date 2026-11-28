@@ -1,0 +1,67 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "K2_coplanar_overlap_no_consolidate"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "WALL",
+   "position": [
+    50,
+    6,
+    97
+   ],
+   "size": [
+    100,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "WALL2",
+   "position": [
+    100,
+    6,
+    97
+   ],
+   "size": [
+    100,
+    80,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "W-F",
+   "type": "tab_slot",
+   "board": "WALL",
+   "into": "FLOOR"
+  },
+  {
+   "id": "W2-F",
+   "type": "tab_slot",
+   "board": "WALL2",
+   "into": "FLOOR"
+  }
+ ],
+ "consolidate": false
+}

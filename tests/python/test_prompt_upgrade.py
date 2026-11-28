@@ -110,8 +110,8 @@ def client(tmp_path_factory):
 
 def test_repair_and_update_prompt_endpoints(client):
     h = {'Authorization': 'Bearer vw'}
-    r = client.post('/api/v1/canvas/repair-prompt', headers=h, json={'source': '{"boards": [ oops'})
-    assert r.status_code == 200 and 'JSON_SYNTAX' in r.json['prompt'] and r.json['problems'] == 1
+    r = client.post('/api/v1/canvas/repair-prompt', headers=h, json={'source': '{"boards": [ oops'})     # stops mid-design
+    assert r.status_code == 200 and 'JSON_TRUNCATED' in r.json['prompt'] and 'CUT OFF' in r.json['prompt'] and r.json['problems'] == 1
     r = client.post('/api/v1/canvas/update-prompt', headers=h, json={'source': json.dumps(EXAMPLE), 'change': 'Add a second shelf.'})
     assert r.status_code == 200 and 'Add a second shelf.' in r.json['prompt']
     assert client.post('/api/v1/canvas/update-prompt', headers=h, json={'source': json.dumps(EXAMPLE)}).status_code == 400

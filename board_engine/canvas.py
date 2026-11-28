@@ -42,7 +42,7 @@ from .manufacturing import FASTENERS, MATERIALS
 from .model import (DEFAULT_MATERIAL, FASTENER_KINDS, ID_RE, JOINERY_MODES, LIMITS, MARK_KINDS, MATERIAL_TYPES, MOUNTINGS,
                     SchemaError, cut_outline, edge_frame, feature_polygon, normalize_design, thickness_of)
 from .nesting import SHEET_PRESETS
-from .json_repair import repair_json, summarize as _summarize_repair
+from .json_repair import ENDS_EARLY, repair_json, summarize as _summarize_repair
 from .progress import active as _reporting, report as _progress
 from .shapes import ShapeError, arc_sweep, reverse as reverse_shape, shape_polygon
 from .validation import TOL, _edge_line_intervals, joining_loop, validate_design
@@ -162,16 +162,19 @@ def _strip_trailing_commas(src):
 
 
 def _syntax_fix(text, body, off):
-    """A code fix that repairs the JSON syntax of `body` (the design inside `text`), or None."""
+    """A code fix that repairs the JSON syntax of `body` (the design inside `text`), or None. A repair of text that
+    stops inside the design (a reply cut off at the AI's output limit) is never safe: closing the brackets compiles
+    whatever was written so far, silently dropping the boards and connections that were never sent."""
     res = repair_json(body, lambda s: json.loads(_strip_comments(s)))
     if res is None:
         return None
     fixed, changes = res
+    truncated = any(c['message'] == ENDS_EARLY for c in changes)
     changes = [dict(c, line=c['line'] + off) for c in changes]
     start = text.find(body)
     n = len(changes)
     return {'id': 'repair-json', 'kind': 'repair_json', 'title': f"Repair the JSON syntax ({n} change{'s' if n != 1 else ''})",
-            'safe': True, 'summary': _summarize_repair(changes), 'changes': changes[:50],
+            'safe': not truncated, 'truncated': truncated, 'summary': _summarize_repair(changes), 'changes': changes[:50],
             'source': text[:start] + fixed + text[start + len(body):], 'edits': []}
 
 
@@ -279,6 +282,13 @@ def parse_source(text):
                     f'ask the AI for the design again (as a file or in parts).')
         else:
             fix = _syntax_fix(text, body, off)
+            if fix and fix['truncated']:
+                return None, body, off, [diag(
+                    'error', 'JSON_TRUNCATED', f'The design stops before it is complete (line {e.lineno + off}): the AI '
+                    f'reply was probably cut off at its output limit, so boards and connections after this point are '
+                    f'missing. Ask the AI for the complete design again (shorter: use repeat / mirror / assemblies), '
+                    f'or close the brackets only if you know nothing is missing.',
+                    line=e.lineno + off, column=e.colno, fixes=[fix])]
             if fix:
                 hint, fixes = f" It can be repaired automatically: {fix['summary']}.", [fix]
         return None, body, off, [diag('error', 'JSON_SYNTAX', f'{e.msg} (line {e.lineno + off}, column {e.colno}).{hint}',
@@ -509,7 +519,7 @@ def find_non_integer_dimensions(data, src=None, off=0):
         return issues
 
     def _is_float(val):
-        return isinstance(val, (int, float)) and not isinstance(val, bool) and abs(val - round(val)) > 1e-4
+        return _num(val) and abs(val - round(val)) > 1e-4        # NaN / Infinity are reported elsewhere, never rounded
 
     # 1. Product overall
     overall = (data.get('product') or {}).get('overall') or {}
@@ -1731,6 +1741,10 @@ def _compile_source(text, design_id, run_production, time_budget, machine):
     if data is None:
         return result
     _progress('parse', 1, 1)
+    from .schema import check_fields
+    for d in check_fields(data):                # fields the compiler would otherwise ignore without a word
+        key = d.pop('path').rsplit('.', 1)[-1]
+        diags.append(diag(d['severity'], d['code'], d['message'], line=_key_line(src, key, off), field=key))
     if 'boards' in data:                        # repeat / mirror / assemblies -> plain boards and connections
         from .expand import ExpandError, expand
         try:
@@ -1884,8 +1898,13 @@ def _consolidation_notes(merge, diags, line):
 def _compile_v1(data, src, off, design_id, result, run_production, machine=None):
     diags = result['diagnostics']
     result['format'] = FORMAT
-    if data.get('format') not in (None, FORMAT):
+    fmt = data.get('format')
+    if fmt not in (None, FORMAT) and isinstance(fmt, str) and re.fullmatch(re.escape(FORMAT) + r'(\.\d+)*', fmt):
         diags.append(diag('warning', 'FORMAT_VERSION', f"\"format\" should be \"{FORMAT}\"; compiling as {FORMAT}.",
+                          line=_key_line(src, 'format', off)))
+    elif fmt not in (None, FORMAT):             # another format altogether: its fields would be misread
+        diags.append(diag('error', 'FORMAT_UNSUPPORTED', f"\"format\" is {fmt!r}, but this compiler reads only "
+                          f"\"{FORMAT}\". Write the design in {FORMAT} (see the specification) or remove the field.",
                           line=_key_line(src, 'format', off)))
     product = data.get('product') if isinstance(data.get('product'), dict) else {}
     if not product.get('name'):
@@ -1905,6 +1924,9 @@ def _compile_v1(data, src, off, design_id, result, run_production, machine=None)
                           line=_key_line(src, 'mounting', off)))
         mounting = None
     from .consolidate import consolidate, repeat_openings
+    from .expand import expand_connection_patterns
+    for label, msg in expand_connection_patterns(data):
+        diags.append(diag('error', 'CONNECTION_INVALID', f"Connection '{label}': {msg}.", connection=label))
     for bid, msg in repeat_openings(data):
         diags.append(diag('error', 'OPENING_INVALID', f"Board '{bid}': {msg}", board=bid))
     want = data.get('consolidate', True)
@@ -2297,6 +2319,7 @@ def _finish(design, result, boards, run_production, raw_conns=None, held=(), con
         for i in check_requirements(_REQUIREMENTS.get(), [b['max'][k] - b['min'][k] for k in range(3)]):
             diags.append(diag(i['severity'], i['code'], i['message'], required=i['required'], actual=i['actual'],
                               dimension=i['dimension'], calc=i['calc']))
+    _retarget_fixes(diags, boards)
     if not run_production and _SNAPSHOT_KEY.get():
         _remember(_SNAPSHOT_KEY.get(), result, design)       # the production request that follows starts from here
     return _tail(result, design, diags, run_production, machine)
@@ -2496,6 +2519,26 @@ def _follow_on(issue, held, failed_pairs):
         and bool(comps) and set(comps) <= set(held)
 
 
+def _retarget_fixes(diags, boards):
+    """Fixes that edit a board made by repeat / mirror / radial / assemblies (an id that is not in the source) edit its
+    source board instead, by the same change (`delta`), so they can be applied at all - and they are never safe:
+    changing the source changes every copy, which is more than the problem asked for."""
+    origin = _ORIGIN.get()
+    for d in diags:
+        for f in d.get('fixes') or []:
+            gen = [e for e in f.get('edits') or () if e.get('board') in origin and 'source' not in e]
+            if not gen:
+                continue
+            for e in gen:
+                old = boards[e['board']].raw.get(e['field']) if e['board'] in boards else None
+                e['source'] = origin[e['board']]
+                if e['field'] in ('position', 'size') and _vec3(old) and _vec3(e['value']):
+                    e['delta'] = [round(n - o, 4) for n, o in zip(e['value'], old)]
+            src = gen[0]['source']
+            f['safe'] = False
+            f['title'] += f" - '{gen[0]['board']}' is generated from '{src}': this edits '{src}' and so every copy"
+
+
 def apply_code_fix(text, fix):
     """Apply a fix's edits to the source (re-serialised, 2-space indent). Used by tests and the API.
     A syntax repair is re-run on `text` itself, so it always matches the code it is applied to."""
@@ -2510,11 +2553,25 @@ def apply_code_fix(text, fix):
         raise CompileError(diags[0]['message'])
     by_id = {b.get('id'): b for b in data.get('boards', []) if isinstance(b, dict)}
     for ed in fix['edits']:
-        if ed.get('board'):
-            by_id[ed['board']][ed['field']] = ed['value']
-        else:
+        if not ed.get('board'):
             data[ed['field']] = ed['value']
+        elif ed['board'] in by_id:
+            by_id[ed['board']][ed['field']] = ed['value']
+        elif ed.get('source') in by_id and ed.get('delta') and _translated_copies(by_id[ed['source']]):
+            raw = by_id[ed['source']]               # a copy made by "repeat": move / resize the source, so every copy
+            raw[ed['field']] = [round(v + dv, 4) for v, dv in zip(raw[ed['field']], ed['delta'])]
+        else:
+            raise CompileError(f"board '{ed['board']}' is not written in the code"
+                               + (f" (it is generated from '{ed['source']}' by mirror, radial or an assembly): change "
+                                  f"'{ed['source']}' by hand" if ed.get('source') else ''))
     return pretty_json(data)
+
+
+def _translated_copies(raw):
+    """True when a board's copies are plain shifted copies of it ("repeat" without grow / morph, no mirror or
+    radial), so a move or resize of one copy is the same change to the source."""
+    rep = raw.get('repeat')
+    return isinstance(rep, dict) and not ({'grow', 'morph'} & set(rep)) and not ({'mirror', 'radial'} & set(raw))
 
 
 def pretty_json(data):

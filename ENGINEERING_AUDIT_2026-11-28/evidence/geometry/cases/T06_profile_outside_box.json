@@ -1,0 +1,47 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T06_profile_outside_box"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "OUT",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    6,
+    100
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      120,
+      0
+     ],
+     [
+      120,
+      100
+     ],
+     [
+      0,
+      100
+     ]
+    ]
+   }
+  }
+ ]
+}

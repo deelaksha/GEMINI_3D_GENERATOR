@@ -1,0 +1,227 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    600,
+    320,
+    6
+   ]
+  },
+  {
+   "id": "CRANK",
+   "position": [
+    270,
+    120,
+    6
+   ],
+   "size": [
+    60,
+    60,
+    6
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     30,
+     30
+    ],
+    "diameter": 60
+   }
+  },
+  {
+   "id": "WING-R",
+   "position": [
+    490,
+    140,
+    6
+   ],
+   "size": [
+    20,
+    90,
+    6
+   ]
+  },
+  {
+   "id": "WING-L",
+   "position": [
+    90,
+    140,
+    6
+   ],
+   "size": [
+    20,
+    90,
+    6
+   ]
+  },
+  {
+   "id": "ROD-R",
+   "position": [
+    306,
+    137,
+    12
+   ],
+   "size": [
+    208,
+    96,
+    6.0
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      7.579523373826646,
+      1.9195000161201392
+     ],
+     [
+      206.21961680465256,
+      79.16842523921912
+     ],
+     [
+      200.42047662617335,
+      94.08049998387986
+     ],
+     [
+      1.78038319534744,
+      16.83157476078088
+     ]
+    ]
+   }
+  },
+  {
+   "id": "ROD-L",
+   "position": [
+    86,
+    137,
+    18
+   ],
+   "size": [
+    208,
+    96,
+    6.0
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      206.21961680465256,
+      16.83157476078088
+     ],
+     [
+      7.579523373826632,
+      94.08049998387986
+     ],
+     [
+      1.7803831953474543,
+      79.16842523921912
+     ],
+     [
+      200.42047662617335,
+      1.9195000161201392
+     ]
+    ]
+   }
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "crank",
+   "type": "rotate",
+   "boards": [
+    "CRANK"
+   ],
+   "on": "BASE",
+   "axis": "z",
+   "pivot": [
+    300,
+    150,
+    6
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  },
+  {
+   "id": "wr",
+   "type": "rotate",
+   "boards": [
+    "WING-R"
+   ],
+   "on": "BASE",
+   "axis": "z",
+   "pivot": [
+    500,
+    150,
+    6
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "crank",
+   "link": {
+    "rod": "ROD-R",
+    "from": [
+     320,
+     150,
+     12
+    ],
+    "to": [
+     500,
+     220,
+     12
+    ]
+   }
+  },
+  {
+   "id": "wl",
+   "type": "rotate",
+   "boards": [
+    "WING-L"
+   ],
+   "on": "BASE",
+   "axis": "z",
+   "pivot": [
+    100,
+    150,
+    6
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "crank",
+   "link": {
+    "rod": "ROD-L",
+    "from": [
+     280,
+     150,
+     18
+    ],
+    "to": [
+     100,
+     220,
+     18
+    ]
+   }
+  }
+ ]
+}

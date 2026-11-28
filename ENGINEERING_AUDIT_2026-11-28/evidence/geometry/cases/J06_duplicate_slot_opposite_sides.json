@@ -1,0 +1,110 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "J06_duplicate_slot_opposite_sides"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    300,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "L",
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "size": [
+    6,
+    200,
+    200
+   ]
+  },
+  {
+   "id": "SHELF",
+   "position": [
+    6,
+    100,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "BELOW",
+   "position": [
+    100,
+    6,
+    40
+   ],
+   "size": [
+    6,
+    94,
+    120
+   ]
+  },
+  {
+   "id": "ABOVE",
+   "position": [
+    100,
+    106,
+    40
+   ],
+   "size": [
+    6,
+    94,
+    120
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "L-F",
+   "type": "tab_slot",
+   "board": "L",
+   "into": "FLOOR"
+  },
+  {
+   "id": "S-L",
+   "type": "tab_slot",
+   "board": "SHELF",
+   "into": "L"
+  },
+  {
+   "id": "BEL-F",
+   "type": "tab_slot",
+   "board": "BELOW",
+   "into": "FLOOR"
+  },
+  {
+   "id": "BEL-S",
+   "type": "tab_slot",
+   "board": "BELOW",
+   "into": "SHELF"
+  },
+  {
+   "id": "ABV-S",
+   "type": "tab_slot",
+   "board": "ABOVE",
+   "into": "SHELF"
+  }
+ ]
+}

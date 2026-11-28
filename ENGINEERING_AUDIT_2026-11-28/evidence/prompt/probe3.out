@@ -1,0 +1,2 @@
+stacked discs tab_slot [('error', 'NO_CONTACT', "Connection 'C1-D2-D1': no end face of 'D2' meets a broad face of 'D1'. For tab_slot, an edge of 'D2' must sit against th"), ('error', 'UNATTACHED_BOARD', "'D2' is NOT ATTACHED to the model: none of its connections works, so it is only placed there and would fall off when ass")]
+stacked discs auto [('warning', 'NOT_JOINED', "Board 'D2' is not joined to the main assembly although it touches it ('D2' / 'D1'): add a connection there (it only rest")]

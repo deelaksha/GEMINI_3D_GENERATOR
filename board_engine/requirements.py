@@ -51,3 +51,49 @@ def check_requirements(text, extents):
                                  f"required = {want:g} mm", f"difference = {have - want:+.2f} mm",
                                  f"allowed = max(2 mm, 1 % of {want:g}) = {max(2.0, want * 0.01):.2f} mm"]})
     return out
+
+
+# material words -> catalogue type (manufacturing.MATERIALS); longer phrases first so "particle board" wins over "board"
+MATERIAL_WORDS = [('particle board', 'particle_board'), ('particleboard', 'particle_board'), ('chipboard', 'particle_board'),
+                  ('solid wood', 'solid_wood'), ('hardwood', 'solid_wood'), ('pine', 'solid_wood'), ('oak', 'solid_wood'),
+                  ('beech', 'solid_wood'), ('walnut', 'solid_wood'), ('plywood', 'plywood'), ('ply', 'plywood'),
+                  ('mdf', 'mdf'), ('hardboard', 'hardboard'), ('cardboard', 'cardboard')]
+_MATERIAL = '|'.join(re.escape(w) for w, _ in MATERIAL_WORDS)
+THICKNESS_RE = re.compile(r'(\d+(?:[.,]\d+)?)\s*(mm|cm)\s*(?:thick\b|(?:' + _MATERIAL + r')\b)', re.I)
+
+
+def parse_material(text):
+    """{'type'?, 'thickness'? (mm)} named in free text: "18 mm plywood", "3mm MDF", "a pine bench"."""
+    if not isinstance(text, str):
+        return {}
+    t, out = text.lower(), {}
+    for word, kind in MATERIAL_WORDS:
+        if re.search(r'\b' + re.escape(word) + r'\b', t):
+            out['type'] = kind
+            break
+    m = THICKNESS_RE.search(t)
+    if m:
+        out['thickness'] = float(m.group(1).replace(',', '.')) * UNIT[m.group(2)]
+    return out
+
+
+# detail words, most specific first; a text with words of different levels names no level (the user decides)
+DETAIL_WORDS = [(5, r'highly detailed|very detailed|ultra[- ]detailed|museum|replica|collector|exact copy|clone'),
+                (4, r'detailed|realistic|lifelike'),
+                (3, r'standard|normal detail|medium detail'),
+                (2, r'simple|simplified|basic|minimal|low detail|beginner')]
+DETAIL_TEXT = {2: 'silhouette, structure, main openings', 3: 'structure, openings and the main surface detail',
+               4: 'most visible elements, layered depth and surface detail',
+               5: 'every visible element, fine detail included'}
+
+
+def parse_detail_level(text):
+    """1-5 detail level named by the words in the text, or None when it names none or contradicts itself."""
+    if not isinstance(text, str):
+        return None
+    t, found = text.lower(), set()
+    for level, words in DETAIL_WORDS:
+        t, n = re.subn(r'\b(?:' + words + r')\b', ' ', t)     # remove matched words: "highly detailed" is not also 4
+        if n:
+            found.add(level)
+    return found.pop() if len(found) == 1 else None

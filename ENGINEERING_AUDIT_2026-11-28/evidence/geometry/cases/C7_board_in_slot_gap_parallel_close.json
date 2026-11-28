@@ -1,0 +1,40 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "C7_board_in_slot_gap_parallel_close"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "A",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    100
+   ]
+  },
+  {
+   "id": "B",
+   "position": [
+    50,
+    5,
+    20
+   ],
+   "size": [
+    100,
+    6,
+    60
+   ]
+  }
+ ],
+ "connections": []
+}

@@ -1,0 +1,286 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "Gabled cottage",
+  "description": "Glue-free cottage: pitched gables, 35 deg roof, arched door",
+  "overall": {
+   "length": 240,
+   "height": 231,
+   "depth": 190
+  }
+ },
+ "material": {
+  "name": "Birch plywood 6 mm",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "name": "Floor",
+   "group": "Base",
+   "position": [
+    -10,
+    0,
+    -10
+   ],
+   "size": [
+    220,
+    6,
+    180
+   ],
+   "profile": {
+    "shape": "rect",
+    "center": [
+     110,
+     90
+    ],
+    "width": 220,
+    "height": 180,
+    "corner_radius": 12
+   }
+  },
+  {
+   "id": "GABLE-B",
+   "name": "Back gable",
+   "group": "Walls",
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "size": [
+    200,
+    220,
+    6
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      200,
+      0
+     ],
+     [
+      200,
+      150
+     ],
+     [
+      100,
+      220
+     ],
+     [
+      0,
+      150
+     ]
+    ]
+   },
+   "openings": [
+    {
+     "id": "heart",
+     "kind": "opening",
+     "shape": "path",
+     "center": [
+      100,
+      165,
+      3
+     ],
+     "start": [
+      0,
+      -14
+     ],
+     "segments": [
+      {
+       "line": [
+        16,
+        2
+       ]
+      },
+      {
+       "arc": {
+        "to": [
+         0,
+         10
+        ],
+        "radius": 9,
+        "large": true
+       }
+      },
+      {
+       "arc": {
+        "to": [
+         -16,
+         2
+        ],
+        "radius": 9,
+        "large": true
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "GABLE-F",
+   "name": "Front gable",
+   "group": "Walls",
+   "position": [
+    0,
+    6,
+    154
+   ],
+   "size": [
+    200,
+    220,
+    6
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      200,
+      0
+     ],
+     [
+      200,
+      150
+     ],
+     [
+      100,
+      220
+     ],
+     [
+      0,
+      150
+     ]
+    ]
+   },
+   "openings": [
+    {
+     "id": "door",
+     "kind": "opening",
+     "shape": "arch",
+     "center": [
+      100,
+      62,
+      157
+     ],
+     "size": [
+      50,
+      80
+     ]
+    },
+    {
+     "id": "window",
+     "kind": "opening",
+     "shape": "circle",
+     "center": [
+      155,
+      120,
+      157
+     ],
+     "diameter": 30
+    },
+    {
+     "id": "vent",
+     "kind": "opening",
+     "shape": "regular_polygon",
+     "center": [
+      100,
+      175,
+      157
+     ],
+     "sides": 6,
+     "diameter": 24
+    }
+   ],
+   "engravings": [
+    {
+     "id": "name",
+     "kind": "engrave",
+     "depth": 0.5,
+     "points": [
+      [
+       60,
+       135
+      ],
+      [
+       140,
+       135
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SIDE-R",
+   "name": "Right wall",
+   "group": "Walls",
+   "position": [
+    184,
+    6,
+    6
+   ],
+   "size": [
+    6,
+    150,
+    148
+   ],
+   "engravings": [
+    {
+     "id": "planter",
+     "kind": "pocket",
+     "depth": 2,
+     "shape": "rect",
+     "center": [
+      74,
+      40
+     ],
+     "width": 60,
+     "height": 20,
+     "corner_radius": 4
+    }
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "gb-floor",
+   "type": "tab_slot",
+   "board": "GABLE-B",
+   "into": "FLOOR"
+  },
+  {
+   "id": "gf-floor",
+   "type": "tab_slot",
+   "board": "GABLE-F",
+   "into": "FLOOR"
+  },
+  {
+   "id": "sr-floor",
+   "type": "tab_slot",
+   "board": "SIDE-R",
+   "into": "FLOOR"
+  },
+  {
+   "id": "sr-gb",
+   "type": "tab_slot",
+   "board": "SIDE-R",
+   "into": "GABLE-B"
+  },
+  {
+   "id": "sr-gf",
+   "type": "tab_slot",
+   "board": "SIDE-R",
+   "into": "GABLE-F"
+  }
+ ]
+}

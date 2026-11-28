@@ -1,0 +1,117 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -320,
+    0,
+    -320
+   ],
+   "size": [
+    640,
+    6,
+    640
+   ]
+  },
+  {
+   "id": "ARM",
+   "position": [
+    -10,
+    6,
+    -5
+   ],
+   "size": [
+    270,
+    6,
+    10
+   ]
+  },
+  {
+   "id": "DISK",
+   "position": [
+    -250,
+    6,
+    -250
+   ],
+   "size": [
+    60,
+    6,
+    60
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     30,
+     30
+    ],
+    "diameter": 60
+   }
+  },
+  {
+   "id": "POST",
+   "position": [
+    224,
+    6,
+    -109
+   ],
+   "size": [
+    6,
+    20,
+    6
+   ],
+   "normal": "x"
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "in",
+   "type": "rotate",
+   "boards": [
+    "DISK"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    -220,
+    6,
+    -220
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  },
+  {
+   "id": "fast",
+   "type": "rotate",
+   "boards": [
+    "ARM"
+   ],
+   "on": "BASE",
+   "axis": "y",
+   "pivot": [
+    0,
+    6,
+    0
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "driven_by": "in",
+   "ratio": 10
+  }
+ ]
+}

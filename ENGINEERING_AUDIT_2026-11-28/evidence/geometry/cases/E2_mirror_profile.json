@@ -1,0 +1,72 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "E2_mirror_profile"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    300,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "SIDE",
+   "position": [
+    20,
+    6,
+    20
+   ],
+   "size": [
+    6,
+    100,
+    160
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      160,
+      0
+     ],
+     [
+      160,
+      60
+     ],
+     [
+      0,
+      100
+     ]
+    ]
+   },
+   "mirror": {
+    "axis": "x",
+    "at": 150
+   }
+  }
+ ],
+ "connections": [
+  {
+   "id": "S-B",
+   "type": "tab_slot",
+   "board": "SIDE",
+   "into": "BASE"
+  }
+ ]
+}

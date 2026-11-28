@@ -1,0 +1,6 @@
+2b morph example, keel extended errors []
+   warnings Counter({'MISALIGNED': 3, 'MISMATCHED_PAIR': 2}) summary {'boards': 10, 'errors': 0, 'warnings': 5}
+3b radial 4 blades errors []
+   warnings Counter({'MISALIGNED': 4}) summary {'boards': 5, 'errors': 0, 'warnings': 4}
+3c radial 6 blades (60deg tilted copies) errors []
+   warnings Counter({'MISALIGNED': 2}) summary {'boards': 7, 'errors': 0, 'warnings': 2}

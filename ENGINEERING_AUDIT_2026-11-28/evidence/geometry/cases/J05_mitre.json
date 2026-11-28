@@ -1,0 +1,50 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "J05_mitre"
+ },
+ "material": {
+  "name": "Ply 18",
+  "type": "plywood",
+  "thickness": 18
+ },
+ "boards": [
+  {
+   "id": "SIDE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    18,
+    141,
+    200
+   ]
+  },
+  {
+   "id": "TOP",
+   "position": [
+    9,
+    132,
+    0
+   ],
+   "size": [
+    291,
+    18,
+    200
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "M",
+   "type": "mitre",
+   "board": "SIDE",
+   "into": "TOP",
+   "edge": "+y",
+   "into_edge": "-x"
+  }
+ ],
+ "joinery": "glue_allowed"
+}

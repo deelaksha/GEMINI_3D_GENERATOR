@@ -1,0 +1,60 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "WALL",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    6,
+    200,
+    200
+   ]
+  },
+  {
+   "id": "FLAP",
+   "position": [
+    6,
+    60,
+    60
+   ],
+   "size": [
+    6,
+    80,
+    80
+   ]
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "spin",
+   "type": "rotate",
+   "boards": [
+    "FLAP"
+   ],
+   "on": "WALL",
+   "axis": "x",
+   "pivot": [
+    6,
+    100,
+    100
+   ],
+   "range": [
+    0,
+    360
+   ]
+  }
+ ]
+}

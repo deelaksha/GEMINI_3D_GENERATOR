@@ -328,7 +328,9 @@ def test_ai_generate_and_fix_flow(client, monkeypatch):
     assert f['changed'] and json.loads(f['source']) == BOX and 'CONNECTION_GAP' in prompts[1]
     assert 'OUTPUT CONTRACT' in prompts[1]
     clean = client.post('/api/v1/canvas/ai-fix', headers=ED, json={'source': json.dumps(BOX), 'machine': LASER}).json
-    assert clean == {'ok': True, 'source': json.dumps(BOX), 'problems': 0, 'changed': False} and len(prompts) == 2
+    assert {k: clean[k] for k in ('ok', 'source', 'problems', 'changed')} == \
+        {'ok': True, 'source': json.dumps(BOX), 'problems': 0, 'changed': False} and len(prompts) == 2
+    assert clean['accepted'] is True
 
 
 def test_ai_errors_and_permissions(client, monkeypatch):

@@ -17,7 +17,11 @@ Shape specs (all coordinates in the board's 2D frame, mm):
     {"shape": "arch", "center", "width", "height"}              rectangle with a semicircular top
     {"shape": "regular_polygon", "center", "sides", "diameter", "rotation"?}
     {"shape": "gear", "center", "teeth", "module", "rotation"?, "pressure_angle"?, "backlash"?}   involute spur gear
-    {"shape": "polygon", "points": [[x, y], ...], "corner_radius"?}
+    {"shape": "polygon", "points": [[x, y], ...], "corner_radius"?, "symmetric"?: {"u": x} | {"v": y}}
+    {"shape": "spline", "points": [[x, y], ...], "symmetric"?, "corners"?: [indices]}   smooth closed curve through
+         the points (centripetal Catmull-Rom); listed points stay sharp and two consecutive ones are a straight edge
+    {"shape": "superellipse", "center", "width", "height", "exponent"?: 2..10 (2 = ellipse, higher = boxier), "points"?}
+  "symmetric": the points describe one half, from the mirror line round to it again; the other half is mirrored.
     {"shape": "path", "start": [x, y], "segments": [{"line": [x, y]} |
          {"arc": {"to": [x, y], "radius": r, "large": bool, "clockwise": bool}} |
          {"arc": {"to": [x, y], "center": [x, y], "clockwise": bool}}], "corner_radius"?}
@@ -204,12 +208,38 @@ def shape_polygon(spec, name='shape'):
         rot = math.radians(_num(spec.get('rotation', 90), f'{name}.rotation'))
         pts = [[c[0] + r * math.cos(rot + 2 * math.pi * k / n), c[1] + r * math.sin(rot + 2 * math.pi * k / n)] for k in range(n)]
         return fillet(pts, cr) if cr else (pts, [])
-    if kind == 'polygon':
+    if kind in ('polygon', 'spline'):
         raw = spec.get('points')
-        if not isinstance(raw, list) or len(raw) < 3:
-            raise ShapeError(f'{name}.points needs at least 3 [x, y] points')
-        pts = [_pt(p, f'{name}.points[{i}]') for i, p in enumerate(raw)]
+        if not isinstance(raw, list) or len(raw) < (2 if spec.get('symmetric') else 3):
+            raise ShapeError(f'{name}.points needs at least 3 [x, y] points (2 with "symmetric")')
+        pts = _symmetric([_pt(p, f'{name}.points[{i}]') for i, p in enumerate(raw)], spec.get('symmetric'), name)
+        if len(pts) < 3:
+            raise ShapeError(f'{name}: the points and their mirror image make fewer than 3 points')
+        if kind == 'spline':
+            corners = spec.get('corners')
+            if corners is not None and not (isinstance(corners, list) and all(
+                    isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(pts) for i in corners)):
+                raise ShapeError(f'{name}.corners must list point indices 0..{len(pts) - 1} (after "symmetric")')
+            # clamped to the control points' bounds, so a curve whose points lie in the board stays in the board
+            lo = [min(p[j] for p in pts) for j in (0, 1)]
+            hi = [max(p[j] for p in pts) for j in (0, 1)]
+            pts = [[min(max(p[j], lo[j]), hi[j]) for j in (0, 1)] for p in spline_points(pts, corners=corners)]
+            if len(pts) > MAX_POINTS:
+                raise ShapeError(f'{name}: the spline is too long ({len(pts)} points)')
+            return pts, []
         return fillet(pts, cr) if cr else (pts, [])
+    if kind == 'superellipse':
+        c = _pt(spec.get('center'), f'{name}.center')
+        a, b = _num(spec.get('width'), f'{name}.width', 0) / 2, _num(spec.get('height'), f'{name}.height', 0) / 2
+        e = spec.get('exponent', 2.5)
+        n = spec.get('points', 64)
+        if not (isinstance(e, (int, float)) and not isinstance(e, bool) and 0.5 <= e <= 20):
+            raise ShapeError(f'{name}.exponent must be a number 0.5..20 (2 = ellipse, higher = boxier)')
+        if not (isinstance(n, int) and not isinstance(n, bool) and 12 <= n <= 512):
+            raise ShapeError(f'{name}.points must be an integer 12..512')
+        sg = lambda x: math.copysign(abs(x) ** (2.0 / e), x)
+        return [[c[0] + a * sg(math.cos(2 * math.pi * k / n)), c[1] + b * sg(math.sin(2 * math.pi * k / n))]
+                for k in range(n)], []
     if kind == 'path':
         pb = PathBuilder(_pt(spec.get('start'), f'{name}.start'))
         segs = spec.get('segments')
@@ -249,7 +279,55 @@ def shape_polygon(spec, name='shape'):
         if m > 50 or not 14 <= pa <= 30 or bl >= m:
             raise ShapeError(f'{name}: module must be at most 50 mm, pressure_angle 14..30 degrees, backlash < module')
         return gear_points(c, z, m, pa, bl, _num(spec.get('rotation', 0), f'{name}.rotation')), []
-    raise ShapeError(f'{name}.shape must be one of rect, circle, ellipse, arch, regular_polygon, gear, polygon, path')
+    raise ShapeError(f'{name}.shape must be one of rect, circle, ellipse, arch, regular_polygon, gear, polygon, spline, '
+                     f'superellipse, path')
+
+
+def _symmetric(pts, sym, name):
+    """Points of one half plus their mirror image across the line u = c ({"u": c}) or v = c ({"v": c}): the half runs
+    from the mirror line round to it again; points lying on the line are not doubled."""
+    if sym is None:
+        return pts
+    if not (isinstance(sym, dict) and len(sym) == 1 and next(iter(sym)) in ('u', 'v')
+            and isinstance(next(iter(sym.values())), (int, float)) and not isinstance(next(iter(sym.values())), bool)):
+        raise ShapeError(f'{name}.symmetric must be {{"u": mm}} or {{"v": mm}} (the mirror line)')
+    k = 0 if 'u' in sym else 1
+    c = float(sym['u' if k == 0 else 'v'])
+    mirror = [[2 * c - p[0], p[1]] if k == 0 else [p[0], 2 * c - p[1]] for p in reversed(pts)]
+    on = lambda p: abs(p[k] - c) < 1e-9
+    if mirror and on(mirror[0]):
+        mirror = mirror[1:]
+    if mirror and on(mirror[-1]):
+        mirror = mirror[:-1]
+    return pts + mirror
+
+
+def spline_points(pts, step=4.0, corners=None):
+    """A smooth closed curve through every point (centripetal Catmull-Rom: no loops or cusps), sampled about every
+    `step` mm (at least 4 and at most 32 pieces per span). Points listed in `corners` stay sharp: the curve ends and
+    starts again there, and a span between two corners is a straight edge."""
+    n = len(pts)
+    sharp = set(corners or ())
+    out = []
+    for i in range(n):
+        j = (i + 1) % n
+        if i in sharp and j in sharp:
+            out.append(pts[i])                          # a straight edge between two corners
+            continue
+        p1, p2 = pts[i], pts[j]
+        p0 = pts[(i - 1) % n] if i not in sharp else [2 * p1[0] - p2[0], 2 * p1[1] - p2[1]]   # no pull across a corner
+        p3 = pts[(i + 2) % n] if j not in sharp else [2 * p2[0] - p1[0], 2 * p2[1] - p1[1]]
+        d = lambda a, b: max(math.dist(a, b) ** 0.5, 1e-6)
+        t0, t1 = 0.0, d(p0, p1)
+        t2, t3 = t1 + d(p1, p2), t1 + d(p1, p2) + d(p2, p3)
+        pieces = min(32, max(4, math.ceil(math.dist(p1, p2) / step)))
+        for k in range(pieces):
+            t = t1 + (t2 - t1) * k / pieces
+            lerp = lambda a, b, ta, tb: [a[j] + (b[j] - a[j]) * ((t - ta) / (tb - ta)) for j in (0, 1)]
+            a1, a2, a3 = lerp(p0, p1, t0, t1), lerp(p1, p2, t1, t2), lerp(p2, p3, t2, t3)
+            b1, b2 = lerp(a1, a2, t0, t2), lerp(a2, a3, t1, t3)
+            out.append(lerp(b1, b2, t1, t2))
+    return out
 
 
 def gear_geometry(z, m, pa=20.0):

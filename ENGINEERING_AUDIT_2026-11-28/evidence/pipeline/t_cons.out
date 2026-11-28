@@ -1,0 +1,45 @@
+
+## A_diff_groups_butt: ok=True applied=True groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-PANEL']
+    MOD-PANEL group= Door name= Modesty left
+   joint types: ['tab_slot']
+   codes: [] ["Consolidated 2 flat pieces in 1 group(s) - e.g. 2 pieces (MOD-A, MOD-B) as 'MOD-PANEL': 6 boards became 5 and 2 connection(s) between them were dropped. The look is unchanged; the gaps are cut out of "]
+
+## B_hinge_between: ok=True applied=True groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-PANEL']
+    MOD-PANEL group= Frame name= Modesty left
+   joint types: ['tab_slot']
+   codes: [] ["Consolidated 2 flat pieces in 1 group(s) - e.g. 2 pieces (MOD-A, MOD-B) as 'MOD-PANEL': 6 boards became 5 and 2 connection(s) between them were dropped. The look is unchanged; the gaps are cut out of "]
+
+## B2_no_conn: ok=True applied=True groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-PANEL']
+    MOD-PANEL group= Frame name= Modesty left
+   joint types: ['tab_slot']
+   codes: [] ["Consolidated 2 flat pieces in 1 group(s) - e.g. 2 pieces (MOD-A, MOD-B) as 'MOD-PANEL': 6 boards became 5 and 1 connection(s) between them were dropped. The look is unchanged; the gaps are cut out of "]
+
+## C_moving_board: ok=False applied=False groups=[] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-A', 'MOD-B']
+    MOD-A group= Frame name= Modesty left
+    MOD-B group= Frame name= Modesty right
+   joint types: ['tab_slot']
+   codes: ['MOTION_CLEARANCE', 'MOTION_COLLISION'] []
+
+## D_on_board_merged: ok=False applied=True groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-PANEL', 'FLAP']
+    MOD-PANEL group= Frame name= Modesty left
+    FLAP group= Boards name= FLAP
+   joint types: ['tab_slot']
+   codes: ['MOTION_COLLISION'] ["Consolidated 2 flat pieces in 1 group(s) - e.g. 2 pieces (MOD-A, MOD-B) as 'MOD-PANEL': 7 boards became 6 and 2 connection(s) between them were dropped. The look is unchanged; the gaps are cut out of "]
+
+## E_consolidate_false: ok=False applied=False groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-A', 'MOD-B']
+    MOD-A group= Frame name= Modesty left
+    MOD-B group= Frame name= Modesty right
+   joint types: ['tab_slot']
+   codes: ['GLUE_JOINT_IN_INTERLOCKING', 'NO_CONTACT', 'UNJOINED_CONTACT'] []
+
+## F_plan_refs: ok=True applied=True groups=[('MOD-PANEL', ['MOD-A', 'MOD-B'])] skipped=[]
+   final boards: ['TOP', 'LEG-L', 'LEG-R', 'SHELF', 'MOD-PANEL']
+    MOD-PANEL group= Frame name= Modesty left
+   joint types: ['tab_slot']
+   codes: [] ["Consolidated 2 flat pieces in 1 group(s) - e.g. 2 pieces (MOD-A, MOD-B) as 'MOD-PANEL': 6 boards became 5 and 2 connection(s) between them were dropped. The look is unchanged; the gaps are cut out of "]

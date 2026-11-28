@@ -1,0 +1,6 @@
+10MB padded valid design: ok=True t=0.96s len=10.0MB desc stored len=2000
+truncated malformed 1.0MB: parse_source (incl. repair attempt) t=1.60s codes=['JSON_SYNTAX'] fix=False
+truncated malformed 2.0MB: parse_source (incl. repair attempt) t=3.55s codes=['JSON_SYNTAX'] fix=True
+truncated malformed 4.9MB: parse_source (incl. repair attempt) t=3.28s codes=['JSON_SYNTAX'] fix=True
+5.1MB malformed: t=1.30s fix=False
+peak RSS MB 165.90234375

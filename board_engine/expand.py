@@ -6,7 +6,15 @@ Structure helpers of board-design/v1, expanded into plain boards and connections
       sub-assembly; each instance's boards are "<instance>-<board id>". Flips, then quarter turns, are exact (every
       board stays square, all joints work); other angles tilt the whole instance about its origin.
   board "mirror": {"axis": "x"|"y"|"z", "at": mm} -- also build the mirror image across the plane axis = at ("<id>-M").
-  board "repeat": {"count": 2 or more, "step": [dx, dy, dz]} -- an array of copies "<id>-1" .. "<id>-n".
+  board "repeat": {"count": 2 or more, "step": [dx, dy, dz], "rows"?: {"count", "step"}, "layers"?: {"count", "step"},
+      "grow"?: [dx, dy, dz]} -- an array of copies "<id>-1" .. "<id>-n" (a grid: "<id>-<row>-<n>", with layers
+      "<id>-<layer>-<row>-<n>"); "grow" adds to the size of each next copy along the row (tapering segments, stepped
+      tiers, graded fins - plain boards only).
+  board "radial": {"count": 2 or more, "axis": "x"|"y"|"z", "center": [x, y, z], "sweep"?: degrees (default 360),
+      "start"?: degrees} -- copies "<id>-1" .. "<id>-n" turned round the axis through the centre (spokes, petals, the
+      ribs of a dome); multiples of 90 degrees are exact copies, other angles add a tilt step.
+  connections may name many boards at once: "boards": [ids] instead of "board", and "*" / "?" wildcards in "board",
+  "boards" or "into" ("SLAT-*" -> every board whose id matches) - see expand_connection_patterns().
 
 Connections follow the copies: a connection naming a repeated board becomes one per copy (two repeated boards with
 the same count pair up copy by copy); a mirrored board's connections are mirrored too ("+x" edges flip). `origin`
@@ -39,7 +47,36 @@ def _shift(b, d):
     for st in (b['rotate'] if isinstance(b.get('rotate'), list) else [b.get('rotate')]):   # one tilt or a list of steps
         if isinstance(st, dict) and _vec3(st.get('pivot')):
             st['pivot'] = [st['pivot'][i] + d[i] for i in range(3)]
+    mr, rd = b.get('mirror'), b.get('radial')
+    if isinstance(mr, dict) and mr.get('axis') in AX and isinstance(mr.get('at'), (int, float)):
+        mr['at'] = mr['at'] + d[AX.index(mr['axis'])]          # the mirror plane moves with the board
+    if isinstance(rd, dict) and _vec3(rd.get('center')):
+        rd['center'] = [rd['center'][i] + d[i] for i in range(3)]
+    for key in (b.get('repeat') or {}).get('morph') or [] if isinstance(b.get('repeat'), dict) else []:
+        for o in (key.get('openings') or []) if isinstance(key, dict) else []:
+            if isinstance(o, dict) and _vec3(o.get('center')):
+                o['center'] = [o['center'][i] + d[i] for i in range(3)]
     return b
+
+
+def _map_morph(b, m, fn, lin):
+    """The morph keys of b's repeat follow a turn, flip or mirror (b -> m by fn): each key section is mapped as a
+    whole board, and where its corner lands relative to m's is added to its shift."""
+    rp = m.get('repeat')
+    if not (isinstance(rp, dict) and isinstance(rp.get('morph'), list) and all(isinstance(k, dict) for k in rp['morph'])):
+        return m                                    # (a malformed morph is reported when the copies are made)
+    cur, out = {k: v for k, v in b.items() if k not in ('repeat', 'radial', 'mirror')}, []
+    cur['shift'] = [0, 0, 0]
+    for key in rp['morph']:
+        cur = {**cur, **key}
+        if not (_vec3(cur['shift']) and _vec3(cur.get('size'))):
+            return m
+        mk = fn({f: v for f, v in cur.items() if f != 'shift'})
+        s = lin(cur['shift'])
+        out.append({**{f: mk[f] for f in key if f in ('size', 'profile', 'openings') and f in mk},
+                    'shift': [s[i] + mk['position'][i] - m['position'][i] for i in range(3)]})
+    rp['morph'] = out
+    return m
 
 
 def _thin_axis(b, t_default):
@@ -104,7 +141,11 @@ def _mirror_board(b, axis, at, t_default):
         for key in ('from', 'to'):
             if isinstance(h.get(key), list):
                 h[key] = flip(h[key])
-    return m
+    rp = m.get('repeat')
+    for part in (rp, rp.get('rows'), rp.get('layers')) if isinstance(rp, dict) else ():
+        if isinstance(part, dict) and _vec3(part.get('step')):
+            part['step'][a] = -part['step'][a]      # the mirrored row runs the other way
+    return _map_morph(b, m, lambda x: _mirror_board(x, axis, at, t_default), lambda v: [-v[i] if i == a else v[i] for i in range(3)])
 
 
 IDENTITY = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
@@ -282,13 +323,30 @@ def transform_board(b, M, t_default):
         if _vec3(st.get('pivot')):
             st['pivot'] = _apply(M, st['pivot'])
     rp = m.get('repeat')
-    if isinstance(rp, dict) and _vec3(rp.get('step')):
-        rp['step'] = _apply(M, rp['step'])
+    if isinstance(rp, dict):
+        for part in (rp, rp.get('rows'), rp.get('layers')):
+            if isinstance(part, dict) and _vec3(part.get('step')):
+                part['step'] = _apply(M, part['step'])
+        if _vec3(rp.get('grow')):
+            rp['grow'] = [abs(v) for v in _apply(M, rp['grow'])]       # sizes stay positive along the turned axes
+    rd = m.get('radial')
+    if isinstance(rd, dict):
+        if _vec3(rd.get('center')):
+            rd['center'] = _apply(M, rd['center'])
+        if rd.get('axis') in AX:
+            sgn, j = _axis_image(M, AX.index(rd['axis']))
+            rd['axis'] = AX[j]
+            flip = sgn * det
+            for k in ('sweep', 'start'):
+                if isinstance(rd.get(k), (int, float)):
+                    rd[k] = rd[k] * flip
+            if flip < 0 and 'sweep' not in rd:
+                rd['sweep'] = -360
     mr = m.get('mirror')
     if isinstance(mr, dict) and mr.get('axis') in AX and isinstance(mr.get('at'), (int, float)):
         sgn, j = _axis_image(M, AX.index(mr['axis']))
         mr['axis'], mr['at'] = AX[j], sgn * mr['at']
-    return m
+    return _map_morph(b, m, lambda x: transform_board(x, M, t_default), lambda v: _apply(M, v))
 
 
 def transform_connection(c, M):
@@ -298,6 +356,201 @@ def transform_connection(c, M):
         if key in c:
             c[key] = _map_dir(M, c[key])
     return c
+
+
+def _count(part, what, bid, required=True):
+    n, step = part.get('count') if isinstance(part, dict) else None, part.get('step') if isinstance(part, dict) else None
+    if not (isinstance(n, int) and not isinstance(n, bool) and n >= (2 if required else 1) and _vec3(step)):
+        raise ExpandError(f"board '{bid}': \"{what}\" must be {{\"count\": {2 if required else 1} or more, \"step\": [dx, dy, dz]}}")
+    return n, step
+
+
+def _repeat(b, rp, t_default):
+    """Copies of b along a row (and rows / layers of rows), each next one in a row grown by "grow"."""
+    bid = b.get('id')
+    n, step = _count(rp, 'repeat', bid)
+    rows = _count(rp['rows'], 'repeat.rows', bid, False) if 'rows' in rp else (1, [0, 0, 0])
+    layers = _count(rp['layers'], 'repeat.layers', bid, False) if 'layers' in rp else (1, [0, 0, 0])
+    grow, morph = rp.get('grow'), rp.get('morph')
+    if grow is not None and (not _vec3(grow) or b.get('profile') or b.get('rotate')):
+        raise ExpandError(f"board '{bid}': \"repeat.grow\" must be [dx, dy, dz] mm and works on plain boards only "
+                          f"(no profile or tilt)")
+    if morph is not None:
+        if grow is not None or not (isinstance(morph, list) and morph and all(isinstance(m, dict) and m for m in morph)):
+            raise ExpandError(f"board '{bid}': \"repeat.morph\" must be a list of key sections ({{\"size\"?, \"profile\"?, "
+                              f"\"openings\"?, \"shift\"?}}) and cannot be combined with \"grow\"")
+        keys = _morph_keys(b, morph, bid)
+    if n * rows[0] * layers[0] > MAX_BOARDS:
+        raise ExpandError(f"board '{bid}': \"repeat\" would make more than {MAX_BOARDS:,} boards")
+    out = []
+    for la in range(layers[0]):
+        for r in range(rows[0]):
+            for k in range(n):
+                nb, d = b, [step[i] * k + rows[1][i] * r + layers[1][i] * la for i in range(3)]
+                if morph is not None:
+                    nb = {**b, **_morph_at(keys, k / (n - 1), bid)}
+                    d = [a + c for a, c in zip(d, nb.pop('shift'))]
+                nb = _shift(nb, d)
+                if morph is not None:
+                    nb = _whole_section(nb, t_default)
+                if grow:
+                    nb['size'] = [nb['size'][i] + grow[i] * k for i in range(3)]
+                    if min(nb['size']) <= 0:
+                        raise ExpandError(f"board '{bid}': \"repeat.grow\" shrinks copy {k + 1} to nothing")
+                tag = [str(x + 1) for x, many in ((la, layers[0] > 1), (r, rows[0] > 1 or layers[0] > 1), (k, True)) if many]
+                nb['id'] = f"{bid}-{'-'.join(tag)}"
+                out.append(nb)
+    return out
+
+
+def _whole(tree, key='', snap=None):
+    """Numbers to whole mm (an exponent to 0.01); face points [u, v] go through snap when it is given."""
+    if isinstance(tree, dict):
+        return {k: _whole(v, k, snap) for k, v in tree.items()}
+    if isinstance(tree, list):
+        if snap and key in ('points', 'center', 'to', 'line', 'from') and len(tree) == 2 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in tree):
+            return snap(tree)
+        return [_whole(v, key, snap) for v in tree]
+    if isinstance(tree, float):
+        return round(tree, 2) if key == 'exponent' else int(round(tree))
+    return tree
+
+
+def _whole_section(b, t_default):
+    """A morphed section in whole mm: both box corners and the profile's points are rounded on the world grid (so the
+    outline still meets its box, and turned and mirrored copies stay exact); the box grows the odd millimetre a
+    rounded curve may need."""
+    thin = _thin_axis(b, t_default)
+    if thin is None:
+        return _whole(b)                            # reported by the compiler
+    lo0 = b['position']
+    lo, hi = [round(v) for v in lo0], [round(p + q) for p, q in zip(lo0, b['size'])]
+    u, v = (i for i in range(3) if i != thin)
+    snap = lambda q: [round(lo0[u] + q[0]) - lo[u], round(lo0[v] + q[1]) - lo[v]]
+    b = {**b, **_whole({f: b[f] for f in ('openings',) if f in b}), 'position': lo, 'size': [q - p for p, q in zip(lo, hi)]}
+    if isinstance(b.get('profile'), dict):
+        b['profile'] = _whole(b['profile'], snap=snap)
+        try:
+            pts = shape_polygon(b['profile'])[0]
+        except ShapeError:
+            return b                                # reported by the compiler
+        for j, ax in enumerate((u, v)):
+            b['size'][ax] = max(b['size'][ax], math.ceil(max(p[j] for p in pts) - 1e-6))
+    return b
+
+
+def _blend(trees, weights, path):
+    """Weighted sum of JSON trees of the same shape: numbers are mixed, lists and objects element by element,
+    anything else must be equal in every tree."""
+    a = trees[0]
+    if all(isinstance(t, (int, float)) and not isinstance(t, bool) for t in trees):
+        return float(sum(w * t for w, t in zip(weights, trees)))
+    if all(isinstance(t, list) for t in trees) and len({len(t) for t in trees}) == 1:
+        return [_blend([t[i] for t in trees], weights, f'{path}[{i}]') for i in range(len(a))]
+    if all(isinstance(t, dict) for t in trees) and len({frozenset(t) for t in trees}) == 1:
+        return {k: _blend([t[k] for t in trees], weights, f'{path}.{k}') for k in a}
+    if all(t == a for t in trees):
+        return copy.deepcopy(a)
+    raise ExpandError(f"{path}: the morph sections differ in shape here (same shape kind, same number of points / "
+                      f"openings and the same keys in every section)")
+
+
+def _morph_keys(b, morph, bid):
+    """Key sections: the board itself first, then each morph entry; a field a key leaves out carries over."""
+    fields = {f for m in morph for f in m}
+    bad = fields - {'size', 'profile', 'openings', 'shift'}
+    if bad:
+        raise ExpandError(f"board '{bid}': \"repeat.morph\" can change size, profile, openings and shift, not {sorted(bad)}")
+    keys = [{f: copy.deepcopy(b.get(f, [0, 0, 0] if f == 'shift' else None)) for f in fields}]
+    for m in morph:
+        keys.append({**keys[-1], **m})
+    for f in fields:
+        if any(k[f] is None for k in keys):
+            raise ExpandError(f"board '{bid}': \"repeat.morph\" changes \"{f}\" but the board has none to start from")
+    return keys
+
+
+def _morph_at(keys, t, bid):
+    """The section at fraction t of the way along: a smooth curve through the keys (uniform Catmull-Rom, ends
+    held), straight between them when there are only two."""
+    n = len(keys) - 1
+    x = min(t * n, n - 1e-12)
+    i, u = int(x), x - int(x)
+    if n == 1:
+        return _blend(keys, [1 - u, u], f"board '{bid}' morph")
+    p = [keys[max(i - 1, 0)], keys[i], keys[i + 1], keys[min(i + 2, n)]]
+    w = [(-u ** 3 + 2 * u ** 2 - u) / 2, (3 * u ** 3 - 5 * u ** 2 + 2) / 2, (-3 * u ** 3 + 4 * u ** 2 + u) / 2, (u ** 3 - u ** 2) / 2]
+    return _blend(p, w, f"board '{bid}' morph")
+
+
+def _radial(b, rd, t_default):
+    """Copies of b turned round an axis through a centre: exact copies at multiples of 90 degrees, otherwise the
+    turn is added as a tilt step about the centre."""
+    bid = b.get('id')
+    n, c = rd.get('count') if isinstance(rd, dict) else None, rd.get('center') if isinstance(rd, dict) else None
+    sweep, start = (rd.get('sweep', 360), rd.get('start', 0)) if isinstance(rd, dict) else (None, None)
+    if not (isinstance(n, int) and not isinstance(n, bool) and 2 <= n <= 720 and rd.get('axis') in AX and _vec3(c)
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (sweep, start)) and abs(sweep) <= 360):
+        raise ExpandError(f"board '{bid}': \"radial\" must be {{\"count\": 2..720, \"axis\": \"x\"|\"y\"|\"z\", "
+                          f"\"center\": [x, y, z], \"sweep\"?: degrees, \"start\"?: degrees}}")
+    gap = sweep / n if abs(abs(sweep) - 360) < 1e-9 else sweep / (n - 1)
+    own = b.get('rotate')
+    own = own if isinstance(own, list) else [own] if isinstance(own, dict) else []
+    out = []
+    for k in range(n):
+        ang = start + gap * k
+        if abs(ang / 90.0 - round(ang / 90.0)) < 1e-9:
+            M = quarter_turn(rd['axis'], ang)
+            mc = _apply(M, c)
+            nb = _shift(transform_board(b, M, t_default), [c[i] - mc[i] for i in range(3)])
+        else:
+            if len(own) >= 4:
+                raise ExpandError(f"board '{bid}': a radial copy at {ang:g} degrees would need a 5th tilt step")
+            nb = copy.deepcopy(b)
+            nb['rotate'] = copy.deepcopy(own) + [{'axis': rd['axis'], 'angle': round(ang, 6), 'pivot': list(c)}]
+        nb['id'] = f"{bid}-{k + 1}"
+        out.append(nb)
+    return out
+
+
+def expand_connection_patterns(data):
+    """Connections written for many boards at once: "boards": [ids] instead of "board", and "*" / "?" wildcards in
+    "board", "boards" or "into". Many boards into one, one into many, or two equal lists paired in order.
+    -> problems [(connection label, message)]."""
+    from fnmatch import fnmatchcase
+    conns = data.get('connections')
+    if not isinstance(conns, list):
+        return []
+    ids = [b['id'] for b in data.get('boards') or [] if isinstance(b, dict) and isinstance(b.get('id'), str)]
+    wild = lambda x: isinstance(x, str) and ('*' in x or '?' in x)
+    pick = lambda x: [i for i in ids if fnmatchcase(i, x)] if wild(x) else [x]
+    out, bad = [], []
+    for c in conns:
+        many = isinstance(c, dict) and isinstance(c.get('boards'), list)
+        if not (isinstance(c, dict) and (many or wild(c.get('board')) or wild(c.get('into')))):
+            out.append(c)
+            continue
+        label = c.get('id') or c.get('board') or 'connection'
+        a = [i for x in (c['boards'] if many else [c.get('board')]) for i in pick(x)]
+        b = pick(c.get('into'))
+        if not a or not b:
+            bad.append((label, f"no board matches {c.get('boards') if many else c.get('board')!r} / {c.get('into')!r}"))
+            continue
+        if len(a) > 1 and len(b) > 1 and len(a) != len(b):
+            bad.append((label, f"{len(a)} boards into {len(b)} boards: give one side a single board, or equal counts"))
+            continue
+        pairs = list(zip(a, b)) if len(a) == len(b) else [(x, b[0]) for x in a] if len(b) == 1 else [(a[0], y) for y in b]
+        base = {k: v for k, v in c.items() if k != 'boards'}
+        for n, (x, y) in enumerate(pairs, 1):
+            if x == y:
+                continue
+            nc = dict(base, board=x, into=y)
+            if c.get('id'):
+                nc['id'] = f"{c['id']}-{n}" if len(pairs) > 1 else c['id']
+            out.append(nc)
+    data['connections'] = out
+    return bad
 
 
 def _instance_transform(inst):
@@ -367,7 +620,7 @@ def _flip_dir(d, axis):
 def expand(data):
     """-> (expanded copy of data, origin {generated id: source id}). Raises ExpandError for an invalid helper."""
     if not any(k in data for k in ('assemblies', 'instances')) and not any(
-            isinstance(b, dict) and (b.get('repeat') or b.get('mirror')) for b in data.get('boards') or []):
+            isinstance(b, dict) and (b.get('repeat') or b.get('mirror') or b.get('radial')) for b in data.get('boards') or []):
         return data, {}
     data = copy.deepcopy(data)
     t_default = (data.get('material') or {}).get('thickness')
@@ -446,29 +699,25 @@ def expand(data):
                     conns.append(nc)
     boards = out
 
-    # 3. arrays
+    # 3. arrays (rows, grids, graded rows) and radial copies
     copies, out = {}, []
     for b in boards:
-        rp = b.pop('repeat', None)
-        if rp is None:
+        rp, rd = b.pop('repeat', None), b.pop('radial', None)
+        if rp is None and rd is None:
             out.append(b)
             continue
-        n, step = rp.get('count') if isinstance(rp, dict) else None, rp.get('step') if isinstance(rp, dict) else None
-        if not (isinstance(n, int) and not isinstance(n, bool) and n >= 2 and _vec3(step)):
-            raise ExpandError(f"board '{b.get('id')}': \"repeat\" must be {{\"count\": 2 or more, \"step\": [dx, dy, dz]}}")
-        if len(out) + n > MAX_BOARDS:
-            raise ExpandError(f"board '{b.get('id')}': \"repeat\" count {n} would make more than {MAX_BOARDS:,} boards")
+        if rp is not None and rd is not None:
+            raise ExpandError(f"board '{b.get('id')}': use \"repeat\" or \"radial\", not both (put one of them on an assembly instance)")
         if not _vec3(b.get('position')):
             out.append(b)
             continue
-        ids = []
-        for k in range(n):
-            nb = _shift(b, [step[i] * k for i in range(3)])
-            nb['id'] = f"{b['id']}-{k + 1}"
+        made = _repeat(b, rp, t_default) if rp is not None else _radial(b, rd, t_default)
+        if len(out) + len(made) > MAX_BOARDS:
+            raise ExpandError(f"board '{b.get('id')}': its copies would make more than {MAX_BOARDS:,} boards")
+        for nb in made:
             origin[nb['id']] = origin.get(b['id'], b['id'])
-            ids.append(nb['id'])
-            out.append(nb)
-        copies[b['id']] = ids
+        out += made
+        copies[b['id']] = [nb['id'] for nb in made]
     if len(out) > MAX_BOARDS:
         raise ExpandError(f'the structure expands to {len(out):,} boards, more than the {MAX_BOARDS:,} the server accepts')
     if copies and conns:

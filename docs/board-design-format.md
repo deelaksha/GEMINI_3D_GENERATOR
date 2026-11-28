@@ -60,7 +60,15 @@ Shapes (used by `profile`, `openings` and `engravings`):
 {"shape": "arch", "center", "width", "height"}       (straight sides, semicircular top; height ≥ width / 2)
 {"shape": "regular_polygon", "center", "sides": 3..64, "diameter", "rotation"?: deg}
 {"shape": "gear", "center", "teeth": 6..100, "module": mm, "rotation"?: deg}   (involute spur gear, see "Gears")
-{"shape": "polygon", "points": [[u, v], ...], "corner_radius"?}
+{"shape": "polygon", "points": [[u, v], ...], "corner_radius"?, "symmetric"?: {"u": mm} | {"v": mm}}
+{"shape": "spline", "points": [[u, v], ...], "symmetric"?, "corners"?: [point indices]}   (a smooth closed curve
+    THROUGH the points: 6-12 points make any organic outline - a leaf, a hull, a body side, a cloud - instead of
+    40-100 polygon points; it never leaves the box of its points. Listed "corners" stay sharp and two consecutive
+    corners make a STRAIGHT edge - give every edge that tabs into another board two corners; indices count the
+    mirrored points too)
+{"shape": "superellipse", "center", "width", "height", "exponent"?: 2 (ellipse) .. 10 (nearly a rectangle), "points"?}
+    (any rounded section in one line: ribs, cross-sections, rounded windows, buttons, lenses)
+"symmetric": the points describe ONE half, from the mirror line round to it again; the other half is mirrored for you
 {"shape": "path", "start": [u, v], "segments": [{"line": [u, v]}
     | {"arc": {"to": [u, v], "radius": mm, "large"?: bool, "clockwise"?: bool}}
     | {"arc": {"to": [u, v], "center": [u, v], "clockwise"?: bool}}], "corner_radius"?}
@@ -86,6 +94,30 @@ Shapes (used by `profile`, `openings` and `engravings`):
 - `"repeat": {"count": 2 or more, "step": [dx, dy, dz]}` on a board builds an array of copies `"<id>-1"` .. `"<id>-n"`
   (shelves, slats, fins, ribs), each moved by `step` from the previous. A connection naming the board applies to every
   copy; two repeated boards with the same count connect copy by copy. Refer to a single copy by its generated id.
+  Add `"rows": {"count", "step"}` (and `"layers": {"count", "step"}`) for a grid - ids `"<id>-<row>-<n>"` - and
+  `"grow": [dx, dy, dz]` to change the size of each next copy along the row (tapering segments, stepped tiers, graded
+  fins; plain boards only).
+  `"morph": [section, ...]` instead of "grow" turns the row into a smooth series of changing sections - contour ribs
+  of a hull, body, head, vase or wing from a few lines. The board is the first key section; each entry is the next
+  key, `{"size"?, "profile"?, "openings"?, "shift"?: [dx, dy, dz]}` (a field left out carries over; "shift" moves
+  that section off the straight row, e.g. to follow a curved keel or a sheer line). Keys are spread evenly over the
+  copies, the first on copy 1 and the last on copy n, and every copy between is drawn on a smooth curve through
+  them (straight with two keys), in whole millimetres. Every key must have the same shape kind and the same number
+  of points / openings: a spline with 8 points in every section, or a superellipse in each. Keep a straight edge in
+  every section (`corners`) where the ribs tab into their keel:
+  ```jsonc
+  {"id": "RIB", "position": [0, 6, 0], "size": [6, 40, 60],
+    "profile": {"shape": "polygon", "points": [[0, 15], [0, 45], [40, 60], [40, 0]]},
+    "repeat": {"count": 9, "step": [40, 0, 0], "morph": [
+      {"size": [6, 80, 140], "profile": {"shape": "polygon", "points": [[0, 35], [0, 105], [80, 140], [80, 0]]}, "shift": [0, 0, -40]},
+      {"size": [6, 30, 40], "profile": {"shape": "polygon", "points": [[0, 10], [0, 30], [30, 40], [30, 0]]}, "shift": [0, 0, 10]}]}}
+  ```
+  makes ribs RIB-1 .. RIB-9 swelling from 60 to 140 mm and back to 40 (centred on z = 30), joined to a keel with one
+  line: `{"type": "tab_slot", "board": "RIB-*", "into": "KEEL"}`.
+- `"radial": {"count": 2..720, "axis": "x"|"y"|"z", "center": [x, y, z], "sweep"?: degrees (default 360), "start"?:
+  degrees}` builds copies `"<id>-1"` .. turned round the axis through the centre (spokes, petals, blades, the ribs of a
+  dome, seats round a table): copies at multiples of 90 deg are exact, the others are tilted. Connections follow the
+  copies like "repeat".
 - `"mirror": {"axis": "x"|"y"|"z", "at": mm}` on a board also builds its mirror image `"<id>-M"` across the plane
   axis = at (left/right sides, symmetric gables). Profiles, openings, engravings, hinges and tilts are mirrored; text
   stays readable. Its connections are mirrored automatically: never write connections to `"<id>-M"` yourself.
@@ -182,6 +214,9 @@ One valid line per type:
   with its edges (`finger` at each of its edges). A `tab_slot` written for a corner or a crossing is converted automatically (with a warning).
 - `"connections": "auto"` (or leaving it out) infers every connection from where boards touch or cross; with a list,
   `"auto_connect": true` adds the ones you missed. Listing them yourself gives control over tabs and edges.
+- One connection line for many boards: `"boards": ["P1", "P2", "P3"]` instead of `"board"`, or wildcards in `"board"`,
+  `"boards"` or `"into"`: `{"type": "tab_slot", "board": "SLAT-*", "into": "BASE"}` joins every SLAT copy to BASE
+  (`*` = any characters, `?` = one). Many into one, one into many, or two equal lists paired in order.
 - Use the exact keys `"board"` / `"into"`, exact type names and exact board ids: near-misses are accepted but reported.
 
 - Fasteners (`butt` / `mitre`): the screw, confirmat or dowel goes through B's face into A's **edge**, so A's edge must
@@ -326,9 +361,11 @@ and record each split in "plan.joints" (the feature, why it was split, how the p
    frame member standing across the seam, with both sections tabbed into it (or cross_lapped with it). Pieces that
    touch edge to edge in one plane cannot be joined directly - and are merged back into one board when that would
    fit the sheet - so leave 1 mm between sections in their own plane and let the connector hold them.
-2. CURVED IN TWO DIRECTIONS (domes, bodies, hulls, heads, organic forms): contour slicing - stacked layers joined by
-   one or two perpendicular spines cross_lapped through every layer (an egg-crate: layers can never be joined face to
-   face), or a spine with cross-section ribs and skin panels.
+2. CURVED IN TWO DIRECTIONS (domes, bodies, hulls, heads, organic forms): contour slicing - profiled cross-section
+   ribs at equal stations standing on a plain keel / spine / base, each tabbed into it along a straight edge it keeps
+   (`corners` or a flat polygon side), optionally a plain stringer or deck tabbed onto a second straight edge; one
+   `"repeat"` with `"morph"` draws every rib from 2-4 key sections. Profiled boards cannot cross_lap (it needs two
+   plain boards) and slices can never be joined face to face; skin panels only where the surface is nearly flat.
 3. CURVED IN ONE DIRECTION (a sweep, a cylinder wall, a rolled edge): narrow strips (facets), each a flat board tilted
    to follow the curve, carried by supports whose profiled edges trace it; or "living_hinge" for a gentle bend.
 4. MEETING AT AN ANGLE that is not 90°: tilt the board onto a support whose edge is cut to exactly that angle; for a

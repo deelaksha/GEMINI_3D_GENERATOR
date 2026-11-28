@@ -1,0 +1,55 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T05_profile_cw_winding"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "CW",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      200
+     ],
+     [
+      100,
+      200
+     ],
+     [
+      100,
+      100
+     ],
+     [
+      200,
+      100
+     ],
+     [
+      200,
+      0
+     ],
+     [
+      0,
+      0
+     ]
+    ]
+   }
+  }
+ ]
+}

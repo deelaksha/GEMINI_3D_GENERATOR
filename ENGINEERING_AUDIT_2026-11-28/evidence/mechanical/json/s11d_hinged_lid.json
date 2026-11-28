@@ -1,0 +1,104 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    160
+   ]
+  },
+  {
+   "id": "BACK",
+   "position": [
+    0,
+    6,
+    150
+   ],
+   "size": [
+    200,
+    50,
+    6
+   ]
+  },
+  {
+   "id": "FRONT",
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "size": [
+    200,
+    50,
+    6
+   ]
+  },
+  {
+   "id": "LID",
+   "position": [
+    0,
+    56,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    156
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "type": "tab_slot",
+   "board": "FRONT",
+   "into": "BASE"
+  },
+  {
+   "type": "tab_slot",
+   "board": "BACK",
+   "into": "BASE"
+  },
+  {
+   "type": "hinge",
+   "board": "LID",
+   "into": "BACK",
+   "edge": "+z"
+  }
+ ],
+ "motions": [
+  {
+   "id": "lid",
+   "type": "rotate",
+   "boards": [
+    "LID"
+   ],
+   "on": "BACK",
+   "axis": "x",
+   "pivot": [
+    0,
+    62,
+    156
+   ],
+   "range": [
+    0,
+    100
+   ]
+  }
+ ],
+ "joinery": "glue_allowed"
+}

@@ -1,0 +1,4 @@
+ai-fix response: {'changed': True, 'ok': True, 'problems': 5, 'provider': 'gemini'}
+returned source boards: ['X'] (input had ['TOP', 'LEG-L', 'LEG-R', 'MODESTY', 'SHELF'] )
+repair prompt chars sent: 77124 | contains requirements text? no requirements param accepted by /ai-fix
+compile of AI reply: compiled True []

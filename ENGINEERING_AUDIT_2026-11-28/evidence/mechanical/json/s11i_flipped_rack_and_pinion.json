@@ -1,0 +1,135 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "flip"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [],
+ "connections": [],
+ "assemblies": [
+  {
+   "id": "M",
+   "boards": [
+    {
+     "id": "PL",
+     "position": [
+      -110,
+      0,
+      -40
+     ],
+     "size": [
+      220,
+      6,
+      100
+     ]
+    },
+    {
+     "id": "PIN",
+     "position": [
+      -33.0,
+      6,
+      -33.0
+     ],
+     "size": [
+      66.0,
+      6,
+      66.0
+     ],
+     "profile": {
+      "shape": "gear",
+      "center": [
+       33.0,
+       33.0
+      ],
+      "teeth": 20,
+      "module": 3,
+      "rotation": 0.0
+     }
+    },
+    {
+     "id": "RACK",
+     "position": [
+      -100,
+      6,
+      33
+     ],
+     "size": [
+      200,
+      6,
+      20
+     ]
+    }
+   ],
+   "connections": [],
+   "motions": [
+    {
+     "id": "p",
+     "type": "rotate",
+     "boards": [
+      "PIN"
+     ],
+     "on": "PL",
+     "axis": "y",
+     "pivot": [
+      0,
+      6,
+      0
+     ],
+     "axle": {
+      "diameter": 6
+     },
+     "range": [
+      0,
+      90
+     ]
+    },
+    {
+     "id": "rk",
+     "type": "slide",
+     "boards": [
+      "RACK"
+     ],
+     "on": "PL",
+     "direction": "x",
+     "driven_by": "p",
+     "ratio": 0.5235987755982988
+    }
+   ]
+  }
+ ],
+ "instances": [
+  {
+   "assembly": "M",
+   "id": "A",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "assembly": "M",
+   "id": "FZ",
+   "offset": [
+    0,
+    0,
+    300
+   ],
+   "flip": "z"
+  },
+  {
+   "assembly": "M",
+   "id": "FX",
+   "offset": [
+    400,
+    0,
+    0
+   ],
+   "flip": "x"
+  }
+ ]
+}

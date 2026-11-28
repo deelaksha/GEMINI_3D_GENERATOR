@@ -1,0 +1,10 @@
+plain 1mm gap: ok False [('CONNECTION_GAP', 'move-SHELF-x', True, ['SHELF']), ('CONNECTION_GAP', 'resize-SHELF-x', False, ['SHELF', 'SHELF']), ('CONNECTION_OVERLAP', 'resize-SHELF-x', False, ['SHELF', 'SHELF']), ('CONNECTION_OVERLAP', 'move-SHELF-x', True, ['SHELF'])]
+repeat 1mm gap: ok False [('CONNECTION_GAP', 'move-SHELF-1-x', True, ['SHELF-1']), ('CONNECTION_GAP', 'resize-SHELF-1-x', False, ['SHELF-1', 'SHELF-1']), ('CONNECTION_GAP', 'move-SHELF-2-x', True, ['SHELF-2']), ('CONNECTION_GAP', 'resize-SHELF-2-x', False, ['SHELF-2', 'SHELF-2']), ('CONNECTION_OVERLAP', 'resize-SHELF-1-x', False, ['SHELF-1', 'SHELF-1']), ('CONNECTION_OVERLAP', 'move-SHELF-1-x', True, ['SHELF-1'])]
+  apply_code_fix FAILED move-SHELF-1-x KeyError 'SHELF-1'
+  apply_code_fix FAILED resize-SHELF-1-x KeyError 'SHELF-1'
+  apply_code_fix FAILED move-SHELF-2-x KeyError 'SHELF-2'
+  apply_code_fix FAILED resize-SHELF-2-x KeyError 'SHELF-2'
+  apply_code_fix FAILED resize-SHELF-1-x KeyError 'SHELF-1'
+  apply_code_fix FAILED move-SHELF-1-x KeyError 'SHELF-1'
+  apply_code_fix FAILED resize-SHELF-2-x KeyError 'SHELF-2'
+  apply_code_fix FAILED move-SHELF-2-x KeyError 'SHELF-2'

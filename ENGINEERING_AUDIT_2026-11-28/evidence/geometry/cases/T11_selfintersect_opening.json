@@ -1,0 +1,55 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T11_selfintersect_opening"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "P",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "openings": [
+    {
+     "id": "o",
+     "shape": "polygon",
+     "center": [
+      100,
+      3,
+      100
+     ],
+     "points": [
+      [
+       -20,
+       -20
+      ],
+      [
+       20,
+       20
+      ],
+      [
+       20,
+       -20
+      ],
+      [
+       -20,
+       20
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

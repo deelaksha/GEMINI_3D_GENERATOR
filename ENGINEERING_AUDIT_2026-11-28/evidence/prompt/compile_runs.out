@@ -1,0 +1,55 @@
+ROD snippet non-integer issues: 8
+prompt.EXAMPLE: boards=5 conns=7 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+prompt.COMPLEX_EXAMPLE: boards=7 conns=12 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+prompt.STRUCTURES_EXAMPLE: boards=8 conns=13 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+prompt.ADVANCED_EXAMPLE: boards=4 conns=5 plan=True errors=0 warnings=0
+   E: {}
+   W: {}
+out_new/A.json: boards=17 conns=44 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+out_new/B.json: boards=21 conns=40 plan=False errors=0 warnings=2
+   E: {}
+   W: {'NOT_JOINED': 2}
+out_new/B2.json: boards=21 conns=40 plan=False errors=0 warnings=2
+   E: {}
+   W: {'NOT_JOINED': 2}
+out_new/B3.json: boards=21 conns=40 plan=False errors=0 warnings=2
+   E: {}
+   W: {'NOT_JOINED': 2}
+out_new/C.json: boards=4 conns=5 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+out_new/C2.json: boards=4 conns=5 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+out_new/D.json: boards=6 conns=10 plan=False errors=0 warnings=2
+   E: {}
+   W: {'WEAK_SECTION': 2}
+out_old/A.json: boards=18 conns=47 plan=False errors=12 warnings=12
+   E: {'SLOT_ALREADY_USED': 12}
+   W: {'TAB_NOT_FLUSH': 12}
+out_old/A2.json: boards=18 conns=47 plan=False errors=0 warnings=0
+   E: {}
+   W: {}
+out_old/B.json: boards=20 conns=41 plan=False errors=0 warnings=22
+   E: {}
+   W: {'NON_INTEGER_DIMENSION': 4, 'MISALIGNED': 4, 'VISIBLE_GAP': 14}
+out_old/B2.json: boards=20 conns=41 plan=False errors=0 warnings=22
+   E: {}
+   W: {'NON_INTEGER_DIMENSION': 4, 'MISALIGNED': 4, 'VISIBLE_GAP': 14}
+out_old/C.json: boards=4 conns=5 plan=False errors=0 warnings=2
+   E: {}
+   W: {'OFF_CENTRE': 1, 'TIP_OVER': 1}
+out_old/C2.json: boards=4 conns=5 plan=False errors=0 warnings=2
+   E: {}
+   W: {'OFF_CENTRE': 1, 'TIP_OVER': 1}
+out_old/D.json: boards=13 conns=18 plan=False errors=1 warnings=3
+   E: {'OVERALL_MISMATCH': 1}
+   W: {'WEAK_SECTION': 3}

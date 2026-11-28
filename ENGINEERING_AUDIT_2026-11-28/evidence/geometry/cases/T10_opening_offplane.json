@@ -1,0 +1,38 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T10_opening_offplane"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "P",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "openings": [
+    {
+     "id": "o",
+     "shape": "circle",
+     "center": [
+      100,
+      50,
+      100
+     ],
+     "diameter": 30
+    }
+   ]
+  }
+ ]
+}

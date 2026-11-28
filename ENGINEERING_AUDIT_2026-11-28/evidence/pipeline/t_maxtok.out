@@ -1,0 +1,4 @@
+ai-generate status 200 keys ['ok', 'provider', 'source'] finishReason surfaced? False
+stub called: gemini-2.5-pro:generateContent payload chars 104028
+compile #1 compiled False ['JSON_SYNTAX']
+compile #2 (after the UI auto-applies repair_json once) compiled True boards 3 diag [('info', 'CONNECTIONS_INFERRED')]

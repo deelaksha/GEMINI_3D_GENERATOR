@@ -1,0 +1,56 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "C4b_disc_perp_corner"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "D1",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    6,
+    100
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     50,
+     50
+    ],
+    "diameter": 100
+   }
+  },
+  {
+   "id": "D2",
+   "position": [
+    -80,
+    -47,
+    0
+   ],
+   "size": [
+    100,
+    100,
+    6
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     50,
+     50
+    ],
+    "diameter": 100
+   }
+  }
+ ],
+ "connections": []
+}

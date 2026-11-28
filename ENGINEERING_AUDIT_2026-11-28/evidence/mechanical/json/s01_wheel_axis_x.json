@@ -1,0 +1,71 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "WALL",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    6,
+    200,
+    200
+   ]
+  },
+  {
+   "id": "WHEEL",
+   "position": [
+    6,
+    60,
+    60
+   ],
+   "size": [
+    6,
+    80,
+    80
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     40,
+     40
+    ],
+    "diameter": 80
+   }
+  }
+ ],
+ "connections": [],
+ "motions": [
+  {
+   "id": "spin",
+   "type": "rotate",
+   "boards": [
+    "WHEEL"
+   ],
+   "on": "WALL",
+   "axis": "x",
+   "pivot": [
+    6,
+    100,
+    100
+   ],
+   "axle": {
+    "diameter": 6
+   },
+   "range": [
+    0,
+    360
+   ]
+  }
+ ]
+}

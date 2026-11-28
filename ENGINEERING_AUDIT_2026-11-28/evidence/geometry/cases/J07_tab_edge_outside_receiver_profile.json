@@ -1,0 +1,56 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "J07_tab_edge_outside_receiver_profile"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "DISC",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "profile": {
+    "shape": "circle",
+    "center": [
+     100,
+     100
+    ],
+    "diameter": 200
+   }
+  },
+  {
+   "id": "WALL",
+   "position": [
+    10,
+    6,
+    97
+   ],
+   "size": [
+    180,
+    80,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "W-D",
+   "type": "tab_slot",
+   "board": "WALL",
+   "into": "DISC",
+   "tabs": 3
+  }
+ ]
+}

@@ -1,0 +1,116 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "A4_cross_tabs_lock"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "LFT",
+   "position": [
+    40,
+    6,
+    40
+   ],
+   "size": [
+    6,
+    100,
+    120
+   ]
+  },
+  {
+   "id": "RGT",
+   "position": [
+    154,
+    6,
+    40
+   ],
+   "size": [
+    6,
+    100,
+    120
+   ]
+  },
+  {
+   "id": "MID",
+   "position": [
+    46,
+    50,
+    40
+   ],
+   "size": [
+    108,
+    6,
+    120
+   ]
+  },
+  {
+   "id": "CAP",
+   "position": [
+    20,
+    106,
+    20
+   ],
+   "size": [
+    160,
+    6,
+    160
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "L-B",
+   "type": "tab_slot",
+   "board": "LFT",
+   "into": "BASE"
+  },
+  {
+   "id": "R-B",
+   "type": "tab_slot",
+   "board": "RGT",
+   "into": "BASE"
+  },
+  {
+   "id": "M-L",
+   "type": "tab_slot",
+   "board": "MID",
+   "into": "LFT"
+  },
+  {
+   "id": "M-R",
+   "type": "tab_slot",
+   "board": "MID",
+   "into": "RGT"
+  },
+  {
+   "id": "L-C",
+   "type": "tab_slot",
+   "board": "LFT",
+   "into": "CAP"
+  },
+  {
+   "id": "R-C",
+   "type": "tab_slot",
+   "board": "RGT",
+   "into": "CAP"
+  }
+ ]
+}

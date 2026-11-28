@@ -1,0 +1,186 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "Desk organiser",
+  "description": "Glue-free box with finger-jointed corners and an egg-crate of dividers",
+  "overall": {
+   "length": 300,
+   "height": 100,
+   "depth": 200
+  }
+ },
+ "material": {
+  "name": "Birch plywood 6 mm",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "name": "Base",
+   "group": "Box",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    300,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "BACK",
+   "name": "Back wall",
+   "group": "Box",
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "size": [
+    300,
+    94,
+    6
+   ]
+  },
+  {
+   "id": "LEFT",
+   "name": "Left wall",
+   "group": "Box",
+   "position": [
+    0,
+    6,
+    6
+   ],
+   "size": [
+    6,
+    94,
+    188
+   ]
+  },
+  {
+   "id": "RIGHT",
+   "name": "Right wall",
+   "group": "Box",
+   "position": [
+    294,
+    6,
+    6
+   ],
+   "size": [
+    6,
+    94,
+    188
+   ]
+  },
+  {
+   "id": "DIV-X",
+   "name": "Long divider",
+   "group": "Dividers",
+   "position": [
+    10,
+    6,
+    97
+   ],
+   "size": [
+    280,
+    70,
+    6
+   ]
+  },
+  {
+   "id": "DIV-Z1",
+   "name": "Cross divider 1",
+   "group": "Dividers",
+   "position": [
+    97,
+    6,
+    10
+   ],
+   "size": [
+    6,
+    70,
+    180
+   ]
+  },
+  {
+   "id": "DIV-Z2",
+   "name": "Cross divider 2",
+   "group": "Dividers",
+   "position": [
+    197,
+    6,
+    10
+   ],
+   "size": [
+    6,
+    70,
+    180
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "back-base",
+   "type": "finger",
+   "board": "BACK",
+   "into": "BASE"
+  },
+  {
+   "id": "left-base",
+   "type": "finger",
+   "board": "LEFT",
+   "into": "BASE"
+  },
+  {
+   "id": "right-base",
+   "type": "finger",
+   "board": "RIGHT",
+   "into": "BASE"
+  },
+  {
+   "id": "left-back",
+   "type": "finger",
+   "board": "LEFT",
+   "into": "BACK"
+  },
+  {
+   "id": "right-back",
+   "type": "finger",
+   "board": "RIGHT",
+   "into": "BACK"
+  },
+  {
+   "id": "x-z1",
+   "type": "cross_lap",
+   "board": "DIV-X",
+   "into": "DIV-Z1"
+  },
+  {
+   "id": "x-z2",
+   "type": "cross_lap",
+   "board": "DIV-X",
+   "into": "DIV-Z2"
+  },
+  {
+   "id": "x-base",
+   "type": "tab_slot",
+   "board": "DIV-X",
+   "into": "BASE"
+  },
+  {
+   "id": "z1-base",
+   "type": "tab_slot",
+   "board": "DIV-Z1",
+   "into": "BASE"
+  },
+  {
+   "id": "z2-base",
+   "type": "tab_slot",
+   "board": "DIV-Z2",
+   "into": "BASE"
+  }
+ ]
+}

@@ -74,7 +74,7 @@ export const Api = {
   canvasUpdatePrompt: (source, change, extra = {}) => request('POST', '/canvas/update-prompt', { source, change, ...extra }, { timeout: 900000 }),
   canvasAiStatus: () => request('GET', '/canvas/ai-status'),
   canvasAiGenerate: (opts) => request('POST', '/canvas/ai-generate', opts, { timeout: 330000 }),
-  canvasAiFix: (source, machine) => request('POST', '/canvas/ai-fix', { source, machine }, { timeout: 330000 }),
+  canvasAiFix: (source, machine, requirements) => request('POST', '/canvas/ai-fix', { source, machine, requirements }, { timeout: 330000 }),
   canvasResize: (source, size) => request('POST', '/canvas/resize', { source, ...size }),
   canvasTestFit: (thickness, machine, format = 'svg') => request('POST', '/canvas/test-fit', { thickness, machine, format }).then((r) => r.blob()),
   canvasExport: (source, force = false, extra = {}) => request('POST', '/canvas/export', { source, force, ...extra }, { timeout: 900000 }).then((r) => r.blob()),

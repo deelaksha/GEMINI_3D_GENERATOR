@@ -270,15 +270,22 @@ function putCode(source) {
 
 const hasErrors = () => !S.result?.model3d || (S.result.summary?.errors || 0) > 0;
 
-/** Ask the AI to fix the current code's problems, then compile; repeat while errors remain (at most `rounds`). */
+/** Ask the AI to fix the current code's problems, then compile; repeat while errors remain (at most `rounds`).
+ *  The server applies the safe fixes first and only returns an AI reply that is better and keeps the design's boards;
+ *  a rejected reply ends the loop (asking again would only repeat it). */
 async function aiFixLoop(rounds) {
+  let rejected = null;
   for (let round = 1; round <= rounds && hasErrors(); round++) {
     toast(`Asking the AI to fix the problems (round ${round} of ${rounds})…`, false, 60000);
-    const r = await Api.canvasAiFix(cm.getValue(), machine());
+    const r = await Api.canvasAiFix(cm.getValue(), machine(), $('#in-req').value);
+    if (r.changed) {
+      putCode(r.source);
+      await compile(true);
+    }
+    if (r.accepted === false) { rejected = r.reasons || []; break; }
     if (!r.changed) break;
-    putCode(r.source);
-    await compile(true);
   }
+  if (rejected) return toast(`The AI's fix was not used (${rejected.join('; ')}). See the Problems list, or Copy fix prompt to try another AI`, true);
   toast(hasErrors() ? 'The AI could not fix every problem: see the Problems list (Copy fix prompt to try another AI)'
     : 'The AI design compiles cleanly', hasErrors());
 }
@@ -479,6 +486,7 @@ function compileFailure(r) {
   const first = errs[0] || r.diagnostics[0];
   const title = first?.code === 'COMPILE_TIMEOUT' ? 'Compilation timed out'
     : first?.code === 'JSON_SYNTAX' ? 'The code is not valid JSON'
+      : first?.code === 'JSON_TRUNCATED' ? 'The design is incomplete (cut off)'
       : `${errs.length} error${errs.length === 1 ? '' : 's'} stopped the compile`;
   return { title, message: first ? `${first.line ? `Line ${first.line}: ` : ''}${first.message}` : '' };
 }

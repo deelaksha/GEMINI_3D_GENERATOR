@@ -1,0 +1,42 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T12_opening_on_rotated_board"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "P",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "rotate": {
+    "axis": "x",
+    "angle": 30
+   },
+   "openings": [
+    {
+     "id": "o",
+     "shape": "circle",
+     "center": [
+      100,
+      3,
+      100
+     ],
+     "diameter": 30
+    }
+   ]
+  }
+ ]
+}

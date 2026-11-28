@@ -1,0 +1,51 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "J04_hinge"
+ },
+ "material": {
+  "name": "Ply 18",
+  "type": "plywood",
+  "thickness": 18
+ },
+ "boards": [
+  {
+   "id": "SIDE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    18,
+    400,
+    300
+   ]
+  },
+  {
+   "id": "DOOR",
+   "position": [
+    0,
+    0,
+    302
+   ],
+   "size": [
+    300,
+    400,
+    18
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "H",
+   "type": "hinge",
+   "board": "DOOR",
+   "into": "SIDE",
+   "edge": "-x",
+   "count": 2,
+   "gap": 2
+  }
+ ],
+ "joinery": "glue_allowed"
+}

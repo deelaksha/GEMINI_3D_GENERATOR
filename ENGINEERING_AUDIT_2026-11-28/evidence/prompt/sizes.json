@@ -1,0 +1,40 @@
+{
+ "spec_markdown": [
+  63937,
+  15984
+ ],
+ "build_prompt_aeroplane": [
+  98359,
+  24589
+ ],
+ "build_prompt_aeroplane_images": [
+  103021,
+  25755
+ ],
+ "build_prompt_machine": [
+  98618,
+  24654
+ ],
+ "repair_small": [
+  79728,
+  19932
+ ],
+ "update_small": [
+  89825,
+  22456
+ ],
+ "integer_fix_small": [
+  8552,
+  2138
+ ],
+ "repair_big": [
+  82855,
+  20713
+ ],
+ "update_big": [
+  93357,
+  23339
+ ],
+ "_src_small_chars": 5192,
+ "_src_big_chars": 8878
+}

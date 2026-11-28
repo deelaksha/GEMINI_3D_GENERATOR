@@ -1,0 +1,139 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "timing"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -20,
+    0,
+    -10
+   ],
+   "size": [
+    60,
+    6,
+    560
+   ]
+  }
+ ],
+ "connections": [],
+ "assemblies": [
+  {
+   "id": "MOD",
+   "boards": [
+    {
+     "id": "BLK",
+     "position": [
+      0,
+      6,
+      0
+     ],
+     "size": [
+      6,
+      100,
+      100
+     ]
+    },
+    {
+     "id": "WHL",
+     "position": [
+      6,
+      20,
+      20
+     ],
+     "size": [
+      6,
+      60,
+      60
+     ],
+     "profile": {
+      "shape": "circle",
+      "center": [
+       30,
+       30
+      ],
+      "diameter": 60
+     }
+    }
+   ],
+   "connections": [],
+   "motions": [
+    {
+     "id": "spin",
+     "type": "rotate",
+     "boards": [
+      "WHL"
+     ],
+     "on": "BLK",
+     "axis": "x",
+     "pivot": [
+      6,
+      50,
+      50
+     ],
+     "axle": {
+      "diameter": 6
+     },
+     "range": [
+      0,
+      360
+     ]
+    }
+   ]
+  }
+ ],
+ "instances": [
+  {
+   "assembly": "MOD",
+   "id": "I0",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I1",
+   "offset": [
+    0,
+    0,
+    110
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I2",
+   "offset": [
+    0,
+    0,
+    220
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I3",
+   "offset": [
+    0,
+    0,
+    330
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I4",
+   "offset": [
+    0,
+    0,
+    440
+   ]
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+
+## unknown fields (top/board/conn/motion/material): ok=False boards=5 t=0.78s len=2617
+    error MOTION_LOCKED | Motion 'm1': 'SHELF' and 'LEG-L' are joined by a fixed tab_slot joint, so the moving boards cannot move. Remove that connection: the motion itself mou
+   ALL codes: ['MOTION_LOCKED']
+   any mention of unknown keys: []
+
+## misspelled key "diamter": ok=False boards=4 t=0.28s len=2276
+    error BOARD_INVALID | Board 'LEG-L': components[1].features[0].diameter must be a finite number
+    warning UNJOINED_TAB | Tab 'MOD-L-t1' on 'MODESTY' is not joined to anything.
+
+## misspelled "conections" (falls back to auto): ok=True boards=5 t=0.62s len=2276
+   codes: ['CONNECTIONS_INFERRED']
+
+## truncated after board 3 (incl trailing comma): ok=False boards=None t=0.00s len=1068
+    error JSON_SYNTAX | Expecting value (line 51, column 1). It can be repaired automatically: Added a missing ] at the end (line 51); Added a missing } at the end (line 51).
+   repair summary: Added a missing ] at the end (line 51); Added a missing } at the end (line 51) safe= True
+
+##   -> repaired: ok=True boards=3 t=0.18s len=1074
+   codes: ['CONNECTIONS_INFERRED']
+
+## repeat 100x100x10=100000: ok=False boards=None t=0.95s len=2613
+    error STRUCTURE_INVALID | Board 'slat': its copies would make more than 100,000 boards.
+
+## repeat 110000: ok=False boards=None t=0.00s len=2613
+    error STRUCTURE_INVALID | Board 'slat': "repeat" would make more than 100,000 boards.
+
+## repeat 3000 small slats (budget 20s): ok=False boards=3005 t=35.05s len=2529
+    warning OVERALL_MISMATCH | The boards span 1203.0 mm in x (length) but product.overall.length is 1200 mm.
+    error COLLISION | Solid material of 'LEG-R' and 'SLAT-1-94' occupies the same space (140.0 mm²) near [1141.0, 209.2, 107.3]. Add a joint (slot) or move one of them.
+    warning NEAR_MISS_GAP | 'LEG-R' is 2.00 mm from 'SLAT-1-97' with no joint between them. If they are meant to touch, close the gap and connect them; if the gap is intentional,
+    error DISCONNECTED | Board 'SLAT-1-1' is not joined to the main assembly and does not touch it: 'SLAT-1-1' is 28.0 mm from 'LEG-L'. Move it into contact and add a connecti
+    error NOT_JOINED | Board 'SLAT-1-94' is not joined to the main assembly although it touches it ('SLAT-1-94' / 'LEG-R'): add a connection there.

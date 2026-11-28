@@ -24,6 +24,7 @@ _LITERALS = {'true': 'true', 'false': 'false', 'null': 'null', 'True': 'true', '
 # opening quote -> the characters that may close it (curly quotes are often closed with a straight one)
 _QUOTES = {'"': '"', "'": "'", '“': '”“"', '”': '”“"', '‘': "’‘'", '’': "’‘'"}
 _CLOSE = {'{': '}', '[': ']'}
+ENDS_EARLY = 'The text ends before the design is closed (the reply may have been cut off)'
 _OPEN = {'}': '{', ']': '['}
 
 
@@ -340,6 +341,8 @@ def repair_json(text, parse=json.loads):
             continue
         note(f'Removed the unexpected character {c!r}')
 
+    if stack:       # the text stops inside the design: closing it cannot bring back what was cut off
+        note(ENDS_EARLY)
     while stack:
         depth = len(stack) - 1
         top = stack[-1]

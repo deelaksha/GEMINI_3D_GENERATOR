@@ -271,8 +271,8 @@ def test_canvas_api_workflow(client):
     assert r.status_code == 200 and r.json['ok'] and r.json['compiled'] and 'design' not in r.json
     assert len(r.json['model3d']['components']) == 4
 
-    bad = client.post('/api/v1/canvas/compile', headers=VW, json={'source': '{"boards": ['}).json
-    assert bad['ok'] and not bad['compiled'] and bad['diagnostics'][0]['code'] == 'JSON_SYNTAX'
+    bad = client.post('/api/v1/canvas/compile', headers=VW, json={'source': '{"boards": ['}).json      # stops mid-design
+    assert bad['ok'] and not bad['compiled'] and bad['diagnostics'][0]['code'] == 'JSON_TRUNCATED'
 
     # save never overwrites: two saves -> two projects; the code is stored with the design
     assert client.post('/api/v1/canvas/save', headers=VW, json={'source': STUDY_TABLE_REPLY}).status_code == 403
@@ -342,7 +342,7 @@ def test_compile_stream_preview_is_the_compilers_own_geometry(client):
 def test_compile_stream_stops_after_a_syntax_error(client):
     events = _stream(client, '{"boards": [')
     assert [e['type'] for e in events] == ['result']
-    assert events[0]['result']['diagnostics'][0]['code'] == 'JSON_SYNTAX' and not events[0]['result']['compiled']
+    assert events[0]['result']['diagnostics'][0]['code'] == 'JSON_TRUNCATED' and not events[0]['result']['compiled']
 
 
 def test_compile_stream_is_cancelled_when_the_client_disconnects(client):

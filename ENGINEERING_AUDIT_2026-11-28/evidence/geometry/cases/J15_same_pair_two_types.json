@@ -1,0 +1,54 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "J15_same_pair_two_types"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "WALL",
+   "position": [
+    50,
+    6,
+    97
+   ],
+   "size": [
+    100,
+    100,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "A1",
+   "type": "tab_slot",
+   "board": "WALL",
+   "into": "FLOOR"
+  },
+  {
+   "id": "A2",
+   "type": "butt",
+   "board": "WALL",
+   "into": "FLOOR"
+  }
+ ],
+ "joinery": "glue_allowed"
+}

@@ -21,7 +21,7 @@ from board_engine.cutlist import cut_list
 from board_engine.deadline import TimeBudgetExceeded, time_budget
 from board_engine.examples.boat import build_design as build_boat
 from board_engine.examples.furniture import PRODUCTS as FURNITURE, build as build_furniture, product_params
-from board_engine.manufacturing import manufacturing_report
+from board_engine.manufacturing import MATERIALS, manufacturing_report
 from board_engine.joining import check_joint
 from board_engine.model import SchemaError, check_id, find_component, normalize_design
 from board_engine.nesting import NestingError, SHEET_PRESETS
@@ -758,9 +758,10 @@ def canvas_repair_prompt():
     from board_engine.canvas_prompt import build_repair_prompt
     data = body()
     src = data.get('source')
-    machine = _machine(data)
-    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
-    prompt = build_repair_prompt(src, res['diagnostics'], _with_total(res.get('layout') or {}), machine)
+    machine, requirements = _machine(data), _requirements(data)
+    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine, requirements=requirements)
+    prompt = build_repair_prompt(src, res['diagnostics'], _with_total(res.get('layout') or {}), machine,
+                                 requirements=requirements)
     return jsonify({'ok': True, 'compiled': res['ok'], 'prompt': prompt,
                     'problems': prompt.count('\n- [')})
 
@@ -1036,8 +1037,13 @@ def canvas_ai_generate():
     th = data.get('thickness')
     if th not in (None, '') and (isinstance(th, bool) or not isinstance(th, (int, float)) or not 0.5 <= th <= 50):
         raise SchemaError('thickness must be a number between 0.5 and 50 mm', 'thickness')
-    prompt = build_prompt(title[:200], str(data.get('requirements') or '')[:4000], None, th or None, 'interlocking',
-                          _machine(data))
+    material, joinery = data.get('material') or None, data.get('joinery') or 'interlocking'
+    if material is not None and material not in MATERIALS:
+        raise SchemaError(f"material must be one of {', '.join(MATERIALS)}", 'material')
+    if joinery not in ('interlocking', 'glue_allowed'):
+        raise SchemaError('joinery must be interlocking or glue_allowed', 'joinery')
+    prompt = build_prompt(title[:200], str(data.get('requirements') or '')[:4000], material, th or None, joinery,
+                          _machine(data), transport='server')
     try:
         reply = complete(prompt)
     except AIError as e:
@@ -1050,25 +1056,46 @@ def canvas_ai_generate():
 @ai_quota
 @heavy
 def canvas_ai_fix():
-    """Compile the code; if it has errors, send the strict fix prompt to the AI and return its corrected design."""
+    """Fix the code's problems: first every safe (unambiguous) fix the compiler offers, then - only if errors remain -
+    one AI round. The AI's reply is compiled and replaces the code only when it is better and keeps the design's
+    boards (`repair.accept_repair`); otherwise the code is returned as it was, with the reasons."""
     from board_engine.ai_client import AIError, complete, provider
-    from board_engine.canvas import compile_source
+    from board_engine.canvas import CompileError, apply_code_fix, compile_source
     from board_engine.canvas_prompt import build_repair_prompt
+    from board_engine.repair import accept_repair
     data = body()
     src = data.get('source')
-    machine = _machine(data)
-    res = compile_source(src, run_production=True, time_budget=budget(), machine=machine)
+    machine, requirements = _machine(data), _requirements(data)
+    compile_ = lambda s, production: compile_source(s, run_production=production, time_budget=budget(), machine=machine,
+                                                    requirements=requirements)
+    cur = src
+    for _ in range(SAFE_FIX_ROUNDS):            # free and deterministic: never pay the AI for what the compiler can fix
+        fix = next((f for d in compile_(cur, False)['diagnostics'] if d['severity'] == 'error'
+                    for f in d.get('fixes') or [] if f.get('safe')), None)
+        if fix is None:
+            break
+        try:
+            cur = apply_code_fix(cur, fix)
+        except (CompileError, KeyError):
+            break
+    res = compile_(cur, True)
     errors = [d for d in res['diagnostics'] if d['severity'] == 'error']
     blocking = _with_total(res.get('layout') or {})
     if not errors and not blocking:
-        return jsonify({'ok': True, 'source': src, 'problems': 0, 'changed': False})
-    prompt = build_repair_prompt(src, res['diagnostics'], blocking, machine)
+        return jsonify({'ok': True, 'source': cur, 'problems': 0, 'changed': cur != src, 'accepted': True, 'reasons': []})
+    prompt = build_repair_prompt(cur, res['diagnostics'], blocking, machine, transport='server', requirements=requirements)
     try:
         reply = complete(prompt)
     except AIError as e:
         return fail(502, 'ai_failed', str(e))
-    return jsonify({'ok': True, 'source': _ai_reply_source(reply), 'problems': prompt.count('\n- ['), 'changed': True,
-                    'provider': provider()[0]})
+    candidate = _ai_reply_source(reply)
+    verdict = accept_repair(cur, res, candidate, compile_(candidate, True))
+    out = candidate if verdict['accepted'] else cur
+    return jsonify(dict(verdict, ok=True, source=out, candidate=None if verdict['accepted'] else candidate,
+                        problems=prompt.count('\n- ['), changed=out != src, provider=provider()[0]))
+
+
+SAFE_FIX_ROUNDS = 10
 
 
 @bp.post('/canvas/resize')

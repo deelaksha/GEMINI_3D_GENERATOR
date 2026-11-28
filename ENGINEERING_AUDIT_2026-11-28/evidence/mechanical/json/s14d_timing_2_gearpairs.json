@@ -1,0 +1,155 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "timing"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    -6,
+    0
+   ],
+   "size": [
+    170,
+    6,
+    200
+   ]
+  }
+ ],
+ "connections": [],
+ "assemblies": [
+  {
+   "id": "MOD",
+   "boards": [
+    {
+     "id": "PL",
+     "position": [
+      0,
+      0,
+      0
+     ],
+     "size": [
+      170,
+      6,
+      90
+     ]
+    },
+    {
+     "id": "G1",
+     "position": [
+      7.0,
+      6,
+      7.0
+     ],
+     "size": [
+      66.0,
+      6,
+      66.0
+     ],
+     "profile": {
+      "shape": "gear",
+      "center": [
+       33.0,
+       33.0
+      ],
+      "teeth": 20,
+      "module": 3,
+      "rotation": 0.0
+     }
+    },
+    {
+     "id": "G2",
+     "position": [
+      67.0,
+      6,
+      -8.0
+     ],
+     "size": [
+      96.0,
+      6,
+      96.0
+     ],
+     "profile": {
+      "shape": "gear",
+      "center": [
+       48.0,
+       48.0
+      ],
+      "teeth": 30,
+      "module": 3,
+      "rotation": 6
+     }
+    }
+   ],
+   "connections": [],
+   "motions": [
+    {
+     "id": "a",
+     "type": "rotate",
+     "boards": [
+      "G1"
+     ],
+     "on": "PL",
+     "axis": "y",
+     "pivot": [
+      40,
+      6,
+      40
+     ],
+     "axle": {
+      "diameter": 6
+     },
+     "range": [
+      0,
+      360
+     ]
+    },
+    {
+     "id": "b",
+     "type": "rotate",
+     "boards": [
+      "G2"
+     ],
+     "on": "PL",
+     "axis": "y",
+     "pivot": [
+      115,
+      6,
+      40
+     ],
+     "axle": {
+      "diameter": 6
+     },
+     "driven_by": "a"
+    }
+   ]
+  }
+ ],
+ "instances": [
+  {
+   "assembly": "MOD",
+   "id": "I0",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I1",
+   "offset": [
+    0,
+    0,
+    100
+   ]
+  }
+ ]
+}

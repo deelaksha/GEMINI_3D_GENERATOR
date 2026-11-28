@@ -1,0 +1,64 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "N5_tilted_aabb_touch_not_solid"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "FLOOR",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    300,
+    6,
+    300
+   ]
+  },
+  {
+   "id": "WALL",
+   "position": [
+    50,
+    6,
+    147
+   ],
+   "size": [
+    100,
+    100,
+    6
+   ]
+  },
+  {
+   "id": "TILT",
+   "position": [
+    160,
+    60,
+    100
+   ],
+   "size": [
+    100,
+    6,
+    100
+   ],
+   "rotate": {
+    "axis": "z",
+    "angle": 45
+   }
+  }
+ ],
+ "connections": [
+  {
+   "id": "W-F",
+   "type": "tab_slot",
+   "board": "WALL",
+   "into": "FLOOR"
+  }
+ ]
+}

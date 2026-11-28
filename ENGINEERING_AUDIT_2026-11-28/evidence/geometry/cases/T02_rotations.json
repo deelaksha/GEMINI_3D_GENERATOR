@@ -1,0 +1,168 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T02_rotations"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "R1",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    50,
+    6
+   ],
+   "rotate": {
+    "axis": "z",
+    "angle": 30
+   }
+  },
+  {
+   "id": "R2",
+   "position": [
+    300,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    50,
+    6
+   ],
+   "rotate": [
+    {
+     "axis": "x",
+     "angle": 90
+    },
+    {
+     "axis": "z",
+     "angle": 90
+    }
+   ]
+  },
+  {
+   "id": "R3",
+   "position": [
+    600,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    50,
+    6
+   ],
+   "rotate": [
+    {
+     "axis": "z",
+     "angle": 90
+    },
+    {
+     "axis": "x",
+     "angle": 90
+    }
+   ]
+  },
+  {
+   "id": "R4",
+   "position": [
+    900,
+    0,
+    0
+   ],
+   "size": [
+    6,
+    50,
+    100
+   ],
+   "rotate": {
+    "axis": "y",
+    "angle": 37,
+    "pivot": [
+     900,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "id": "R5",
+   "position": [
+    1200,
+    0,
+    0
+   ],
+   "size": [
+    100,
+    6,
+    80
+   ],
+   "rotate": [
+    {
+     "axis": "x",
+     "angle": 20
+    },
+    {
+     "axis": "y",
+     "angle": 33
+    },
+    {
+     "axis": "z",
+     "angle": -71
+    }
+   ]
+  },
+  {
+   "id": "R6",
+   "position": [
+    1500,
+    0,
+    0
+   ],
+   "size": [
+    6,
+    80,
+    100
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      80,
+      0
+     ],
+     [
+      80,
+      60
+     ],
+     [
+      40,
+      100
+     ],
+     [
+      0,
+      60
+     ]
+    ]
+   },
+   "rotate": {
+    "axis": "x",
+    "angle": 25
+   }
+  }
+ ],
+ "connections": "auto"
+}

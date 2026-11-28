@@ -1,0 +1,66 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "audit"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ]
+  },
+  {
+   "id": "FLAP",
+   "position": [
+    50,
+    6,
+    100
+   ],
+   "size": [
+    100,
+    80,
+    6
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "type": "tab_slot",
+   "board": "FLAP",
+   "into": "BASE"
+  }
+ ],
+ "motions": [
+  {
+   "id": "swing",
+   "type": "rotate",
+   "boards": [
+    "FLAP"
+   ],
+   "on": "BASE",
+   "axis": "x",
+   "pivot": [
+    100,
+    6,
+    106
+   ],
+   "range": [
+    0,
+    80
+   ]
+  }
+ ]
+}

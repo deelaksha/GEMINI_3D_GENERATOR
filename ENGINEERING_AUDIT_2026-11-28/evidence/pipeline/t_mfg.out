@@ -1,0 +1,13 @@
+material kerf used (no machine, plywood 18): 3.2
+  circle LEG-L/cable radius 18.4 (design diameter 40 -> r 20)
+  outer TOP/outer compensated area 725770 uncompensated 720000
+  inner TOP/slot-LEG-L-TOP-t1 compensated area 1920.0 uncompensated 2387.8
+  all outers grow: True | all polyline inners shrink: True (5 outers, 13 inners)
+
+6 mm plywood laser-ish design with no machine:
+  kerf from catalogue: 3.2
+
+example nesting: sheets 1 sheet {'name': 'custom', 'width': 2440.0, 'height': 1220.0, 'margin': 10.0, 'spacing': 6.0, 'title_block': 14.0, 'usable': (10.0, 10.0, 2430.0, 1196.0), 'rotation': 'orthogonal'} algo keys ['sheet', 'sheet_count', 'sheets', 'unplaced', 'stats', 'issues']
+  yield = part area / (sheets*sheet area) = 77.8 %
+my_home: 341 parts, sheets 1 of 2440.0x1220.0, yield 15.0%, method=None, t=18.7s, kerf=0.15
+  blocking 0

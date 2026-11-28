@@ -1,0 +1,3 @@
+request size 237 bytes -> 20000 boards; time_budget=1s given, elapsed 730.3s, ok=False, codes=['COMPILE_TIMEOUT', 'PRODUCT_NAME', 'STRUCTURE_EXPANDED']
+peak RSS MB 857
+with default BOARD_TIME_BUDGET=90 the same request would be allowed min(900, 90*20000/900)= 900 s

@@ -1,0 +1,274 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "timing"
+ },
+ "material": {
+  "type": "plywood",
+  "thickness": 6,
+  "kerf": 0.15
+ },
+ "boards": [
+  {
+   "id": "BASE",
+   "position": [
+    -20,
+    0,
+    -10
+   ],
+   "size": [
+    60,
+    6,
+    2210
+   ]
+  }
+ ],
+ "connections": [],
+ "assemblies": [
+  {
+   "id": "MOD",
+   "boards": [
+    {
+     "id": "BLK",
+     "position": [
+      0,
+      6,
+      0
+     ],
+     "size": [
+      6,
+      100,
+      100
+     ]
+    },
+    {
+     "id": "WHL",
+     "position": [
+      6,
+      20,
+      20
+     ],
+     "size": [
+      6,
+      60,
+      60
+     ],
+     "profile": {
+      "shape": "circle",
+      "center": [
+       30,
+       30
+      ],
+      "diameter": 60
+     }
+    }
+   ],
+   "connections": [],
+   "motions": [
+    {
+     "id": "spin",
+     "type": "rotate",
+     "boards": [
+      "WHL"
+     ],
+     "on": "BLK",
+     "axis": "x",
+     "pivot": [
+      6,
+      50,
+      50
+     ],
+     "axle": {
+      "diameter": 6
+     },
+     "range": [
+      0,
+      360
+     ]
+    }
+   ]
+  }
+ ],
+ "instances": [
+  {
+   "assembly": "MOD",
+   "id": "I0",
+   "offset": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I1",
+   "offset": [
+    0,
+    0,
+    110
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I2",
+   "offset": [
+    0,
+    0,
+    220
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I3",
+   "offset": [
+    0,
+    0,
+    330
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I4",
+   "offset": [
+    0,
+    0,
+    440
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I5",
+   "offset": [
+    0,
+    0,
+    550
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I6",
+   "offset": [
+    0,
+    0,
+    660
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I7",
+   "offset": [
+    0,
+    0,
+    770
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I8",
+   "offset": [
+    0,
+    0,
+    880
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I9",
+   "offset": [
+    0,
+    0,
+    990
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I10",
+   "offset": [
+    0,
+    0,
+    1100
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I11",
+   "offset": [
+    0,
+    0,
+    1210
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I12",
+   "offset": [
+    0,
+    0,
+    1320
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I13",
+   "offset": [
+    0,
+    0,
+    1430
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I14",
+   "offset": [
+    0,
+    0,
+    1540
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I15",
+   "offset": [
+    0,
+    0,
+    1650
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I16",
+   "offset": [
+    0,
+    0,
+    1760
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I17",
+   "offset": [
+    0,
+    0,
+    1870
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I18",
+   "offset": [
+    0,
+    0,
+    1980
+   ]
+  },
+  {
+   "assembly": "MOD",
+   "id": "I19",
+   "offset": [
+    0,
+    0,
+    2090
+   ]
+  }
+ ]
+}

@@ -1,0 +1,61 @@
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 42%]
+........................................................................ [ 53%]
+........................................................................ [ 64%]
+........................................................................ [ 75%]
+........................................................................ [ 85%]
+........................................................................ [ 96%]
+.......................                                                  [100%]
+============================= slowest 25 durations =============================
+16.89s call     tests/python/test_e2e_agent.py::test_ai_agent_designs_corrects_and_produces_boat
+15.93s call     tests/python/test_scale.py::test_compiles_the_same_with_and_without_parallel_checks
+14.83s call     tests/python/test_scale.py::test_a_design_far_over_200_operations_imports_into_the_studio
+13.79s call     tests/python/test_api.py::test_boat_example_and_production_exports
+13.50s call     tests/python/test_e2e_pipeline.py::test_product_pipeline[E2E-02]
+10.78s call     tests/python/test_e2e_pipeline.py::test_product_pipeline[E2E-03]
+9.38s call     tests/python/test_large_designs.py::test_310_boards_compile_within_the_budget
+8.26s call     tests/python/test_image_prompt.py::test_my_home_example_is_served_and_compiles_clean
+7.97s call     tests/python/test_regressions_e2e.py::test_bug019_auto_sheet_fits_a_1200_mm_back_panel
+7.33s call     tests/python/test_multipart.py::test_an_ordinary_design_is_untouched
+4.84s setup    tests/python/test_unattached.py::test_every_loose_part_of_the_reference_design_is_named
+4.68s call     tests/python/test_e2e_pipeline.py::test_product_pipeline[E2E-05]
+4.44s call     tests/python/test_multipart.py::test_parts_pasted_as_code_blocks_are_merged_and_compile
+4.38s call     tests/python/test_motion.py::test_a_wheel_needs_a_running_gap_to_the_wall_beside_it
+4.31s call     tests/python/test_complex_structures.py::test_clarification_flush_back_panel_with_three_way_corners
+4.27s call     tests/python/test_e2e_pipeline.py::test_product_pipeline[E2E-08]
+4.02s call     tests/python/test_gears.py::test_teeth_interleave_at_the_computed_rotation_and_clash_half_a_tooth_off[12-40-7-37]
+3.98s call     tests/python/test_motion.py::test_a_hinged_lid_opens_freely_but_not_into_its_own_box
+3.56s call     tests/python/test_canvas.py::test_large_user_design_compiles_quickly
+3.46s call     tests/python/test_e2e_pipeline.py::test_product_pipeline[E2E-06]
+3.18s call     tests/python/test_complex_structures.py::test_ai_written_designs_compile_clean[cabinet-13-types3]
+3.16s call     tests/python/test_turn_flip.py::test_seats_all_round_a_ground_by_turning_one_assembly
+3.01s call     tests/python/test_gears.py::test_teeth_interleave_at_the_computed_rotation_and_clash_half_a_tooth_off[25-25--4-135]
+2.82s call     tests/python/test_fit_audit.py::test_shipped_designs_raise_no_false_near_miss_or_protrusion_warnings
+2.62s call     tests/python/test_gears.py::test_teeth_interleave_at_the_computed_rotation_and_clash_half_a_tooth_off[20-30-0-0]
+671 passed in 289.73s (0:04:49)
+	Command being timed: "/tmp/claude-1002/-home-sonic-claude2-mythra/9b0b6ca6-d98e-48cf-ab1a-7d0386cce3f4/scratchpad/venv/bin/python -m pytest tests/python -p no:cacheprovider -q --timeout=600 --durations=25 -rfEs"
+	User time (seconds): 291.46
+	System time (seconds): 1.59
+	Percent of CPU this job got: 100%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:50.89
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 212004
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 125775
+	Voluntary context switches: 1319
+	Involuntary context switches: 3559
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 65328
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+EXIT 0

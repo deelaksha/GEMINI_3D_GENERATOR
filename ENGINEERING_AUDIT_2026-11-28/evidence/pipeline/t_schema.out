@@ -1,0 +1,81 @@
+
+## baseline: ok=True boards=5 t=0.74s
+
+## unknown fields: ok=False boards=5 t=0.03s
+    MOTION_INVALID | Motion 'm1': "range" must be [from, to] with from < to (0 is the position as modelled).
+   all codes: ['MOTION_INVALID']
+
+## format v2: ok=True boards=5 t=0.03s
+    FORMAT_VERSION | "format" should be "board-design/v1"; compiling as board-design/v1.
+
+## format other: ok=True boards=5 t=0.03s
+    FORMAT_VERSION | "format" should be "board-design/v1"; compiling as board-design/v1.
+
+## dup id: ok=False boards=4 t=0.37s
+    DUPLICATE_BOARD_ID | Board id 'TOP' is used twice; ids must be unique.
+    UNKNOWN_BOARD | Connection 'LEG-L-TOP' needs unknown board(s) ['LEG-L']. Did you mean 'LEG-R'?
+    CANTILEVER | 'SHELF' is held only on one side (its centre is outside the area where its supports meet it): it relies on the joints resisting bending. Sup
+    TIP_OVER | The centre of mass [718, 323] (x, z) lies 414 mm outside the floor footprint: the product tips over unless it is fixed to a wall.
+
+## invalid id: ok=False boards=4 t=0.02s
+    BOARD_ID | boards[1].id must be a unique id matching ^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$ (letters, digits, "-", "_", ".").
+    UNKNOWN_BOARD | Connection 'LEG-L-TOP' needs unknown board(s) ['LEG-L']. Did you mean 'LEG-R'?
+    CANTILEVER | 'SHELF' is held only on one side (its centre is outside the area where its supports meet it): it relies on the joints resisting bending. Sup
+    TIP_OVER | The centre of mass [718, 323] (x, z) lies 414 mm outside the floor footprint: the product tips over unless it is fixed to a wall.
+
+## string sizes: ok=False boards=4 t=0.02s
+    BOARD_GEOMETRY | Board 'LEG-L': size must be [x, y, z] numbers in mm.
+
+## NaN size: ok=False boards=None t=0.00s
+    BOARD_GEOMETRY | Board 'TOP': size must be [x, y, z] numbers in mm.
+    COMPILER_ERROR | Internal compiler error: ValueError: cannot convert float NaN to integer
+
+## Infinity size: ok=False boards=None t=0.00s
+    BOARD_GEOMETRY | Board 'TOP': size must be [x, y, z] numbers in mm.
+    COMPILER_ERROR | Internal compiler error: OverflowError: cannot convert float infinity to integer
+
+## negative size: ok=False boards=4 t=0.30s
+    BOARD_SIZE | Board 'SHELF': sizes must be > 0 and coordinates within ±5000 mm.
+
+## coord 6000: ok=False boards=4 t=0.02s
+    BOARD_SIZE | Board 'SHELF': sizes must be > 0 and coordinates within ±5000 mm.
+
+## pos+size 9800 (each <5000): ok=False boards=4 t=0.02s
+    CONNECTION_GAP | Connection 'SHELF-L': 'SHELF' stops 4832.00 mm short of 'LEG-L' along x — an unintended gap.
+    BOARD_INVALID | Board 'SHELF': components[4].placement.position[0] must be <= 5000.0
+
+## 100k-char name: ok=True boards=5 t=0.03s
+
+## deep nesting array: ok=False boards=None t=0.00s
+    JSON_TOO_DEEP | The JSON is nested far too deeply to be a design (brackets inside brackets thousands of times) - ask the AI for the design again.
+
+## deep nesting obj: ok=False boards=None t=0.00s
+    JSON_TOO_DEEP | The JSON is nested far too deeply to be a design (brackets inside brackets thousands of times) - ask the AI for the design again.
+
+## truncated 0.5: ok=False boards=None t=0.00s
+    JSON_SYNTAX | Unterminated string starting at (line 54, column 7). It can be repaired automatically: Closed a string that was never closed (line 54); Gave
+
+##   -> after applying repair_json fix (safe=True): ok=False boards=3 t=0.18s
+    BOARD_GEOMETRY | Board 'MODESTY': position and size must be [x, y, z] numbers in mm.
+
+## truncated 0.8: ok=False boards=None t=0.00s
+    JSON_SYNTAX | Unterminated string starting at (line 90, column 15). It can be repaired automatically: Added a missing } at the end ×2 (line 90); Closed a 
+
+##   -> after applying repair_json fix (safe=True): ok=False boards=5 t=0.45s
+    CONNECTION_TYPE | MOD-L: type 'tab_sl' is not known; use one of ['tab_slot', 'finger', 'cross_lap', 'butt', 'hinge', 'mitre'].
+    NOT_JOINED | Board 'SHELF' is not joined to the main assembly although it touches it ('SHELF' / 'LEG-L', 'SHELF' / 'LEG-R'): add a connection there.
+    HELD_FROM_ABOVE | 'MODESTY' only hangs from 'TOP' on tabs pushing up into it: glue-free, only friction holds it and gravity pulls it out of its slots. Give it
+    UNJOINED_CONTACT | The end of 'MODESTY' butts against 'LEG-L' over 300 × 18 mm with no connection: that end is unsupported and will sag or come loose. Add a co
+    PART_CAN_FALL_OUT | 'MODESTY' can drop out along -y: its joints hold it only from above, so only the friction of the fit stops its own weight pulling it out. Tu
+
+## truncated 0.95: ok=False boards=None t=0.00s
+    JSON_SYNTAX | Unterminated string starting at (line 110, column 7). It can be repaired automatically: Closed a string that was never closed (line 110); Ga
+
+##   -> after applying repair_json fix (safe=True): ok=False boards=5 t=0.14s
+    UNKNOWN_BOARD | Connection 'connections[6]' needs "board" (the board with the tab / end face) and "into" (the receiving board).
+    UNJOINED_CONTACT | The end of 'SHELF' butts against 'LEG-R' over 18 × 400 mm with no connection: that end is unsupported and will sag or come loose. Add a conn
+    CANTILEVER | 'SHELF' is held only on one side (its centre is outside the area where its supports meet it): it relies on the joints resisting bending. Sup
+
+## comments+trailing commas: ok=True boards=5 t=0.04s
+
+## prose+fence: ok=True boards=5 t=0.04s

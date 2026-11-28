@@ -1,0 +1,34 @@
+4000 boards, budget 0.2s (scaled to 0.89s): elapsed 6.0s ok=False codes=['COMPILE_TIMEOUT', 'PRODUCT_NAME', 'STRUCTURE_EXPANDED']
+         11772312 function calls (11556173 primitive calls) in 6.013 seconds
+
+   Ordered by: cumulative time
+   List reduced from 359 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.001    0.001    6.015    6.015 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/canvas.py:1691(compile_source)
+        1    0.016    0.016    6.014    6.014 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/canvas.py:1728(_compile_source)
+        1    0.058    0.058    5.753    5.753 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/canvas.py:1884(_compile_v1)
+    52000    0.072    0.000    2.523    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/geometry.py:76(__init__)
+    52000    0.222    0.000    2.450    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/geometry.py:61(rotation_matrix)
+        1    0.006    0.006    2.092    2.092 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/canvas.py:2209(_finish)
+   104000    0.752    0.000    2.087    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/geometry.py:57(mat_mul)
+    36000    0.031    0.000    1.805    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/canvas.py:682(_frame)
+        1    0.042    0.042    1.522    1.522 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/validation.py:1590(validate_design)
+   936004    0.716    0.000    1.337    0.000 {built-in method builtins.sum}
+    16000    0.049    0.000    1.084    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/model.py:662(__init__)
+196043/4002    0.330    0.000    0.749    0.000 /usr/lib/python3.12/copy.py:118(deepcopy)
+12006/4002    0.065    0.000    0.733    0.000 /usr/lib/python3.12/copy.py:217(_deepcopy_dict)
+  3744000    0.620    0.000    0.620    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/geometry.py:58(<genexpr>)
+        1    0.003    0.003    0.560    0.560 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/support.py:79(support_report)
+        3    0.307    0.102    0.456    0.152 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/geometry.py:366(near_pairs)
+     4000    0.043    0.000    0.411    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/validation.py:92(validate_component)
+        1    0.001    0.001    0.390    0.390 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/consolidate.py:408(consolidate)
+        1    0.095    0.095    0.389    0.389 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/consolidate.py:260(plan)
+36006/20002    0.094    0.000    0.378    0.000 /usr/lib/python3.12/copy.py:191(_deepcopy_list)
+     4000    0.031    0.000    0.364    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/validation.py:1581(_signature)
+        1    0.007    0.007    0.333    0.333 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/model.py:532(normalize_design)
+     4000    0.092    0.000    0.324    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/model.py:288(normalize_component)
+    20000    0.130    0.000    0.293    0.000 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/model.py:636(cut_outline)
+        1    0.006    0.006    0.282    0.282 /home/sonic-claude2/deelaksha/desighn/GEMINI_3D_GENERATOR/board_engine/validation.py:1544(find_collisions)
+
+

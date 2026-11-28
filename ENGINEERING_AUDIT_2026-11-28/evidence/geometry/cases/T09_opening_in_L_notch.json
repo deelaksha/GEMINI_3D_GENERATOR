@@ -1,0 +1,67 @@
+{
+ "format": "board-design/v1",
+ "product": {
+  "name": "T09_opening_in_L_notch"
+ },
+ "material": {
+  "name": "Ply 6",
+  "type": "plywood",
+  "thickness": 6
+ },
+ "boards": [
+  {
+   "id": "L",
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "size": [
+    200,
+    6,
+    200
+   ],
+   "profile": {
+    "shape": "polygon",
+    "points": [
+     [
+      0,
+      0
+     ],
+     [
+      200,
+      0
+     ],
+     [
+      200,
+      100
+     ],
+     [
+      100,
+      100
+     ],
+     [
+      100,
+      200
+     ],
+     [
+      0,
+      200
+     ]
+    ]
+   },
+   "openings": [
+    {
+     "id": "o",
+     "shape": "circle",
+     "center": [
+      150,
+      3,
+      150
+     ],
+     "diameter": 30
+    }
+   ]
+  }
+ ]
+}
